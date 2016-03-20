@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifdef _WIN32
@@ -21,8 +10,10 @@
 #else
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/param.h>
 #endif
 #include "fs.h"
+#include "util.h"
 
 struct FileName {
 	char *name;
@@ -129,7 +120,7 @@ void FileSystem_impl::getPathListFromDirectory(const char *dir) {
 			if (de->d_name[0] == '.') {
 				continue;
 			}
-			char filePath[512];
+			char filePath[MAXPATHLEN];
 			snprintf(filePath, sizeof(filePath), "%s/%s", dir, de->d_name);
 			struct stat st;
 			if (stat(filePath, &st) == 0) {

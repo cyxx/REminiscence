@@ -1,28 +1,17 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <ctime>
 #include "file.h"
 #include "fs.h"
-#include "systemstub.h"
-#include "unpack.h"
 #include "game.h"
 #include "seq_player.h"
-
+#include "systemstub.h"
+#include "unpack.h"
+#include "util.h"
 
 Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
@@ -32,41 +21,38 @@ Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, Re
 	_inp_demo = 0;
 	_inp_record = false;
 	_inp_replay = false;
-	_skillLevel = 1;
-	_currentLevel = level;
+	_skillLevel = _menu._skill = 1;
+	_currentLevel = _menu._level = level;
 }
 
 void Game::run() {
-	_stub->init(g_caption, Video::GAMESCREEN_W, Video::GAMESCREEN_H);
-
 	_randSeed = time(0);
 
+	_res.init();
 	_res.load_TEXT();
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
 		_res.load("FONT8", Resource::OT_FNT, "SPR");
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		_res.load("FB_TXT", Resource::OT_FNT);
 		_res._hasSeqData = _fs->exists("INTRO.SEQ");
 		break;
 	}
 
-#ifndef BYPASS_PROTECTION
-	while (!handleProtectionScreen());
-	if (_stub->_pi.quit) {
-		return;
+	if (!g_options.bypass_protection) {
+		while (!handleProtectionScreen());
+		if (_stub->_pi.quit) {
+			return;
+		}
 	}
-#endif
 
 	_mix.init();
+	_mix._mod._isAmiga = _res.isAmiga();
 
 	playCutscene(0x40);
 	playCutscene(0x0D);
-	if (!_cut._interrupted && _res._type == kResourceTypePC) {
-		playCutscene(0x4A);
-	}
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
@@ -74,7 +60,7 @@ void Game::run() {
 		_res.load("ICON", Resource::OT_ICN, "SPR");
 		_res.load("PERSO", Resource::OT_SPM);
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		_res.load("GLOBAL", Resource::OT_ICN);
 		_res.load("GLOBAL", Resource::OT_SPC);
 		_res.load("PERSO", Resource::OT_SPR);
@@ -83,12 +69,20 @@ void Game::run() {
 		break;
 	}
 
+	if (_res.isAmiga()) {
+		displayTitleScreenAmiga();
+		_stub->setScreenSize(Video::GAMESCREEN_W, Video::GAMESCREEN_H);
+	}
+
 	while (!_stub->_pi.quit) {
-		if (_res._type == kResourceTypePC) {
+		if (_res.isDOS()) {
 			_mix.playMusic(1);
-			if (!_menu.handleTitleScreen(_skillLevel, _currentLevel)) {
+			_menu.handleTitleScreen();
+			if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT) {
 				break;
 			}
+			_skillLevel = _menu._skill;
+			_currentLevel = _menu._level;
 			_mix.stopMusic();
 		}
 		if (_currentLevel == 7) {
@@ -105,6 +99,7 @@ void Game::run() {
 			loadLevelData();
 			resetGameState();
 			_endLoop = false;
+			_frameTimestamp = _stub->getTimeStamp();
 			while (!_stub->_pi.quit && !_endLoop) {
 				mainLoop();
 			}
@@ -112,9 +107,45 @@ void Game::run() {
 	}
 
 	_res.free_TEXT();
-
 	_mix.free();
-	_stub->destroy();
+	_res.fini();
+}
+
+void Game::displayTitleScreenAmiga() {
+	static const char *FILENAME = "present.cmp";
+	_res.load_CMP_menu(FILENAME, _res._memBuf);
+	static const int kW = 320;
+	static const int kH = 224;
+	uint8_t *buf = (uint8_t *)malloc(kW * kH);
+	if (!buf) {
+		error("Failed to allocate screen buffer w=%d h=%d", kW, kH);
+	}
+	_vid.AMIGA_decodeCmp(_res._memBuf + 6, buf);
+	static const int kAmigaColors[] = {
+		0x000, 0x123, 0x012, 0x134, 0x433, 0x453, 0x046, 0x245,
+		0x751, 0x455, 0x665, 0x268, 0x961, 0x478, 0x677, 0x786,
+		0x17B, 0x788, 0xB84, 0xC92, 0x49C, 0xF00, 0x9A8, 0x9AA,
+		0xCA7, 0xEA3, 0x8BD, 0xBBB, 0xEC7, 0xBCD, 0xDDB, 0xEED
+	};
+	for (int i = 0; i < 32; ++i) {
+		Color c = Video::AMIGA_convertColor(kAmigaColors[i]);
+		_stub->setPaletteEntry(i, &c);
+	}
+	_stub->setScreenSize(kW, kH);
+	_stub->copyRect(0, 0, kW, kH, buf, kW);
+	_stub->updateScreen(0);
+	free(buf);
+	while (1) {
+		_stub->processEvents();
+		if (_stub->_pi.quit) {
+			break;
+		}
+		if (_stub->_pi.enter) {
+			_stub->_pi.enter = false;
+			break;
+		}
+		_stub->sleep(30);
+	}
 }
 
 void Game::resetGameState() {
@@ -166,7 +197,7 @@ void Game::mainLoop() {
 			return;
 		}
 	}
-	memcpy(_vid._frontLayer, _vid._backLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+	memcpy(_vid._frontLayer, _vid._backLayer, _vid._layerSize);
 	pge_getInput();
 	pge_prepare();
 	col_prepareRoomState();
@@ -221,14 +252,14 @@ void Game::mainLoop() {
 }
 
 void Game::updateTiming() {
-	static uint32_t tstamp = 0;
-	int32_t delay = _stub->getTimeStamp() - tstamp;
-	int32_t pause = (_stub->_pi.dbgMask & PlayerInput::DF_FASTMODE) ? 20 : 30;
+	static const int frameHz = 30;
+	int32_t delay = _stub->getTimeStamp() - _frameTimestamp;
+	int32_t pause = (_stub->_pi.dbgMask & PlayerInput::DF_FASTMODE) ? 20 : (1000 / frameHz);
 	pause -= delay;
 	if (pause > 0) {
 		_stub->sleep(pause);
 	}
-	tstamp = _stub->getTimeStamp();
+	_frameTimestamp = _stub->getTimeStamp();
 }
 
 void Game::playCutscene(int id) {
@@ -292,12 +323,14 @@ void Game::playCutscene(int id) {
 			_mix.playMusic(Cutscene::_musicTable[_cut._id]);
 		}
 		_cut.play();
+		if (id == 0xD && !_cut._interrupted && _res.isDOS()) {
+			_cut._id = 0x4A;
+			_cut.play();
+		}
 		if (id == 0x3D) {
 			_cut.startCredits();
 		}
-		if (_cut._interrupted || id != 0x0D) {
-			_mix.stopMusic();
-		}
+		_mix.stopMusic();
 	}
 }
 
@@ -348,7 +381,8 @@ void Game::inp_handleSpecialKeys() {
 			} else {
 				if (_inp_demo->open(demoFile, "zwb", _savePath)) {
 					debug(DBG_INFO, "Recording input keys");
-					_inp_demo->writeUint32BE('FBDM');
+					static const uint32_t TAG_FBDM = 0x4642444D;
+					_inp_demo->writeUint32BE(TAG_FBDM);
 					_inp_demo->writeUint16BE(0);
 					_inp_demo->writeUint32BE(_randSeed);
 					record = true;
@@ -395,7 +429,7 @@ void Game::showFinalScore() {
 	strcpy(buf, _menu._passwords[7][_skillLevel]);
 	_vid.drawString(buf, (256 - strlen(buf) * 8) / 2, 16, 0xE7);
 	while (!_stub->_pi.quit) {
-		_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._frontLayer, 256);
+		_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._frontLayer, 256);
 		_stub->updateScreen(0);
 		_stub->processEvents();
 		if (_stub->_pi.enter) {
@@ -407,7 +441,7 @@ void Game::showFinalScore() {
 }
 
 bool Game::handleConfigPanel() {
-	if (_res._type == kResourceTypeAmiga) {
+	if (_res.isAmiga()) {
 		return true;
 	}
 	const int x = 7;
@@ -499,6 +533,10 @@ bool Game::handleConfigPanel() {
 			}
 			break;
 		}
+		if (_stub->_pi.escape) {
+			_stub->_pi.escape = false;
+			break;
+		}
 	}
 	_vid.fullRefresh();
 	return (current == MENU_ITEM_ABORT);
@@ -512,7 +550,7 @@ bool Game::handleContinueAbort() {
 	uint8_t color_inc = 0xFF;
 	Color col;
 	_stub->getPaletteEntry(0xE4, &col);
-	memcpy(_vid._tempLayer, _vid._frontLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+	memcpy(_vid._tempLayer, _vid._frontLayer, _vid._layerSize);
 	while (timeout >= 0 && !_stub->_pi.quit) {
 		const char *str;
 		str = _res.getMenuString(LocaleData::LI_01_CONTINUE_OR_ABORT);
@@ -545,26 +583,28 @@ bool Game::handleContinueAbort() {
 			_stub->_pi.enter = false;
 			return (current_color == 0);
 		}
-		_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._frontLayer, 256);
+		_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._frontLayer, 256);
 		_stub->updateScreen(0);
-		if (col.b >= 0x3D) {
+		static const int COLOR_STEP = 8;
+		static const int COLOR_MIN = 16;
+		static const int COLOR_MAX = 256 - 16;
+		if (col.b >= COLOR_MAX) {
 			color_inc = 0;
-		}
-		if (col.b < 2) {
+		} else if (col.b < COLOR_MIN) {
 			color_inc = 0xFF;
 		}
 		if (color_inc == 0xFF) {
-			col.b += 2;
-			col.g += 2;
+			col.b += COLOR_STEP;
+			col.g += COLOR_STEP;
 		} else {
-			col.b -= 2;
-			col.g -= 2;
+			col.b -= COLOR_STEP;
+			col.g -= COLOR_STEP;
 		}
 		_stub->setPaletteEntry(0xE4, &col);
 		_stub->processEvents();
 		_stub->sleep(100);
 		--timeout;
-		memcpy(_vid._frontLayer, _vid._tempLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+		memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
 	}
 	return false;
 }
@@ -584,7 +624,7 @@ bool Game::handleProtectionScreen() {
 	int shapeNum = getRandomNumber() % 30;
 	for (int16_t zoom = 2000; zoom != 0; zoom -= 100) {
 		_cut.drawProtectionShape(shapeNum, zoom);
-		_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._tempLayer, 256);
+		_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._tempLayer, 256);
 		_stub->updateScreen(0);
 		_stub->sleep(30);
 	}
@@ -595,7 +635,7 @@ bool Game::handleProtectionScreen() {
 	int len = 0;
 	do {
 		codeText[len] = '\0';
-		memcpy(_vid._frontLayer, _vid._tempLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+		memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
 		_menu.drawString("PROTECTION", 2, 11, 5);
 		char buf[20];
 		snprintf(buf, sizeof(buf), "CODE %d :  %s", codeNum + 1, codeText);
@@ -654,7 +694,7 @@ void Game::printLevelCode() {
 		if (_printLevelCodeCounter != 0) {
 			char buf[32];
 			snprintf(buf, sizeof(buf), "CODE: %s", _menu._passwords[_currentLevel][_skillLevel]);
-			_vid.drawString(buf, (Video::GAMESCREEN_W - strlen(buf) * 8) / 2, 16, 0xE7);
+			_vid.drawString(buf, (_vid._w - strlen(buf) * 8) / 2, 16, 0xE7);
 		}
 	}
 }
@@ -678,7 +718,7 @@ void Game::drawLevelTexts() {
 			uint8_t icon_num = obj - 1;
 			drawIcon(icon_num, 80, 8, 0xA);
 			uint8_t txt_num = pge->init_PGE->text_num;
-			const char *str = (const char *)_res._tbn + READ_LE_UINT16(_res._tbn + txt_num * 2);
+			const char *str = (const char *)_res.getTextString(txt_num);
 			_vid.drawString(str, (176 - strlen(str) * 8) / 2, 26, 0xE6);
 			if (icon_num == 2) {
 				printSaveStateCompleted();
@@ -695,7 +735,7 @@ void Game::drawStoryTexts() {
 	if (_textToDisplay != 0xFFFF) {
 		uint16_t text_col_mask = 0xE8;
 		const uint8_t *str = _res.getGameString(_textToDisplay);
-		memcpy(_vid._tempLayer, _vid._frontLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+		memcpy(_vid._tempLayer, _vid._frontLayer, _vid._layerSize);
 		int textSpeechSegment = 0;
 		while (!_stub->_pi.quit) {
 			drawIcon(_currentInventoryIconNum, 80, 8, 0xA);
@@ -735,7 +775,7 @@ void Game::drawStoryTexts() {
 				break;
 			}
 			++str;
-			memcpy(_vid._frontLayer, _vid._tempLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+			memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
 		}
 		_textToDisplay = 0xFFFF;
 	}
@@ -811,7 +851,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 			w = ((dataPtr[2] >> 7) + 1) * 16;
 			h = dataPtr[2] & 0x7F;
 			break;
-		case kResourceTypePC:
+		case kResourceTypeDOS:
 			w = dataPtr[2];
 			h = dataPtr[3];
 			dataPtr += 4;
@@ -885,7 +925,7 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 					_vid.AMIGA_decodeSpm(state->dataPtr, _res._memBuf);
 					drawCharacter(_res._memBuf, state->x, state->y, state->h, state->w, pge->flags);
 					break;
-				case kResourceTypePC:
+				case kResourceTypeDOS:
 					if (!(state->dataPtr[-2] & 0x80)) {
 						decodeCharacterFrame(state->dataPtr, _res._memBuf);
 						drawCharacter(_res._memBuf, state->x, state->y, state->h, state->w, pge->flags);
@@ -923,7 +963,7 @@ void Game::drawObject(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flag
 		count = dataPtr[8];
 		dataPtr += 9;
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		count = dataPtr[5];
 		dataPtr += 6;
 		break;
@@ -956,13 +996,9 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
-		if (sprite_w == 24) {
-			// TODO: fix p24xN
-			return;
-		}
 		_vid.AMIGA_decodeSpc(src, sprite_w, sprite_h, _res._memBuf);
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		_vid.PC_decodeSpc(src, sprite_w, sprite_h, _res._memBuf);
 		break;
 	}
@@ -1197,10 +1233,10 @@ int Game::loadMonsterSprites(LivePGE *pge) {
 	_curMonsterFrame = mList[0];
 	if (_curMonsterNum != mList[1]) {
 		_curMonsterNum = mList[1];
-		if (_res._type == kResourceTypeAmiga) {
+		if (_res.isAmiga()) {
 			_res.load(_monsterNames[1][_curMonsterNum], Resource::OT_SPM);
 			static const uint8_t tab[4] = { 0, 8, 0, 8 };
-			const int offset = _vid._mapPalSlot2 * 16 + tab[_curMonsterNum];
+			const int offset = _vid._mapPalSlot3 * 16 + tab[_curMonsterNum];
 			for (int i = 0; i < 8; ++i) {
 				_vid.setPaletteColorBE(0x50 + i, offset + i);
 			}
@@ -1220,15 +1256,23 @@ void Game::loadLevelMap() {
 	switch (_res._type) {
 	case kResourceTypeAmiga:
 		if (_currentLevel == 1) {
-			static const uint8_t tab[64] = {
-				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0,
-				0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0,
-				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-				0, 0, 0, 0, 1, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0
-			};
-			const int num = tab[_currentRoom];
+			int num = 0;
+			switch (_currentRoom) {
+			case 14:
+			case 19:
+			case 52:
+			case 53:
+				num = 1;
+				break;
+			case 11:
+			case 24:
+			case 27:
+			case 56:
+				num = 2;
+				break;
+			}
 			if (num != 0 && _res._levNum != num) {
-				char name[8];
+				char name[9];
 				snprintf(name, sizeof(name), "level2_%d", num);
 				_res.load(name, Resource::OT_LEV);
 				_res._levNum = num;
@@ -1236,8 +1280,12 @@ void Game::loadLevelMap() {
 		}
 		_vid.AMIGA_decodeLev(_currentLevel, _currentRoom);
 		break;
-	case kResourceTypePC:
-		_vid.PC_decodeMap(_currentLevel, _currentRoom);
+	case kResourceTypeDOS:
+		if (_res._map) {
+			_vid.PC_decodeMap(_currentLevel, _currentRoom);
+		} else if (_res._lev) {
+			_vid.PC_decodeLev(_currentLevel, _currentRoom);
+		}
 		_vid.PC_setLevelPalettes();
 		break;
 	}
@@ -1248,9 +1296,8 @@ void Game::loadLevelData() {
 	const Level *lvl = &_gameLevels[_currentLevel];
 	switch (_res._type) {
 	case kResourceTypeAmiga:
-		if (_fs->exists("demo.lev")) { // demo data files
-			Cutscene::_namesTable[1] = "HOLOCUBE";
-			Cutscene::_namesTable[4] = "CHUTE2";
+		if (_res._isDemo) {
+			_cut._patchedOffsetsTable = Cutscene::_amigaDemoOffsetsTable;
 			static const char *fname1 = "demo";
 			static const char *fname2 = "demof";
 			_res.load(fname1, Resource::OT_MBK);
@@ -1301,12 +1348,20 @@ void Game::loadLevelData() {
 			_res.load(lvl->nameAmiga, Resource::OT_SGD);
 		}
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		_res.load(lvl->name, Resource::OT_MBK);
 		_res.load(lvl->name, Resource::OT_CT);
 		_res.load(lvl->name, Resource::OT_PAL);
 		_res.load(lvl->name, Resource::OT_RP);
-		_res.load(lvl->name, Resource::OT_MAP);
+		if (_res._isDemo || g_options.use_tiledata) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
+			if (_currentLevel == 0) {
+				_res.load(lvl->name, Resource::OT_SGD);
+			}
+			_res.load(lvl->name, Resource::OT_LEV);
+			_res.load(lvl->name, Resource::OT_BNQ);
+		} else {
+			_res.load(lvl->name, Resource::OT_MAP);
+		}
 		_res.load(lvl->name2, Resource::OT_PGE);
 		_res.load(lvl->name2, Resource::OT_OBJ);
 		_res.load(lvl->name2, Resource::OT_ANI);
@@ -1315,6 +1370,9 @@ void Game::loadLevelData() {
 	}
 
 	_cut._id = lvl->cutscene_id;
+	if (_res._isDemo && _currentLevel == 5) { // PC demo does not include TELEPORT.*
+		_cut._id = 0xFFFF;
+	}
 
 	_curMonsterNum = 0xFFFF;
 	_curMonsterFrame = 0;
@@ -1377,7 +1435,7 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 			_vid.AMIGA_decodeIcn(_res._icn, iconNum, buf);
 		}
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		_vid.PC_decodeIcn(_res._icn, iconNum, buf);
 		break;
 	}
@@ -1392,7 +1450,7 @@ void Game::playSound(uint8_t sfxId, uint8_t softVol) {
 			MixerChunk mc;
 			mc.data = sfx->data;
 			mc.len = sfx->len;
-			const int freq = _res._type == kResourceTypeAmiga ? 3546897 / 650 : 6000;
+			const int freq = _res.isAmiga() ? 3546897 / 650 : 6000;
 			_mix.play(&mc, freq, Mixer::MAX_VOLUME >> softVol);
 		}
 	} else {
@@ -1476,7 +1534,7 @@ void Game::handleInventory() {
 						drawIcon(76, icon_x_pos, 157, 0xA);
 						selected_pge = items[item_it].live_pge;
 						uint8_t txt_num = items[item_it].init_pge->text_num;
-						const char *str = (const char *)_res._tbn + READ_LE_UINT16(_res._tbn + txt_num * 2);
+						const char *str = (const char *)_res.getTextString(txt_num);
 						_vid.drawString(str, (256 - strlen(str) * 8) / 2, 189, 0xED);
 						if (items[item_it].init_pge->init_flags & 4) {
 							char buf[10];
@@ -1593,6 +1651,8 @@ void Game::makeGameStateName(uint8_t slot, char *buf) {
 	sprintf(buf, "rs-level%d-%02d.state", _currentLevel + 1, slot);
 }
 
+static const uint32_t TAG_FBSV = 0x46425356;
+
 bool Game::saveGameState(uint8_t slot) {
 	bool success = false;
 	char stateFile[20];
@@ -1602,7 +1662,7 @@ bool Game::saveGameState(uint8_t slot) {
 		warning("Unable to save state file '%s'", stateFile);
 	} else {
 		// header
-		f.writeUint32BE('FBSV');
+		f.writeUint32BE(TAG_FBSV);
 		f.writeUint16BE(2);
 		char buf[32];
 		memset(buf, 0, sizeof(buf));
@@ -1629,7 +1689,7 @@ bool Game::loadGameState(uint8_t slot) {
 		warning("Unable to open state file '%s'", stateFile);
 	} else {
 		uint32_t id = f.readUint32BE();
-		if (id != 'FBSV') {
+		if (id != TAG_FBSV) {
 			warning("Bad save state format");
 		} else {
 			uint16_t ver = f.readUint16BE();

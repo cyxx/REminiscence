@@ -1,24 +1,14 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef RESOURCE_H__
 #define RESOURCE_H__
 
 #include "intern.h"
+#include "resource_aba.h"
 
 struct File;
 struct FileSystem;
@@ -93,11 +83,13 @@ struct Resource {
 		OT_SPL,
 		OT_LEV,
 		OT_SGD,
+		OT_BNQ,
 		OT_SPM
 	};
 
 	enum {
 		NUM_SFXS = 66,
+		NUM_BANK_BUFFERS = 50,
 		NUM_SPRITES = 1287
 	};
 
@@ -108,6 +100,10 @@ struct Resource {
 	FileSystem *_fs;
 	ResourceType _type;
 	Language _lang;
+	bool _isDemo;
+	ResourceAba *_aba;
+	uint16_t (*_readUint16)(const void *);
+	uint32_t (*_readUint32)(const void *);
 	bool _hasSeqData;
 	char _entryName[32];
 	uint8_t *_fnt;
@@ -131,6 +127,7 @@ struct Resource {
 	uint8_t *_lev;
 	int _levNum;
 	uint8_t *_sgd;
+	uint8_t *_bnq;
 	uint16_t _numObjectNodes;
 	ObjectNode *_objectNodesMap[255];
 	uint8_t *_memBuf;
@@ -147,17 +144,24 @@ struct Resource {
 	uint8_t *_bankData;
 	uint8_t *_bankDataHead;
 	uint8_t *_bankDataTail;
-	BankSlot _bankBuffers[50];
+	BankSlot _bankBuffers[NUM_BANK_BUFFERS];
 	int _bankBuffersCount;
 
 	Resource(FileSystem *fs, ResourceType type, Language lang);
 	~Resource();
+
+	void init();
+	void fini();
+
+	bool isDOS()   const { return _type == kResourceTypeDOS; }
+	bool isAmiga() const { return _type == kResourceTypeAmiga; }
 
 	void clearLevelRes();
 	void load_FIB(const char *fileName);
 	void load_SPL_demo();
 	void load_MAP_menu(const char *fileName, uint8_t *dstPtr);
 	void load_PAL_menu(const char *fileName, uint8_t *dstPtr);
+	void load_CMP_menu(const char *fileName, uint8_t *dstPtr);
 	void load_SPR_OFF(const char *fileName, uint8_t *sprData);
 	void load_CINE();
 	void load_TEXT();
@@ -178,6 +182,7 @@ struct Resource {
 	void load_OBC(File *pf);
 	void decodeOBJ(const uint8_t *, int);
 	void load_PGE(File *pf);
+	void decodePGE(const uint8_t *, int);
 	void load_ANI(File *pf);
 	void load_TBN(File *pf);
 	void load_CMD(File *pf);
@@ -187,10 +192,14 @@ struct Resource {
 	void load_SPL(File *pf);
 	void load_LEV(File *pf);
 	void load_SGD(File *pf);
+	void load_BNQ(File *pf);
 	void load_SPM(File *f);
 	const uint8_t *getAniData(int num) const {
-		const int offset = READ_LE_UINT16(_ani + num * 2);
-		return _ani + offset;
+		const int offset = _readUint16(_ani + 2 + num * 2);
+		return _ani + 2 + offset;
+	}
+	const uint8_t *getTextString(int num) {
+		return _tbn + _readUint16(_tbn + num * 2);
 	}
 	const uint8_t *getGameString(int num) {
 		return _stringsTable + READ_LE_UINT16(_stringsTable + num * 2);

@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "game.h"
@@ -72,7 +61,10 @@ const char *Cutscene::_namesTable[] = {
 	"LOGOS",
 	"OVER",
 	"SCORE",
-	"INTRO2"
+	"INTRO2",
+	"SERRURE",
+	"HOLOCUBE",
+	"CHUTE2"
 };
 
 const uint16_t Cutscene::_offsetsTable[] = {
@@ -92,6 +84,12 @@ const uint16_t Cutscene::_offsetsTable[] = {
 	0x001C, 0x0000, 0x000F, 0x0006, 0x000F, 0x0006, 0x000F, 0x0007, 0x000F, 0x0008,
 	0x000F, 0x0009, 0x000F, 0x000A, 0x001D, 0x0000, 0x001B, 0x0001, 0x001E, 0x0000,
 	0xFFFF, 0x0000
+};
+
+const uint8_t Cutscene::_amigaDemoOffsetsTable[] = {
+	1, 32, 0, /* HOLOCUBE */
+	6, 33, 0, /* CHUTE2 */
+	255
 };
 
 const uint16_t Cutscene::_cosTable[] = {
@@ -2543,13 +2541,6 @@ const uint8_t Video::_palSlot0xF[] = {
 	0x00, 0x00, 0x00, 0x1F, 0x17, 0x2B, 0x2B, 0x1F, 0x37, 0x37, 0x2B, 0x47, 0x43, 0x37, 0x53, 0x4F,
 	0x43, 0x63, 0x5F, 0x53, 0x6F, 0x6F, 0x63, 0x7F, 0x7F, 0x73, 0x8B, 0x8F, 0x87, 0x9B, 0x9F, 0x97,
 	0xA7, 0xAF, 0xA7, 0xB3, 0xBF, 0xBB, 0xBF, 0xCF, 0xCF, 0xCF, 0x00, 0x33, 0x00, 0x17, 0x0F, 0x1F
-};
-
-const int8_t ModPlayer::_sineWaveTable[] = {
-   0,   24,   49,   74,   97,  120, -115,  -95,  -76,  -59,  -44,  -32,  -21,  -12,   -6,   -3,
-  -1,   -3,   -6,  -12,  -21,  -32,  -44,  -59,  -76,  -95, -115,  120,   97,   74,   49,   24,
-   0,  -24,  -49,  -74,  -97, -120,  115,   95,   76,   59,   44,   32,   21,   12,    6,    3,
-   1,    3,    6,   12,   21,   32,   44,   59,   76,   95,  115, -120,  -97,  -74,  -49,  -24
 };
 
 const uint16_t ModPlayer::_periodTable[] = {

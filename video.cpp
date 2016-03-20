@@ -1,38 +1,25 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "resource.h"
 #include "systemstub.h"
 #include "unpack.h"
+#include "util.h"
 #include "video.h"
-
 
 Video::Video(Resource *res, SystemStub *stub)
 	: _res(res), _stub(stub) {
-	_frontLayer = (uint8_t *)malloc(GAMESCREEN_W * GAMESCREEN_H);
-	memset(_frontLayer, 0, GAMESCREEN_W * GAMESCREEN_H);
-	_backLayer = (uint8_t *)malloc(GAMESCREEN_W * GAMESCREEN_H);
-	memset(_backLayer, 0, GAMESCREEN_W * GAMESCREEN_H);
-	_tempLayer = (uint8_t *)malloc(GAMESCREEN_W * GAMESCREEN_H);
-	memset(_tempLayer, 0, GAMESCREEN_W * GAMESCREEN_H);
-	_tempLayer2 = (uint8_t *)malloc(GAMESCREEN_W * GAMESCREEN_H);
-	memset(_tempLayer2, 0, GAMESCREEN_W * GAMESCREEN_H);
-	_screenBlocks = (uint8_t *)malloc((GAMESCREEN_W / SCREENBLOCK_W) * (GAMESCREEN_H / SCREENBLOCK_H));
-	memset(_screenBlocks, 0, (GAMESCREEN_W / SCREENBLOCK_W) * (GAMESCREEN_H / SCREENBLOCK_H));
+	_w = GAMESCREEN_W;
+	_h = GAMESCREEN_H;
+	_layerSize = _w * _h;
+	_frontLayer = (uint8_t *)calloc(1, _layerSize);
+	_backLayer = (uint8_t *)calloc(1,_layerSize);
+	_tempLayer = (uint8_t *)calloc(1, _layerSize);
+	_tempLayer2 = (uint8_t *)calloc(1, _layerSize);
+	_screenBlocks = (uint8_t *)calloc(1, (_w / SCREENBLOCK_W) * (_h / SCREENBLOCK_H));
 	_fullRefresh = true;
 	_shakeOffset = 0;
 	_charFrontColor = 0;
@@ -50,15 +37,15 @@ Video::~Video() {
 
 void Video::markBlockAsDirty(int16_t x, int16_t y, uint16_t w, uint16_t h) {
 	debug(DBG_VIDEO, "Video::markBlockAsDirty(%d, %d, %d, %d)", x, y, w, h);
-	assert(x >= 0 && x + w <= GAMESCREEN_W && y >= 0 && y + h <= GAMESCREEN_H);
+	assert(x >= 0 && x + w <= _w && y >= 0 && y + h <= _h);
 	int bx1 = x / SCREENBLOCK_W;
 	int by1 = y / SCREENBLOCK_H;
 	int bx2 = (x + w - 1) / SCREENBLOCK_W;
 	int by2 = (y + h - 1) / SCREENBLOCK_H;
-	assert(bx2 < GAMESCREEN_W / SCREENBLOCK_W && by2 < GAMESCREEN_H / SCREENBLOCK_H);
+	assert(bx2 < _w / SCREENBLOCK_W && by2 < _h / SCREENBLOCK_H);
 	for (; by1 <= by2; ++by1) {
 		for (int i = bx1; i <= bx2; ++i) {
-			_screenBlocks[by1 * (GAMESCREEN_W / SCREENBLOCK_W) + i] = 2;
+			_screenBlocks[by1 * (_w / SCREENBLOCK_W) + i] = 2;
 		}
 	}
 }
@@ -67,16 +54,16 @@ void Video::updateScreen() {
 	debug(DBG_VIDEO, "Video::updateScreen()");
 //	_fullRefresh = true;
 	if (_fullRefresh) {
-		_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _frontLayer, 256);
+		_stub->copyRect(0, 0, _w, _h, _frontLayer, 256);
 		_stub->updateScreen(_shakeOffset);
 		_fullRefresh = false;
 	} else {
 		int i, j;
 		int count = 0;
 		uint8_t *p = _screenBlocks;
-		for (j = 0; j < GAMESCREEN_H / SCREENBLOCK_H; ++j) {
+		for (j = 0; j < _h / SCREENBLOCK_H; ++j) {
 			uint16_t nh = 0;
-			for (i = 0; i < GAMESCREEN_W / SCREENBLOCK_W; ++i) {
+			for (i = 0; i < _w / SCREENBLOCK_W; ++i) {
 				if (p[i] != 0) {
 					--p[i];
 					++nh;
@@ -92,7 +79,7 @@ void Video::updateScreen() {
 				_stub->copyRect(x, j * SCREENBLOCK_H, nh * SCREENBLOCK_W, SCREENBLOCK_H, _frontLayer, 256);
 				++count;
 			}
-			p += GAMESCREEN_W / SCREENBLOCK_W;
+			p += _w / SCREENBLOCK_W;
 		}
 		if (count != 0) {
 			_stub->updateScreen(_shakeOffset);
@@ -107,13 +94,16 @@ void Video::updateScreen() {
 void Video::fullRefresh() {
 	debug(DBG_VIDEO, "Video::fullRefresh()");
 	_fullRefresh = true;
-	memset(_screenBlocks, 0, (GAMESCREEN_W / SCREENBLOCK_W) * (GAMESCREEN_H / SCREENBLOCK_H));
+	memset(_screenBlocks, 0, (_w / SCREENBLOCK_W) * (_h / SCREENBLOCK_H));
 }
 
 void Video::fadeOut() {
 	debug(DBG_VIDEO, "Video::fadeOut()");
-	_stub->fadeScreen();
-//	fadeOutPalette();
+	if (g_options.fade_out_palette) {
+		fadeOutPalette();
+	} else {
+		_stub->fadeScreen();
+	}
 }
 
 void Video::fadeOutPalette() {
@@ -134,15 +124,7 @@ void Video::fadeOutPalette() {
 
 void Video::setPaletteColorBE(int num, int offset) {
 	const int color = READ_BE_UINT16(_res->_pal + offset * 2);
-	Color c;
-	c.r = (color & 0x00F) << 2;
-	c.g = (color & 0x0F0) >> 2;
-	c.b = (color & 0xF00) >> 6;
-	if (color != 0) {
-		c.r |= 3;
-		c.g |= 3;
-		c.b |= 3;
-	}
+	Color c = AMIGA_convertColor(color, true);
 	_stub->setPaletteEntry(num, &c);
 }
 
@@ -151,15 +133,7 @@ void Video::setPaletteSlotBE(int palSlot, int palNum) {
 	const uint8_t *p = _res->_pal + palNum * 0x20;
 	for (int i = 0; i < 16; ++i) {
 		const int color = READ_BE_UINT16(p); p += 2;
-		Color c;
-		c.r = (color & 0x00F) << 2;
-		c.g = (color & 0x0F0) >> 2;
-		c.b = (color & 0xF00) >> 6;
-		if (color != 0) {
-			c.r |= 3;
-			c.g |= 3;
-			c.b |= 3;
-		}
+		Color c = AMIGA_convertColor(color, true);
 		_stub->setPaletteEntry(palSlot * 0x10 + i, &c);
 	}
 }
@@ -168,10 +142,7 @@ void Video::setPaletteSlotLE(int palSlot, const uint8_t *palData) {
 	debug(DBG_VIDEO, "Video::setPaletteSlotLE()");
 	for (int i = 0; i < 16; ++i) {
 		uint16_t color = READ_LE_UINT16(palData); palData += 2;
-		Color c;
-		c.b = (color & 0x00F) << 2;
-		c.g = (color & 0x0F0) >> 2;
-		c.r = (color & 0xF00) >> 6;
+		Color c = AMIGA_convertColor(color);
 		_stub->setPaletteEntry(palSlot * 0x10 + i, &c);
 	}
 }
@@ -186,11 +157,20 @@ void Video::setPalette0xF() {
 	const uint8_t *p = _palSlot0xF;
 	for (int i = 0; i < 16; ++i) {
 		Color c;
-		c.r = *p++ >> 2;
-		c.g = *p++ >> 2;
-		c.b = *p++ >> 2;
+		c.r = *p++;
+		c.g = *p++;
+		c.b = *p++;
 		_stub->setPaletteEntry(0xF0 + i, &c);
 	}
+}
+
+void Video::PC_decodeLev(int level, int room) {
+	uint8_t *tmp = _res->_mbk;
+	_res->_mbk = _res->_bnq;
+	_res->clearBankData();
+	AMIGA_decodeLev(level, room);
+	_res->_mbk = tmp;
+	_res->clearBankData();
 }
 
 static void PC_decodeMapHelper(int sz, const uint8_t *src, uint8_t *dst) {
@@ -248,7 +228,7 @@ void Video::PC_decodeMap(int level, int room) {
 			}
 		}
 	}
-	memcpy(_backLayer, _frontLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+	memcpy(_backLayer, _frontLayer, _layerSize);
 }
 
 void Video::PC_setLevelPalettes() {
@@ -294,14 +274,15 @@ void Video::PC_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst) {
 	}
 }
 
-static void AMIGA_blit3pNxN(uint8_t *dst, int pitch, int w, int h, const uint8_t *src) {
+static void AMIGA_planar16(uint8_t *dst, int w, int h, int depth, const uint8_t *src) {
+	const int pitch = w * 16;
 	const int planarSize = w * 2 * h;
 	for (int y = 0; y < h; ++y) {
 		for (int x = 0; x < w; ++x) {
 			for (int i = 0; i < 16; ++i) {
 				int color = 0;
 				const int mask = 1 << (15 - i);
-				for (int bit = 0; bit < 3; ++bit) {
+				for (int bit = 0; bit < depth; ++bit) {
 					if (READ_BE_UINT16(src + bit * planarSize) & mask) {
 						color |= 1 << bit;
 					}
@@ -314,26 +295,7 @@ static void AMIGA_blit3pNxN(uint8_t *dst, int pitch, int w, int h, const uint8_t
 	}
 }
 
-static void AMIGA_blit4p16xN(uint8_t *dst, int w, int h, const uint8_t *src) {
-	const int planarSize = w * 2 * h;
-	assert(w == 1);
-	for (int y = 0; y < h; ++y) {
-		for (int i = 0; i < 16; ++i) {
-			int color = 0;
-			const int mask = 1 << (15 - i);
-			for (int bit = 0; bit < 4; ++bit) {
-				if (READ_BE_UINT16(src + bit * planarSize) & mask) {
-					color |= 1 << bit;
-				}
-			}
-			dst[i] = color;
-		}
-		src += 2;
-		dst += 16;
-	}
-}
-
-static void AMIGA_blit4p8xN(uint8_t *dst, int w, int h, const uint8_t *src) {
+static void AMIGA_planar8(uint8_t *dst, int w, int h, const uint8_t *src) {
 	assert(w == 8);
 	for (int y = 0; y < h; ++y) {
 		for (int i = 0; i < 8; ++i) {
@@ -351,27 +313,7 @@ static void AMIGA_blit4p8xN(uint8_t *dst, int w, int h, const uint8_t *src) {
 	}
 }
 
-static void AMIGA_blit4pNxN(uint8_t *dst, int w, int h, const uint8_t *src) {
-	const int planarSize = w / 8 * h;
-	for (int y = 0; y < h; ++y) {
-		for (int x = 0; x < w / 8; ++x) {
-	                for (int i = 0; i < 8; ++i) {
-				int color = 0;
-				const int mask = 1 << (7 - i);
-				for (int bit = 0; bit < 4; ++bit) {
-					if (src[bit * planarSize] & mask) {
-						color |= 1 << bit;
-					}
-				}
-				dst[x * 8 + i] = color;
-			}
-			++src;
-		}
-		dst += w;
-	}
-}
-
-static void AMIGA_blit4pNxN_mask(uint8_t *dst, int x0, int y0, int w, int h, uint8_t *src, uint8_t *mask, int size) {
+static void AMIGA_planar_mask(uint8_t *dst, int x0, int y0, int w, int h, uint8_t *src, uint8_t *mask, int size) {
 	dst += y0 * 256 + x0;
 	for (int y = 0; y < h; ++y) {
 		for (int x = 0; x < w * 2; ++x) {
@@ -398,7 +340,7 @@ static void AMIGA_blit4pNxN_mask(uint8_t *dst, int x0, int y0, int w, int h, uin
 	}
 }
 
-static void AMIGA_decodeRLE(uint8_t *dst, const uint8_t *src) {
+static void AMIGA_decodeRle(uint8_t *dst, const uint8_t *src) {
 	int code = READ_BE_UINT16(src) & 0x7FFF; src += 2;
 	const uint8_t *end = src + code;
 	do {
@@ -417,7 +359,30 @@ static void AMIGA_decodeRLE(uint8_t *dst, const uint8_t *src) {
 	assert(src == end);
 }
 
-static void AMIGA_decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data) {
+static void PC_drawTileMask(uint8_t *dst, int x0, int y0, int w, int h, uint8_t *m, uint8_t *p, int size) {
+	assert(size == (w * 2 * h));
+	for (int y = 0; y < h; ++y) {
+		for (int x = 0; x < w; ++x) {
+			const int bits = READ_BE_UINT16(m); m += 2;
+			for (int bit = 0; bit < 8; ++bit) {
+				const int j = y0 + y;
+				const int i = x0 + 2 * (x * 8 + bit);
+				if (i >= 0 && i < Video::GAMESCREEN_W && j >= 0 && j < Video::GAMESCREEN_H) {
+					const uint8_t color = *p;
+					if (bits & (1 << (15 - (bit * 2)))) {
+						dst[j * Video::GAMESCREEN_W + i] = color >> 4;
+					}
+					if (bits & (1 << (15 - (bit * 2 + 1)))) {
+						dst[j * Video::GAMESCREEN_W + i + 1] = color & 15;
+					}
+				}
+				++p;
+			}
+		}
+	}
+}
+
+static void decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data, const bool isAmiga) {
 	int num = -1;
 	uint8_t buf[256 * 32];
 	int count = READ_BE_UINT16(src) - 1; src += 2;
@@ -427,7 +392,7 @@ static void AMIGA_decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *dat
 		int d1 = READ_BE_UINT16(src); src += 2;
 		if (d2 != 0xFFFF) {
 			d2 &= ~(1 << 15);
-			const int offset = READ_BE_UINT32(data + d2 * 4);
+			const int32_t offset = READ_BE_UINT32(data + d2 * 4);
 			if (offset < 0) {
 				const uint8_t *ptr = data - offset;
 				const int size = READ_BE_UINT16(ptr); ptr += 2;
@@ -441,18 +406,22 @@ static void AMIGA_decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *dat
 					num = d2;
 					const int size = READ_BE_UINT16(data + offset) & 0x7FFF;
 					assert(size <= (int)sizeof(buf));
-					AMIGA_decodeRLE(buf, data + offset);
+					AMIGA_decodeRle(buf, data + offset);
 				}
 			}
 		}
 		const int w = (buf[0] + 1) >> 1;
 		const int h = buf[1] + 1;
 		const int planarSize = READ_BE_UINT16(buf + 2);
-		AMIGA_blit4pNxN_mask(dst, (int16_t)d0, (int16_t)d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+		if (isAmiga) {
+			AMIGA_planar_mask(dst, (int16_t)d0, (int16_t)d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+		} else {
+			PC_drawTileMask(dst, (int16_t)d0, (int16_t)d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+		}
 	} while (--count >= 0);
 }
 
-static const uint8_t *AMIGA_mirrorY(const uint8_t *a2) {
+static const uint8_t *AMIGA_mirrorTileY(const uint8_t *a2) {
 	static uint8_t buf[32];
 
         a2 += 24;
@@ -465,7 +434,7 @@ static const uint8_t *AMIGA_mirrorY(const uint8_t *a2) {
 	return buf;
 }
 
-static const uint8_t *AMIGA_mirrorX(const uint8_t *a2) {
+static const uint8_t *AMIGA_mirrorTileX(const uint8_t *a2) {
 	static uint8_t buf[32];
 
 	for (int i = 0; i < 32; ++i) {
@@ -480,7 +449,13 @@ static const uint8_t *AMIGA_mirrorX(const uint8_t *a2) {
 	return buf;
 }
 
-static void AMIGA_blit4p8x8(uint8_t *dst, int pitch, const uint8_t *src, int pal, int colorKey = -1) {
+static void AMIGA_drawTile(uint8_t *dst, int pitch, const uint8_t *src, int pal, const bool xflip, const bool yflip, int colorKey) {
+	if (yflip) {
+		src = AMIGA_mirrorTileY(src);
+	}
+	if (xflip) {
+		src = AMIGA_mirrorTileX(src);
+	}
 	for (int y = 0; y < 8; ++y) {
 		for (int i = 0; i < 8; ++i) {
 			const int mask = 1 << (7 - i);
@@ -499,26 +474,53 @@ static void AMIGA_blit4p8x8(uint8_t *dst, int pitch, const uint8_t *src, int pal
 	}
 }
 
-static void AMIGA_decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10, int offset12, const uint8_t *a5, bool sgdBuf) {
+static void PC_drawTile(uint8_t *dst, const uint8_t *src, int mask, const bool xflip, const bool yflip, int colorKey) {
+	int pitch = Video::GAMESCREEN_W;
+	if (yflip) {
+		dst += 7 * pitch;
+		pitch = -pitch;
+	}
+	int inc = 1;
+	if (xflip) {
+		dst += 7;
+		inc = -inc;
+	}
+	for (int y = 0; y < 8; ++y) {
+		for (int i = 0; i < 8; i += 2) {
+			int color = *src >> 4;
+			if (color != colorKey) {
+				dst[inc * i] = mask | color;
+			}
+			color = *src & 15;
+			if (color != colorKey) {
+				dst[inc * (i + 1)] = mask | color;
+			}
+			++src;
+		}
+		dst += pitch;
+	}
+}
+
+static void decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10, int offset12, const uint8_t *a5, bool sgdBuf, bool isPC) {
 	if (offset10 != 0) {
 		const uint8_t *a0 = src + offset10;
 		for (int y = 0; y < 224; y += 8) {
 			for (int x = 0; x < 256; x += 8) {
-				const int d3 = READ_BE_UINT16(a0); a0 += 2;
+				const int d3 = isPC ? READ_LE_UINT16(a0) : READ_BE_UINT16(a0); a0 += 2;
 				const int d0 = d3 & 0x7FF;
 				if (d0 != 0) {
 					const uint8_t *a2 = a5 + d0 * 32;
-					if ((d3 & (1 << 12)) != 0) {
-						a2 = AMIGA_mirrorY(a2);
-					}
-					if ((d3 & (1 << 11)) != 0) {
-						a2 = AMIGA_mirrorX(a2);
-					}
+					const bool yflip = (d3 & (1 << 12)) != 0;
+					const bool xflip = (d3 & (1 << 11)) != 0;
 					int mask = 0;
 					if ((d3 < (1 << 15)) == 0) {
 						mask = 0x80;
 					}
-					AMIGA_blit4p8x8(dst + y * 256 + x, 256, a2, mask);
+					if (isPC) {
+						PC_drawTile(dst + y * 256 + x, a2, mask, xflip, yflip, -1);
+					} else {
+						AMIGA_drawTile(dst + y * 256 + x, 256, a2, mask, xflip, yflip, -1);
+					}
 				}
 			}
 		}
@@ -527,26 +529,26 @@ static void AMIGA_decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10
 		const uint8_t *a0 = src + offset12;
 		for (int y = 0; y < 224; y += 8) {
 			for (int x = 0; x < 256; x += 8) {
-				int d3 = READ_BE_UINT16(a0); a0 += 2;
+				const int d3 = isPC ? READ_LE_UINT16(a0) : READ_BE_UINT16(a0); a0 += 2;
 				int d0 = d3 & 0x7FF;
 				if (d0 != 0 && sgdBuf) {
 					d0 -= 896;
 				}
 				if (d0 != 0) {
 					const uint8_t *a2 = a5 + d0 * 32;
-					if ((d3 & (1 << 12)) != 0) {
-						a2 = AMIGA_mirrorY(a2);
-					}
-					if ((d3 & (1 << 11)) != 0) {
-						a2 = AMIGA_mirrorX(a2);
-					}
+					const bool yflip = (d3 & (1 << 12)) != 0;
+					const bool xflip = (d3 & (1 << 11)) != 0;
 					int mask = 0;
 					if ((d3 & 0x6000) != 0 && sgdBuf) {
 						mask = 0x10;
 					} else if ((d3 < (1 << 15)) == 0) {
 						mask = 0x80;
 					}
-					AMIGA_blit4p8x8(dst + y * 256 + x, 256, a2, mask, 0);
+					if (isPC) {
+						PC_drawTile(dst + y * 256 + x, a2, mask, xflip, yflip, 0);
+					} else {
+						AMIGA_drawTile(dst + y * 256 + x, 256, a2, mask, xflip, yflip, 0);
+					}
 				}
 			}
 		}
@@ -584,49 +586,52 @@ void Video::AMIGA_decodeLev(int level, int room) {
 		}
 		const int d3 = *a1++;
 		if (d3 == 255) {
-			assert(sz + d1 < kTempMbkSize * 32);
+			assert(sz + d1 <= kTempMbkSize * 32);
 			memcpy(buf + sz, a6, d1);
 			sz += d1;
 		} else {
 			for (int i = 0; i < d3 + 1; ++i) {
 				const int d4 = *a1++;
-				assert(sz + 32 < kTempMbkSize * 32);
+				assert(sz + 32 <= kTempMbkSize * 32);
 				memcpy(buf + sz, a6 + d4 * 32, 32);
 				sz += 32;
 			}
 		}
 	}
-	memset(_frontLayer, 0, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+	memset(_frontLayer, 0, _layerSize);
 	if (tmp[1] != 0) {
 		assert(_res->_sgd);
-		AMIGA_decodeSgd(_frontLayer, tmp + offset10, _res->_sgd);
+		decodeSgd(_frontLayer, tmp + offset10, _res->_sgd, _res->isAmiga());
 		offset10 = 0;
 	}
-	AMIGA_decodeLevHelper(_frontLayer, tmp, offset10, offset12, buf, tmp[1] != 0);
-	memcpy(_backLayer, _frontLayer, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
-	uint16_t num[4];
-	for (int i = 0; i < 4; ++i) {
-		num[i] = READ_BE_UINT16(tmp + 2 + i * 2);
+	decodeLevHelper(_frontLayer, tmp, offset10, offset12, buf, tmp[1] != 0, _res->isDOS());
+	free(buf);
+	memcpy(_backLayer, _frontLayer, _layerSize);
+	_mapPalSlot1 = READ_BE_UINT16(tmp + 2);
+	_mapPalSlot2 = READ_BE_UINT16(tmp + 4);
+	_mapPalSlot3 = READ_BE_UINT16(tmp + 6);
+	_mapPalSlot4 = READ_BE_UINT16(tmp + 8);
+	if (_res->isDOS()) {
+		// done in ::PC_setLevelPalettes
+		return;
 	}
-	_mapPalSlot1 = num[1];
-	_mapPalSlot2 = num[2];
-	setPaletteSlotBE(0x0, num[0]);
+	setPaletteSlotBE(0x0, _mapPalSlot1);
 	for (int i = 1; i < 5; ++i) {
-		setPaletteSlotBE(i, _mapPalSlot2);
+		setPaletteSlotBE(i, _mapPalSlot3);
 	}
-	setPaletteSlotBE(0x6, _mapPalSlot2);
-	setPaletteSlotBE(0x8, num[0]);
-	setPaletteSlotBE(0xA, _mapPalSlot2);
+	setPaletteSlotBE(0x6, _mapPalSlot3);
+	setPaletteSlotBE(0x8, _mapPalSlot1);
+	setPaletteSlotBE(0xA, _mapPalSlot3);
 }
 
 void Video::AMIGA_decodeSpm(const uint8_t *src, uint8_t *dst) {
 	uint8_t buf[256 * 32];
 	const int size = READ_BE_UINT16(src + 3) & 0x7FFF;
 	assert(size <= (int)sizeof(buf));
-	AMIGA_decodeRLE(buf, src + 3);
+	AMIGA_decodeRle(buf, src + 3);
 	const int w = (src[2] >> 7) + 1;
 	const int h = src[2] & 0x7F;
-	AMIGA_blit3pNxN(dst, w * 16, w, h, buf);
+	AMIGA_planar16(dst, w, h, 3, buf);
 }
 
 void Video::AMIGA_decodeIcn(const uint8_t *src, int num, uint8_t *dst) {
@@ -638,18 +643,26 @@ void Video::AMIGA_decodeIcn(const uint8_t *src, int num, uint8_t *dst) {
 	}
 	const int h = 1 + *src++;
 	const int w = 1 + *src++;
-	AMIGA_blit4p16xN(dst, w, h, src + 4);
+	AMIGA_planar16(dst, w, h, 4, src + 4);
 }
 
 void Video::AMIGA_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst) {
 	switch (w) {
 	case 8:
-		AMIGA_blit4p8xN(dst, w, h, src);
+		AMIGA_planar8(dst, w, h, src);
+		break;
+	case 16:
+	case 32:
+		AMIGA_planar16(dst, w / 16, h, 4, src);
 		break;
 	default:
-		AMIGA_blit4pNxN(dst, w, h, src);
+		warning("AMIGA_decodeSpc w=%d unimplemented", w);
 		break;
 	}
+}
+
+void Video::AMIGA_decodeCmp(const uint8_t *src, uint8_t *dst) {
+	AMIGA_planar16(dst, 20, 224, 5, src);
 }
 
 void Video::drawSpriteSub1(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask) {
@@ -811,7 +824,7 @@ const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col
 	case kResourceTypeAmiga:
 		drawCharFunc = &Video::AMIGA_drawStringChar;
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		drawCharFunc = &Video::PC_drawStringChar;
 		break;
 	}
@@ -828,4 +841,18 @@ const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col
 	}
 	markBlockAsDirty(x, y, len * 8, 8);
 	return str - 1;
+}
+
+Color Video::AMIGA_convertColor(const uint16_t color, bool bgr) { // 4bits to 8bits
+	int r = (color & 0xF00) >> 8;
+	int g = (color & 0xF0)  >> 4;
+	int b =  color & 0xF;
+	if (bgr) {
+		SWAP(r, b);
+	}
+	Color c;
+	c.r = (r << 4) | r;
+	c.g = (g << 4) | g;
+	c.b = (b << 4) | b;
+	return c;
 }

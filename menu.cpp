@@ -1,29 +1,20 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "game.h"
+#include "menu.h"
 #include "resource.h"
 #include "systemstub.h"
+#include "util.h"
 #include "video.h"
-#include "menu.h"
-
 
 Menu::Menu(Resource *res, SystemStub *stub, Video *vid)
 	: _res(res), _stub(stub), _vid(vid) {
+	_skill = 1;
+	_level = 0;
 }
 
 void Menu::drawString(const char *str, int16_t y, int16_t x, uint8_t color) {
@@ -73,13 +64,11 @@ void Menu::drawString(const char *str, int16_t y, int16_t x, uint8_t color) {
 
 void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 	debug(DBG_MENU, "Menu::drawString2()");
-	int len = 0;
-	while (*str) {
-		_vid->PC_drawChar((uint8_t)*str, y, x + len);
-		++str;
-		++len;
+	int i = 0;
+	for (; str[i]; ++i) {
+		_vid->PC_drawChar((uint8_t)str[i], y, x + i);
 	}
-	_vid->markBlockAsDirty(x * 8, y * 8, len * 8, 8);
+	_vid->markBlockAsDirty(x * 8, y * 8, i * 8, 8);
 }
 
 void Menu::loadPicture(const char *prefix) {
@@ -99,22 +88,20 @@ void Menu::loadPicture(const char *prefix) {
 void Menu::handleInfoScreen() {
 	debug(DBG_MENU, "Menu::handleInfoScreen()");
 	_vid->fadeOut();
-	switch (_res->_lang) {
-	case LANG_FR:
+	if (_res->_lang == LANG_FR) {
 		loadPicture("instru_f");
-		break;
-	case LANG_EN:
-	case LANG_DE:
-	case LANG_SP:
-	case LANG_IT:
+	} else {
 		loadPicture("instru_e");
-		break;
 	}
 	_vid->fullRefresh();
 	_vid->updateScreen();
 	do {
 		_stub->sleep(EVENTS_DELAY);
 		_stub->processEvents();
+		if (_stub->_pi.escape) {
+			_stub->_pi.escape = false;
+			break;
+		}
 		if (_stub->_pi.enter) {
 			_stub->_pi.enter = false;
 			break;
@@ -122,18 +109,22 @@ void Menu::handleInfoScreen() {
 	} while (!_stub->_pi.quit);
 }
 
-void Menu::handleSkillScreen(uint8_t &new_skill) {
+void Menu::handleSkillScreen() {
 	debug(DBG_MENU, "Menu::handleSkillScreen()");
-	static const uint8_t option_colors[3][3] = { { 2, 3, 3 }, { 3, 2, 3}, { 3, 3, 2 } };
+	static const uint8_t colors[3][3] = {
+		{ 2, 3, 3 }, // easy
+		{ 3, 2, 3 }, // normal
+		{ 3, 3, 2 }  // expert
+	};
 	_vid->fadeOut();
 	loadPicture("menu3");
 	_vid->fullRefresh();
 	drawString(_res->getMenuString(LocaleData::LI_12_SKILL_LEVEL), 12, 4, 3);
-	int skill_level = new_skill;
+	int skill_level = _skill;
 	do {
-		drawString(_res->getMenuString(LocaleData::LI_13_EASY), 15, 14, option_colors[skill_level][0]);
-		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 17, 14, option_colors[skill_level][1]);
-		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 19, 14, option_colors[skill_level][2]);
+		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   15, 14, colors[skill_level][0]);
+		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 17, 14, colors[skill_level][1]);
+		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 19, 14, colors[skill_level][2]);
 
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
@@ -155,16 +146,20 @@ void Menu::handleSkillScreen(uint8_t &new_skill) {
 				skill_level = 0;
 			}
 		}
+		if (_stub->_pi.escape) {
+			_stub->_pi.escape = false;
+			break;
+		}
 		if (_stub->_pi.enter) {
 			_stub->_pi.enter = false;
-			new_skill = skill_level;
+			_skill = skill_level;
 			return;
 		}
 	} while (!_stub->_pi.quit);
-	new_skill = 1;
+	_skill = 1;
 }
 
-bool Menu::handlePasswordScreen(uint8_t &new_skill, uint8_t &new_level) {
+bool Menu::handlePasswordScreen() {
 	debug(DBG_MENU, "Menu::handlePasswordScreen()");
 	_vid->fadeOut();
 	_vid->_charShadowColor = _charVar1;
@@ -206,14 +201,18 @@ bool Menu::handlePasswordScreen(uint8_t &new_skill, uint8_t &new_level) {
 				--len;
 			}
 		}
+		if (_stub->_pi.escape) {
+			_stub->_pi.escape = false;
+			break;
+		}
 		if (_stub->_pi.enter) {
 			_stub->_pi.enter = false;
 			password[len] = '\0';
 			for (int level = 0; level < 8; ++level) {
 				for (int skill = 0; skill < 3; ++skill) {
 					if (strcmp(_passwords[level][skill], password) == 0) {
-						new_level = level;
-						new_skill = skill;
+						_level = level;
+						_skill = skill;
 						return true;
 					}
 				}
@@ -224,13 +223,13 @@ bool Menu::handlePasswordScreen(uint8_t &new_skill, uint8_t &new_level) {
 	return false;
 }
 
-bool Menu::handleLevelScreen(uint8_t &new_skill, uint8_t &new_level) {
+bool Menu::handleLevelScreen() {
 	debug(DBG_MENU, "Menu::handleLevelScreen()");
 	_vid->fadeOut();
 	loadPicture("menu2");
 	_vid->fullRefresh();
-	uint8_t currentSkill = new_skill;
-	uint8_t currentLevel = new_level;
+	int currentSkill = _skill;
+	int currentLevel = _level;
 	do {
 		static const char *levelTitles[] = {
 			"Titan / The Jungle",
@@ -287,56 +286,77 @@ bool Menu::handleLevelScreen(uint8_t &new_skill, uint8_t &new_level) {
 				currentSkill = 0;
 			}
 		}
+		if (_stub->_pi.escape) {
+			_stub->_pi.escape = false;
+			break;
+		}
 		if (_stub->_pi.enter) {
 			_stub->_pi.enter = false;
-			new_skill = currentSkill;
-			new_level = currentLevel;
+			_skill = currentSkill;
+			_level = currentLevel;
 			return true;
 		}
 	} while (!_stub->_pi.quit);
 	return false;
 }
 
-bool Menu::handleTitleScreen(uint8_t &new_skill, uint8_t &new_level) {
+void Menu::handleTitleScreen() {
 	debug(DBG_MENU, "Menu::handleTitleScreen()");
-	bool quit_loop = false;
-	int menu_entry = 0;
-	bool reinit_screen = true;
-	bool continue_game = true;
+
 	_charVar1 = 0;
 	_charVar2 = 0;
 	_charVar3 = 0;
 	_charVar4 = 0;
 	_charVar5 = 0;
-	static const struct {
-		int str;
-		int opt;
-	} menu_items[] = {
-		{ LocaleData::LI_07_START, MENU_OPTION_ITEM_START },
-#ifdef ENABLE_PASSWORD_MENU
-		{ LocaleData::LI_08_SKILL, MENU_OPTION_ITEM_SKILL },
-		{ LocaleData::LI_09_PASSWORD, MENU_OPTION_ITEM_PASSWORD },
-#else
-		{ LocaleData::LI_06_LEVEL, MENU_OPTION_ITEM_LEVEL },
-#endif
-		{ LocaleData::LI_10_INFO, MENU_OPTION_ITEM_INFO },
-		{ LocaleData::LI_11_QUIT, MENU_OPTION_ITEM_QUIT }
-	};
-	static const int menu_items_count = ARRAYSIZE(menu_items);
-	while (!quit_loop) {
-		if (reinit_screen) {
+
+	static const int MAX_MENU_ITEMS = 5;
+	Item menuItems[MAX_MENU_ITEMS];
+	int menuItemsCount = 0;
+
+	menuItems[menuItemsCount].str = LocaleData::LI_07_START;
+	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_START;
+	++menuItemsCount;
+	if (g_options.enable_password_menu) {
+		menuItems[menuItemsCount].str = LocaleData::LI_08_SKILL;
+		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_SKILL;
+		++menuItemsCount;
+		menuItems[menuItemsCount].str = LocaleData::LI_09_PASSWORD;
+		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_PASSWORD;
+		++menuItemsCount;
+	} else {
+		menuItems[menuItemsCount].str = LocaleData::LI_06_LEVEL;
+		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_LEVEL;
+		++menuItemsCount;
+	}
+	menuItems[menuItemsCount].str = LocaleData::LI_10_INFO;
+	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_INFO;
+	++menuItemsCount;
+	menuItems[menuItemsCount].str = LocaleData::LI_11_QUIT;
+	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_QUIT;
+	++menuItemsCount;
+
+	_selectedOption = -1;
+	_currentScreen = -1;
+	_nextScreen = SCREEN_TITLE;
+
+	bool quitLoop = false;
+	int currentEntry = 0;
+
+	while (!quitLoop) {
+		if (_nextScreen == SCREEN_TITLE) {
 			_vid->fadeOut();
 			loadPicture("menu1");
 			_vid->fullRefresh();
 			_charVar3 = 1;
 			_charVar4 = 2;
-			menu_entry = 0;
-			reinit_screen = false;
+			currentEntry = 0;
+			_currentScreen = _nextScreen;
+			_nextScreen = -1;
 		}
-		int selected_menu_entry = -1;
-		const int y_start = 26 - menu_items_count * 2;
-		for (int i = 0; i < menu_items_count; ++i) {
-			drawString(_res->getMenuString(menu_items[i].str), y_start + i * 2, 20, (i == menu_entry) ? 2 : 3);
+		int selectedItem = -1;
+		const int yPos = 26 - menuItemsCount * 2;
+		for (int i = 0; i < menuItemsCount; ++i) {
+			drawString(_res->getMenuString(menuItems[i].str), yPos + i * 2, 20, (i == currentEntry) ? 2 : 3);
 		}
 
 		_vid->updateScreen();
@@ -345,63 +365,55 @@ bool Menu::handleTitleScreen(uint8_t &new_skill, uint8_t &new_level) {
 
 		if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
-			if (menu_entry != 0) {
-				--menu_entry;
+			if (currentEntry != 0) {
+				--currentEntry;
 			} else {
-				menu_entry = menu_items_count - 1;
+				currentEntry = menuItemsCount - 1;
 			}
 		}
 		if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-			if (menu_entry != menu_items_count - 1) {
-				++menu_entry;
+			if (currentEntry != menuItemsCount - 1) {
+				++currentEntry;
 			} else {
-				menu_entry = 0;
+				currentEntry = 0;
 			}
 		}
 		if (_stub->_pi.enter) {
 			_stub->_pi.enter = false;
-			selected_menu_entry = menu_entry;
+			selectedItem = currentEntry;
 		}
 
-		if (selected_menu_entry != -1) {
-			switch (menu_items[selected_menu_entry].opt) {
+		if (selectedItem != -1) {
+			_selectedOption = menuItems[selectedItem].opt;
+			switch (_selectedOption) {
 			case MENU_OPTION_ITEM_START:
-				quit_loop = true;
+				quitLoop = true;
 				break;
 			case MENU_OPTION_ITEM_SKILL:
-				handleSkillScreen(new_skill);
-				reinit_screen = true;
+				_currentScreen = SCREEN_SKILL;
+				handleSkillScreen();
 				break;
 			case MENU_OPTION_ITEM_PASSWORD:
-				if (handlePasswordScreen(new_skill, new_level)) {
-					quit_loop = true;
-				} else {
-					reinit_screen = true;
-				}
+				_currentScreen = SCREEN_PASSWORD;
+				quitLoop = handlePasswordScreen();
 				break;
 			case MENU_OPTION_ITEM_LEVEL:
-				if (handleLevelScreen(new_skill, new_level)) {
-					quit_loop = true;
-				} else {
-					reinit_screen = true;
-				}
+				_currentScreen = SCREEN_LEVEL;
+				quitLoop = handleLevelScreen();
 				break;
 			case MENU_OPTION_ITEM_INFO:
+				_currentScreen = SCREEN_INFO;
 				handleInfoScreen();
-				reinit_screen = true;
 				break;
 			case MENU_OPTION_ITEM_QUIT:
-				continue_game = false;
-				quit_loop = true;
+				quitLoop = true;
 				break;
 			}
+			_nextScreen = SCREEN_TITLE;
 		}
 		if (_stub->_pi.quit) {
-			continue_game = false;
-			quit_loop = true;
 			break;
 		}
 	}
-	return continue_game;
 }

@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef VIDEO_H__
@@ -41,6 +30,8 @@ struct Video {
 	Resource *_res;
 	SystemStub *_stub;
 
+	int _w, _h;
+	int _layerSize;
 	uint8_t *_frontLayer;
 	uint8_t *_backLayer;
 	uint8_t *_tempLayer;
@@ -67,6 +58,7 @@ struct Video {
 	void setPaletteSlotLE(int palSlot, const uint8_t *palData);
 	void setTextPalette();
 	void setPalette0xF();
+	void PC_decodeLev(int level, int room);
 	void PC_decodeMap(int level, int room);
 	void PC_setLevelPalettes();
 	void PC_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
@@ -75,6 +67,7 @@ struct Video {
 	void AMIGA_decodeSpm(const uint8_t *src, uint8_t *dst);
 	void AMIGA_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
 	void AMIGA_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst);
+	void AMIGA_decodeCmp(const uint8_t *src, uint8_t *dst);
 	void drawSpriteSub1(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
 	void drawSpriteSub2(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
 	void drawSpriteSub3(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
@@ -85,6 +78,7 @@ struct Video {
 	void PC_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, uint8_t color, uint8_t chr);
 	void AMIGA_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, uint8_t color, uint8_t chr);
 	const char *drawString(const char *str, int16_t x, int16_t y, uint8_t col);
+	static Color AMIGA_convertColor(const uint16_t color, bool bgr = false);
 };
 
 #endif // VIDEO_H__

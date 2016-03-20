@@ -1,23 +1,12 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "mixer.h"
 #include "systemstub.h"
-
+#include "util.h"
 
 Mixer::Mixer(FileSystem *fs, SystemStub *stub)
 	: _stub(stub), _musicType(MT_NONE), _mod(this, fs), _ogg(this, fs), _sfx(this) {
@@ -144,7 +133,17 @@ void Mixer::stopMusic() {
 	}
 }
 
-void Mixer::mix(int8_t *buf, int len) {
+static void nr(const int8_t *in, int len, int8_t *out) {
+	static int prev = 0;
+	for (int i = 0; i < len; ++i) {
+		const int vnr = in[i] >> 1;
+		out[i] = vnr + prev;
+		prev = vnr;
+	}
+}
+
+void Mixer::mix(int8_t *out, int len) {
+	int8_t buf[len];
 	memset(buf, 0, len);
 	if (_premixHook) {
 		if (!_premixHook(_premixHookData, buf, len)) {
@@ -160,12 +159,13 @@ void Mixer::mix(int8_t *buf, int len) {
 					ch->active = false;
 					break;
 				}
-				int out = resampleLinear(&ch->chunk, ch->chunkPos, ch->chunkInc, FRAC_BITS);
-				addclamp(buf[pos], out * ch->volume / Mixer::MAX_VOLUME);
+				const int sample = ch->chunk.getPCM(ch->chunkPos >> FRAC_BITS);
+				addclamp(buf[pos], sample * ch->volume / Mixer::MAX_VOLUME);
 				ch->chunkPos += ch->chunkInc;
 			}
 		}
 	}
+	nr(buf, len, out);
 }
 
 void Mixer::addclamp(int8_t& a, int b) {

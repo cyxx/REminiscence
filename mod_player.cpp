@@ -1,33 +1,168 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "file.h"
 #include "mixer.h"
 #include "mod_player.h"
+#include "util.h"
 
+#ifdef USE_MODPLUG
+#include <libmodplug/modplug.h>
 
-ModPlayer::ModPlayer(Mixer *mixer, FileSystem *fs)
-	: _playing(false), _mix(mixer), _fs(fs) {
+struct ModPlayer_impl {
+
+	ModPlugFile *_mf;
+	ModPlug_Settings _settings;
+	bool _repeatIntro;
+
+	ModPlayer_impl()
+		: _mf(0) {
+	}
+
+	void init(const int rate) {
+		memset(&_settings, 0, sizeof(_settings));
+		ModPlug_GetSettings(&_settings);
+		_settings.mFlags = MODPLUG_ENABLE_OVERSAMPLING | MODPLUG_ENABLE_NOISE_REDUCTION;
+		_settings.mChannels = 1;
+		_settings.mBits = 8;
+		_settings.mFrequency = rate;
+		_settings.mResamplingMode = MODPLUG_RESAMPLE_FIR;
+		ModPlug_SetSettings(&_settings);
+	}
+
+	bool load(File *f) {
+		const uint32_t size = f->size();
+		uint8_t *data = (uint8_t *)malloc(size);
+		if (data) {
+			f->read(data, size);
+			_mf = ModPlug_Load(data, size);
+		}
+		return _mf != 0;
+	}
+
+	void unload() {
+		if (_mf) {
+			ModPlug_Unload(_mf);
+			_mf = 0;
+		}
+	}
+
+	bool mix(int8_t *buf, int len) {
+		memset(buf, 0, len);
+		if (_mf) {
+			const int order = ModPlug_GetCurrentOrder(_mf);
+			if (order == 3 && _repeatIntro) {
+				ModPlug_SeekOrder(_mf, 1);
+				_repeatIntro = false;
+			}
+			const int count = ModPlug_Read(_mf, buf, len);
+			for (int i = 0; i < count; ++i) {
+				buf[i] ^= 0x80;
+			}
+			return count > 0;
+		}
+		return false;
+	}
+};
+
+#else
+
+struct ModPlayer_impl {
+	enum {
+		NUM_SAMPLES = 31,
+		NUM_TRACKS = 4,
+		NUM_PATTERNS = 128,
+		FRAC_BITS = 12,
+		PAULA_FREQ = 3546897
+	};
+
+	struct SampleInfo {
+		char name[23];
+		uint16_t len;
+		uint8_t fineTune;
+		uint8_t volume;
+		uint16_t repeatPos;
+		uint16_t repeatLen;
+		int8_t *data;
+
+		int8_t getPCM(int offset) const {
+			if (offset < 0) {
+				offset = 0;
+			} else if (offset >= (int)len) {
+				offset = len - 1;
+			}
+			return data[offset];
+		}
+	};
+
+	struct ModuleInfo {
+		char songName[21];
+		SampleInfo samples[NUM_SAMPLES];
+		uint8_t numPatterns;
+		uint8_t patternOrderTable[NUM_PATTERNS];
+		uint8_t *patternsTable;
+	};
+
+	struct Track {
+		SampleInfo *sample;
+		uint8_t volume;
+		int pos;
+		int freq;
+		uint16_t period;
+		uint16_t periodIndex;
+		uint16_t effectData;
+		int vibratoSpeed;
+		int vibratoAmp;
+		int vibratoPos;
+		int portamento;
+		int portamentoSpeed;
+		int retriggerCounter;
+		int delayCounter;
+		int cutCounter;
+	};
+
+	bool _playing;
+	int _mixingRate;
+	ModuleInfo _modInfo;
+	uint8_t _currentPatternOrder;
+	uint8_t _currentPatternPos;
+	uint8_t _currentTick;
+	uint8_t _songSpeed;
+	uint8_t _songTempo;
+	int _patternDelay;
+	int _patternLoopPos;
+	int _patternLoopCount;
+	int _samplesLeft;
+	bool _repeatIntro;
+	Track _tracks[NUM_TRACKS];
+
+	ModPlayer_impl();
+
+	void init(const int rate);
+	uint16_t findPeriod(uint16_t period, uint8_t fineTune) const;
+	bool load(File *f);
+	void unload();
+	void handleNote(int trackNum, uint32_t noteData);
+	void handleTick();
+	void applyVolumeSlide(int trackNum, int amount);
+	void applyVibrato(int trackNum);
+	void applyPortamento(int trackNum);
+	void handleEffect(int trackNum, bool tick);
+	void mixSamples(int8_t *buf, int len);
+	bool mix(int8_t *buf, int len);
+};
+
+ModPlayer_impl::ModPlayer_impl()
+	: _playing(false) {
 	memset(&_modInfo, 0, sizeof(_modInfo));
 }
 
-uint16_t ModPlayer::findPeriod(uint16_t period, uint8_t fineTune) const {
+uint16_t ModPlayer_impl::findPeriod(uint16_t period, uint8_t fineTune) const {
 	for (int p = 0; p < 36; ++p) {
-		if (_periodTable[p] == period) {
+		if (ModPlayer::_periodTable[p] == period) {
 			return fineTune * 36 + p;
 		}
 	}
@@ -35,7 +170,11 @@ uint16_t ModPlayer::findPeriod(uint16_t period, uint8_t fineTune) const {
 	return 0;
 }
 
-void ModPlayer::load(File *f) {
+void ModPlayer_impl::init(const int rate) {
+	_mixingRate = rate;
+}
+
+bool ModPlayer_impl::load(File *f) {
 	f->read(_modInfo.songName, 20);
 	_modInfo.songName[20] = 0;
 	debug(DBG_MOD, "songName = '%s'", _modInfo.songName);
@@ -80,9 +219,24 @@ void ModPlayer::load(File *f) {
 			}
 		}
 	}
+
+	_currentPatternOrder = 0;
+	_currentPatternPos = 0;
+	_currentTick = 0;
+	_patternDelay = 0;
+	_songSpeed = 6;
+	_songTempo = 125;
+	_patternLoopPos = 0;
+	_patternLoopCount = -1;
+	_samplesLeft = 0;
+	_repeatIntro = false;
+	memset(_tracks, 0, sizeof(_tracks));
+	_playing = true;
+
+	return true;
 }
 
-void ModPlayer::unload() {
+void ModPlayer_impl::unload() {
 	if (_modInfo.songName[0]) {
 		free(_modInfo.patternsTable);
 		for (int s = 0; s < NUM_SAMPLES; ++s) {
@@ -90,49 +244,10 @@ void ModPlayer::unload() {
 		}
 		memset(&_modInfo, 0, sizeof(_modInfo));
 	}
+	_playing = false;
 }
 
-void ModPlayer::play(uint8_t num) {
-	if (!_playing && num < _modulesFilesCount) {
-		File f;
-		bool found = false;
-		for (uint8_t i = 0; i < ARRAYSIZE(_modulesFiles[num]); ++i) {
-			if (f.open(_modulesFiles[num][i], "rb", _fs)) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			warning("Can't find music file %d", num);
-		} else {
-			load(&f);
-			_currentPatternOrder = 0;
-			_currentPatternPos = 0;
-			_currentTick = 0;
-			_patternDelay = 0;
-			_songSpeed = 6;
-			_songTempo = 125;
-			_patternLoopPos = 0;
-			_patternLoopCount = -1;
-			_samplesLeft = 0;
-			_songNum = num;
-			_introSongHack = false;
-			memset(_tracks, 0, sizeof(_tracks));
-			_mix->setPremixHook(mixCallback, this);
-			_playing = true;
-		}
-	}
-}
-
-void ModPlayer::stop() {
-	if (_playing) {
-		_mix->setPremixHook(0, 0);
-		_playing = false;
-	}
-	unload();
-}
-
-void ModPlayer::handleNote(int trackNum, uint32_t noteData) {
+void ModPlayer_impl::handleNote(int trackNum, uint32_t noteData) {
 	Track *tk = &_tracks[trackNum];
 	uint16_t sampleNum = ((noteData >> 24) & 0xF0) | ((noteData >> 12) & 0xF);
 	uint16_t samplePeriod = (noteData >> 16) & 0xFFF;
@@ -146,10 +261,10 @@ void ModPlayer::handleNote(int trackNum, uint32_t noteData) {
 	if (samplePeriod != 0) {
 		tk->periodIndex = findPeriod(samplePeriod, tk->sample->fineTune);
 		if ((effectData >> 8) != 0x3 && (effectData >> 8) != 0x5) {
-			tk->period = _periodTable[tk->periodIndex];
+			tk->period = ModPlayer::_periodTable[tk->periodIndex];
 			tk->freq = PAULA_FREQ / tk->period;
 		} else {
-			tk->portamento = _periodTable[tk->periodIndex];
+			tk->portamento = ModPlayer::_periodTable[tk->periodIndex];
 		}
 		tk->vibratoAmp = 0;
 		tk->vibratoSpeed = 0;
@@ -158,7 +273,7 @@ void ModPlayer::handleNote(int trackNum, uint32_t noteData) {
 	tk->effectData = effectData;
 }
 
-void ModPlayer::applyVolumeSlide(int trackNum, int amount) {
+void ModPlayer_impl::applyVolumeSlide(int trackNum, int amount) {
 	debug(DBG_MOD, "ModPlayer::applyVolumeSlide(%d, %d)", trackNum, amount);
 	Track *tk = &_tracks[trackNum];
 	int vol = tk->volume + amount;
@@ -170,10 +285,16 @@ void ModPlayer::applyVolumeSlide(int trackNum, int amount) {
 	tk->volume = vol;
 }
 
-void ModPlayer::applyVibrato(int trackNum) {
+void ModPlayer_impl::applyVibrato(int trackNum) {
+	static const int8_t sineWaveTable[] = {
+	   0,   24,   49,   74,   97,  120, -115,  -95,  -76,  -59,  -44,  -32,  -21,  -12,   -6,   -3,
+	  -1,   -3,   -6,  -12,  -21,  -32,  -44,  -59,  -76,  -95, -115,  120,   97,   74,   49,   24,
+	   0,  -24,  -49,  -74,  -97, -120,  115,   95,   76,   59,   44,   32,   21,   12,    6,    3,
+	   1,    3,    6,   12,   21,   32,   44,   59,   76,   95,  115, -120,  -97,  -74,  -49,  -24
+	};
 	debug(DBG_MOD, "ModPlayer::applyVibrato(%d)", trackNum);
 	Track *tk = &_tracks[trackNum];
-	int vib = tk->vibratoAmp * _sineWaveTable[tk->vibratoPos] / 128;
+	int vib = tk->vibratoAmp * sineWaveTable[tk->vibratoPos] / 128;
 	if (tk->period + vib != 0) {
 		tk->freq = PAULA_FREQ / (tk->period + vib);
 	}
@@ -183,7 +304,7 @@ void ModPlayer::applyVibrato(int trackNum) {
 	}
 }
 
-void ModPlayer::applyPortamento(int trackNum) {
+void ModPlayer_impl::applyPortamento(int trackNum) {
 	debug(DBG_MOD, "ModPlayer::applyPortamento(%d)", trackNum);
 	Track *tk = &_tracks[trackNum];
 	if (tk->period < tk->portamento) {
@@ -196,7 +317,7 @@ void ModPlayer::applyPortamento(int trackNum) {
 	}
 }
 
-void ModPlayer::handleEffect(int trackNum, bool tick) {
+void ModPlayer_impl::handleEffect(int trackNum, bool tick) {
 	Track *tk = &_tracks[trackNum];
 	uint8_t effectNum = tk->effectData >> 8;
 	uint8_t effectXY = tk->effectData & 0xFF;
@@ -209,10 +330,10 @@ void ModPlayer::handleEffect(int trackNum, bool tick) {
 			uint16_t period = tk->period;
 			switch (_currentTick & 3) {
 			case 1:
-				period = _periodTable[tk->periodIndex + effectX];
+				period = ModPlayer::_periodTable[tk->periodIndex + effectX];
 				break;
 			case 2:
-				period = _periodTable[tk->periodIndex + effectY];
+				period = ModPlayer::_periodTable[tk->periodIndex + effectY];
 				break;
 			}
 			tk->freq = PAULA_FREQ / period;
@@ -411,7 +532,7 @@ void ModPlayer::handleEffect(int trackNum, bool tick) {
 	}
 }
 
-void ModPlayer::handleTick() {
+void ModPlayer_impl::handleTick() {
 	if (!_playing) {
 		return;
 	}
@@ -436,9 +557,9 @@ void ModPlayer::handleTick() {
 			// On the amiga version, the introduction cutscene is shorter than the PC version ;
 			// so the music module doesn't synchronize at all with the PC datafiles, here we
 			// add a hack to let the music play longer
-			if (_songNum == 0 && _currentPatternOrder == 3 && !_introSongHack) {
+			if (_currentPatternOrder == 3 && _repeatIntro) {
 				_currentPatternOrder = 1;
-				_introSongHack = true;
+				_repeatIntro = false;
 //				warning("Introduction module synchronization hack");
 			}
 		}
@@ -456,7 +577,7 @@ void ModPlayer::handleTick() {
 	}
 }
 
-void ModPlayer::mixSamples(int8_t *buf, int samplesLen) {
+void ModPlayer_impl::mixSamples(int8_t *buf, int samplesLen) {
 	for (int i = 0; i < NUM_TRACKS; ++i) {
 		Track *tk = &_tracks[i];
 		if (tk->sample != 0 && tk->delayCounter == 0) {
@@ -465,7 +586,7 @@ void ModPlayer::mixSamples(int8_t *buf, int samplesLen) {
 			int len = si->len << FRAC_BITS;
 			int loopLen = si->repeatLen << FRAC_BITS;
 			int loopPos = si->repeatPos << FRAC_BITS;
-			int deltaPos = (tk->freq << FRAC_BITS) / _mix->getSampleRate();
+			int deltaPos = (tk->freq << FRAC_BITS) / _mixingRate;
 			int curLen = samplesLen;
 			int pos = tk->pos;
 			while (curLen != 0) {
@@ -485,7 +606,7 @@ void ModPlayer::mixSamples(int8_t *buf, int samplesLen) {
 					curLen = 0;
 				}
 				while (count--) {
-					int out = resampleLinear(si, pos, deltaPos, FRAC_BITS);
+					const int out = si->getPCM(pos >> FRAC_BITS);
 					Mixer::addclamp(*mixbuf++, out * tk->volume / 64);
 					pos += deltaPos;
 				}
@@ -495,10 +616,10 @@ void ModPlayer::mixSamples(int8_t *buf, int samplesLen) {
 	}
 }
 
-bool ModPlayer::mix(int8_t *buf, int len) {
+bool ModPlayer_impl::mix(int8_t *buf, int len) {
 	if (_playing) {
 		memset(buf, 0, len);
-		const int samplesPerTick = _mix->getSampleRate() / (50 * _songTempo / 125);
+		const int samplesPerTick = _mixingRate / (50 * _songTempo / 125);
 		while (len != 0) {
 			if (_samplesLeft == 0) {
 				handleTick();
@@ -516,7 +637,42 @@ bool ModPlayer::mix(int8_t *buf, int len) {
 	}
 	return _playing;
 }
+#endif
+
+ModPlayer::ModPlayer(Mixer *mixer, FileSystem *fs)
+	: _playing(false), _mix(mixer), _fs(fs) {
+	_impl = new ModPlayer_impl;
+}
+
+ModPlayer::~ModPlayer() {
+	delete _impl;
+}
+
+void ModPlayer::play(int num) {
+	if (num < _modulesFilesCount) {
+		File f;
+		for (uint8_t i = 0; i < ARRAYSIZE(_modulesFiles[num]); ++i) {
+			if (f.open(_modulesFiles[num][i], "rb", _fs)) {
+				_impl->init(_mix->getSampleRate());
+				if (_impl->load(&f)) {
+					_impl->_repeatIntro = (num == 0) && !_isAmiga;
+					_mix->setPremixHook(mixCallback, _impl);
+					_playing = true;
+				}
+				return;
+			}
+		}
+	}
+}
+
+void ModPlayer::stop() {
+	if (_playing) {
+		_mix->setPremixHook(0, 0);
+		_impl->unload();
+		_playing = true;
+	}
+}
 
 bool ModPlayer::mixCallback(void *param, int8_t *buf, int len) {
-	return ((ModPlayer *)param)->mix(buf, len);
+	return ((ModPlayer_impl *)param)->mix(buf, len);
 }

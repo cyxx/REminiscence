@@ -1,24 +1,13 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <SDL.h>
 #include "scaler.h"
 #include "systemstub.h"
-
+#include "util.h"
 
 struct SystemStub_SDL : SystemStub {
 	enum {
@@ -41,10 +30,12 @@ struct SystemStub_SDL : SystemStub {
 	bool _fadeOnUpdateScreen;
 	void (*_audioCbProc)(void *, int8_t *, int);
 	void *_audioCbData;
+	int _screenshot;
 
 	virtual ~SystemStub_SDL() {}
-	virtual void init(const char *title, int w, int h);
+	virtual void init(const char *title, int w, int h, int scaler, bool fullscreen);
 	virtual void destroy();
+	virtual void setScreenSize(int w, int h);
 	virtual void setPalette(const uint8_t *pal, int n);
 	virtual void setPaletteEntry(int i, const Color *c);
 	virtual void getPaletteEntry(int i, Color *c);
@@ -62,8 +53,6 @@ struct SystemStub_SDL : SystemStub {
 	virtual void unlockAudio();
 
 	void processEvent(const SDL_Event &ev, bool &paused);
-	void updateScreen_GL(int shakeOffset);
-	void updateScreen_SW(int shakeOffset);
 	void prepareGfxMode();
 	void cleanupGfxMode();
 	void switchGfxMode(bool fullscreen, uint8_t scaler);
@@ -76,30 +65,23 @@ SystemStub *SystemStub_SDL_create() {
 	return new SystemStub_SDL();
 }
 
-void SystemStub_SDL::init(const char *title, int w, int h) {
+void SystemStub_SDL::init(const char *title, int w, int h, int scaler, bool fullscreen) {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 	SDL_ShowCursor(SDL_DISABLE);
 	SDL_WM_SetCaption(title, NULL);
 	memset(&_pi, 0, sizeof(_pi));
-	_screenW = w;
-	_screenH = h;
-	// allocate some extra bytes for the scaling routines
-	const int screenBufferSize = (w + 2) * (h + 2) * sizeof(uint16_t);
-	_screenBuffer = (uint16_t *)malloc(screenBufferSize);
-	if (!_screenBuffer) {
-		error("SystemStub_SDL::init() Unable to allocate offscreen buffer");
-	}
-	memset(_screenBuffer, 0, screenBufferSize);
+	_screenBuffer = 0;
 	_fadeScreenBuffer = 0;
 	_fadeOnUpdateScreen = false;
-	_fullscreen = false;
-	_currentScaler = SCALER_SCALE_3X;
+	_fullscreen = fullscreen;
+	_currentScaler = scaler;
 	memset(_pal, 0, sizeof(_pal));
-	prepareGfxMode();
+	setScreenSize(w, h);
 	_joystick = NULL;
 	if (SDL_NumJoysticks() > 0) {
 		_joystick = SDL_JoystickOpen(0);
 	}
+	_screenshot = 1;
 }
 
 void SystemStub_SDL::destroy() {
@@ -108,6 +90,25 @@ void SystemStub_SDL::destroy() {
 		SDL_JoystickClose(_joystick);
 	}
 	SDL_Quit();
+}
+
+void SystemStub_SDL::setScreenSize(int w, int h) {
+	if (_screenW == w && _screenH == h) {
+		return;
+	}
+	free(_screenBuffer);
+	_screenBuffer = 0;
+	free(_fadeScreenBuffer);
+	_fadeScreenBuffer = 0;
+	// allocate some extra bytes for the scaling routines
+	const int screenBufferSize = (w + 2) * (h + 2) * sizeof(uint16_t);
+	_screenBuffer = (uint16_t *)calloc(1, screenBufferSize);
+	if (!_screenBuffer) {
+		error("SystemStub_SDL::setScreenSize() Unable to allocate offscreen buffer, w=%d, h=%d", w, h);
+	}
+	_screenW = w;
+	_screenH = h;
+	prepareGfxMode();
 }
 
 void SystemStub_SDL::setPalette(const uint8_t *pal, int n) {
@@ -121,17 +122,11 @@ void SystemStub_SDL::setPalette(const uint8_t *pal, int n) {
 }
 
 void SystemStub_SDL::setPaletteEntry(int i, const Color *c) {
-	uint8_t r = (c->r << 2) | (c->r & 3);
-	uint8_t g = (c->g << 2) | (c->g & 3);
-	uint8_t b = (c->b << 2) | (c->b & 3);
-	_pal[i] = SDL_MapRGB(_screenSurface->format, r, g, b);
+	_pal[i] = SDL_MapRGB(_screenSurface->format, c->r, c->g, c->b);
 }
 
 void SystemStub_SDL::getPaletteEntry(int i, Color *c) {
 	SDL_GetRGB(_pal[i], _screenSurface->format, &c->r, &c->g, &c->b);
-	c->r >>= 2;
-	c->g >>= 2;
-	c->b >>= 2;
 }
 
 void SystemStub_SDL::setOverscanColor(int i) {
@@ -278,8 +273,8 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 }
 
 void SystemStub_SDL::processEvents() {
+	bool paused = false;
 	while (true) {
-		bool paused = false;
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			processEvent(ev, paused);
@@ -431,6 +426,12 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 					if (_currentScaler > 0) {
 						switchGfxMode(_fullscreen, s);
 					}
+				} else if (ev.key.keysym.sym == SDLK_s) {
+					char name[32];
+					snprintf(name, sizeof(name), "screenshot-%03d.bmp", _screenshot);
+					SDL_SaveBMP(_screenSurface, name);
+					++_screenshot;
+					debug(DBG_INFO, "Written '%s'", name);
 				}
 				break;
 			} else if (ev.key.keysym.mod & KMOD_CTRL) {

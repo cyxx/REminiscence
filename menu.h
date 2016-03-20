@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef MENU_H__
@@ -33,9 +22,21 @@ struct Menu {
 		MENU_OPTION_ITEM_INFO,
 		MENU_OPTION_ITEM_QUIT
 	};
+	enum {
+		SCREEN_TITLE,
+		SCREEN_SKILL,
+		SCREEN_PASSWORD,
+		SCREEN_LEVEL,
+		SCREEN_INFO
+	};
 
 	enum {
 		EVENTS_DELAY = 80
+	};
+
+	struct Item {
+		int str;
+		int opt;
 	};
 
 	static const char *_passwords[8][3];
@@ -44,7 +45,13 @@ struct Menu {
 	SystemStub *_stub;
 	Video *_vid;
 
-	const char **_textOptions;
+	int _currentScreen;
+	int _nextScreen;
+	int _selectedOption;
+
+	int _skill;
+	int _level;
+
 	uint8_t _charVar1;
 	uint8_t _charVar2;
 	uint8_t _charVar3;
@@ -56,11 +63,12 @@ struct Menu {
 	void drawString(const char *str, int16_t y, int16_t x, uint8_t color);
 	void drawString2(const char *str, int16_t y, int16_t x);
 	void loadPicture(const char *prefix);
+
 	void handleInfoScreen();
-	void handleSkillScreen(uint8_t &new_skill);
-	bool handlePasswordScreen(uint8_t &new_skill, uint8_t &new_level);
-	bool handleLevelScreen(uint8_t &new_skill, uint8_t &new_level);
-	bool handleTitleScreen(uint8_t &new_skill, uint8_t &new_level);
+	void handleSkillScreen();
+	bool handlePasswordScreen();
+	bool handleLevelScreen();
+	void handleTitleScreen();
 };
 
 #endif // MENU_H__

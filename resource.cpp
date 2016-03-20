@@ -1,31 +1,25 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "file.h"
-#include "unpack.h"
+#include "fs.h"
 #include "resource.h"
-
+#include "unpack.h"
+#include "util.h"
 
 Resource::Resource(FileSystem *fs, ResourceType ver, Language lang) {
 	memset(this, 0, sizeof(Resource));
+	_fs = fs;
 	_type = ver;
 	_lang = lang;
-	_fs = fs;
-	_memBuf = (uint8_t *)malloc(256 * 224);
+	_isDemo = false;
+	_aba = 0;
+	_readUint16 = (_type == kResourceTypeDOS) ? READ_LE_UINT16 : READ_BE_UINT16;
+	_readUint32 = (_type == kResourceTypeDOS) ? READ_LE_UINT32 : READ_BE_UINT32;
+	_memBuf = (uint8_t *)malloc(320 * 224 + 1024);
 	if (!_memBuf) {
 		error("Unable to allocate temporary memory buffer");
 	}
@@ -56,6 +50,25 @@ Resource::~Resource() {
 	}
 	free(_sfxList);
 	free(_bankData);
+	delete _aba;
+}
+
+void Resource::init() {
+	switch (_type) {
+	case kResourceTypeAmiga:
+		_isDemo = _fs->exists("demo.lev");
+		break;
+	case kResourceTypeDOS:
+		if (_fs->exists(ResourceAba::FILENAME)) {
+			_aba = new ResourceAba(_fs);
+			_aba->readEntries();
+			_isDemo = true;
+		}
+		break;
+	}
+}
+
+void Resource::fini() {
 }
 
 void Resource::clearLevelRes() {
@@ -66,6 +79,7 @@ void Resource::clearLevelRes() {
 	free(_lev); _lev = 0;
 	_levNum = -1;
 	free(_sgd); _sgd = 0;
+	free(_bnq); _bnq = 0;
 	free(_ani); _ani = 0;
 	free_OBJ();
 }
@@ -119,7 +133,7 @@ void Resource::load_FIB(const char *fileName) {
 			error("I/O error when reading '%s'", _entryName);
 		}
 	} else {
-		error("Can't open '%s'", _entryName);
+		error("Cannot open '%s'", _entryName);
 	}
 }
 
@@ -146,45 +160,86 @@ void Resource::load_SPL_demo() {
 
 void Resource::load_MAP_menu(const char *fileName, uint8_t *dstPtr) {
 	debug(DBG_RES, "Resource::load_MAP_menu('%s')", fileName);
+	static const int kMenuMapSize = 0x3800 * 4;
 	snprintf(_entryName, sizeof(_entryName), "%s.MAP", fileName);
 	File f;
 	if (f.open(_entryName, "rb", _fs)) {
-		if (f.size() != 0x3800 * 4) {
-			error("Wrong file size for '%s', %d", _entryName, f.size());
+		if (f.read(dstPtr, kMenuMapSize) != kMenuMapSize) {
+			error("Failed to read '%s'", _entryName);
 		}
-		f.read(dstPtr, 0x3800 * 4);
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
 		}
-	} else {
-		error("Can't open '%s'", _entryName);
+		return;
+	} else if (_aba) {
+		uint32_t size = 0;
+		uint8_t *dat = _aba->loadEntry(_entryName, &size);
+		if (dat) {
+			if (size != kMenuMapSize) {
+				error("Unexpected size %d for '%s'", size, _entryName);
+			}
+			memcpy(dstPtr, dat, size);
+			free(dat);
+			return;
+		}
 	}
+	error("Cannot load '%s'", _entryName);
 }
 
 void Resource::load_PAL_menu(const char *fileName, uint8_t *dstPtr) {
 	debug(DBG_RES, "Resource::load_PAL_menu('%s')", fileName);
+	static const int kMenuPalSize = 768;
 	snprintf(_entryName, sizeof(_entryName), "%s.PAL", fileName);
 	File f;
 	if (f.open(_entryName, "rb", _fs)) {
-		if (f.size() != 768) {
-			error("Wrong file size for '%s', %d", _entryName, f.size());
+		if (f.read(dstPtr, kMenuPalSize) != kMenuPalSize) {
+			error("Failed to read '%s'", _entryName);
 		}
-		f.read(dstPtr, 768);
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
 		}
-	} else {
-		error("Can't open '%s'", _entryName);
+		return;
+	} else if (_aba) {
+		uint32_t size = 0;
+		uint8_t *dat = _aba->loadEntry(_entryName, &size);
+		if (dat) {
+			if (size != kMenuPalSize) {
+				error("Unexpected size %d for '%s'", size, _entryName);
+			}
+			memcpy(dstPtr, dat, size);
+			free(dat);
+			return;
+		}
 	}
+	error("Cannot load '%s'", _entryName);
+}
+
+void Resource::load_CMP_menu(const char *fileName, uint8_t *dstPtr) {
+	File f;
+	if (f.open(fileName, "rb", _fs)) {
+		const uint32_t size = f.readUint32BE();
+		uint8_t *tmp = (uint8_t *)malloc(size);
+		if (!tmp) {
+			error("Failed to allocate CMP temporary buffer");
+		}
+		f.read(tmp, size);
+		if (!delphine_unpack(dstPtr, tmp, size)) {
+			error("Bad CRC for %s", fileName);
+		}
+                free(tmp);
+		return;
+	}
+	error("Cannot load '%s'", fileName);
 }
 
 void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
 	debug(DBG_RES, "Resource::load_SPR_OFF('%s')", fileName);
 	snprintf(_entryName, sizeof(_entryName), "%s.OFF", fileName);
+	uint8_t *offData = 0;
 	File f;
 	if (f.open(_entryName, "rb", _fs)) {
-		int len = f.size();
-		uint8_t *offData = (uint8_t *)malloc(len);
+		const int len = f.size();
+		offData = (uint8_t *)malloc(len);
 		if (!offData) {
 			error("Unable to allocate sprite offsets");
 		}
@@ -192,6 +247,10 @@ void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
 		}
+	} else if (_aba) {
+		offData = _aba->loadEntry(_entryName);
+	}
+	if (offData) {
 		const uint8_t *p = offData;
 		uint16_t pos;
 		while ((pos = READ_LE_UINT16(p)) != 0xFFFF) {
@@ -205,9 +264,9 @@ void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
 			p += 6;
 		}
 		free(offData);
-	} else {
-		error("Can't open '%s'", _entryName);
+		return;
 	}
+	error("Cannot load '%s'", _entryName);
 }
 
 void Resource::load_CINE() {
@@ -243,8 +302,11 @@ void Resource::load_CINE() {
 			if (f.ioErr()) {
 				error("I/O error when reading '%s'", _entryName);
 			}
-		} else {
-			error("Can't open '%s'", _entryName);
+		} else if (_aba) {
+			_cine_off = _aba->loadEntry(_entryName);
+		}
+		if (!_cine_off) {
+			error("Cannot load '%s'", _entryName);
 		}
 	}
 	if (_cine_txt == 0) {
@@ -260,8 +322,11 @@ void Resource::load_CINE() {
 			if (f.ioErr()) {
 				error("I/O error when reading '%s'", _entryName);
 			}
-		} else {
-			error("Can't open '%s'", _entryName);
+		} else if (_aba) {
+			_cine_txt = _aba->loadEntry(_entryName);
+		}
+		if (!_cine_txt) {
+			error("Cannot load '%s'", _entryName);
 		}
 	}
 }
@@ -458,6 +523,10 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 		snprintf(_entryName, sizeof(_entryName), "%s.SGD", objName);
 		loadStub = &Resource::load_SGD;
 		break;
+	case OT_BNQ:
+		snprintf(_entryName, sizeof(_entryName), "%s.BNQ", objName);
+		loadStub = &Resource::load_BNQ;
+		break;
 	case OT_SPM:
 		snprintf(_entryName, sizeof(_entryName), "%s.SPM", objName);
 		loadStub = &Resource::load_SPM;
@@ -477,7 +546,70 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 			error("I/O error when reading '%s'", _entryName);
 		}
 	} else {
-		error("Can't open '%s'", _entryName);
+		if (_aba) {
+			uint32_t size;
+			uint8_t *dat = _aba->loadEntry(_entryName, &size);
+			if (dat) {
+				switch (objType) {
+				case OT_MBK:
+					_mbk = dat;
+					break;
+				case OT_PGE:
+					decodePGE(dat, size);
+					break;
+				case OT_PAL:
+					_pal = dat;
+					break;
+				case OT_CT:
+					if (!delphine_unpack((uint8_t *)_ctData, dat, size)) {
+						error("Bad CRC for '%s'", _entryName);
+					}
+					free(dat);
+					break;
+				case OT_SPC:
+					_spc = dat;
+					_numSpc = READ_BE_UINT16(_spc) / 2;
+					break;
+				case OT_RP:
+					if (size != 0x4A) {
+						error("Unexpected size %d for '%s'", size, _entryName);
+					}
+					memcpy(_rp, dat, size);
+					free(dat);
+					break;
+				case OT_ICN:
+					_icn = dat;
+					break;
+				case OT_FNT:
+					_fnt = dat;
+					break;
+				case OT_OBJ:
+					_numObjectNodes = READ_LE_UINT16(dat);
+					assert(_numObjectNodes == 230);
+					decodeOBJ(dat + 2, size - 2);
+					break;
+				case OT_ANI:
+					_ani = dat;
+					break;
+				case OT_TBN:
+					_tbn = dat;
+					break;
+				case OT_CMD:
+					_cmd = dat;
+					break;
+				case OT_POL:
+					_pol = dat;
+					break;
+				case OT_BNQ:
+					_bnq = dat;
+					break;
+				default:
+					error("Cannot load '%s' type %d", _entryName, objType);
+				}
+				return;
+			}
+		}
+		error("Cannot open '%s'", _entryName);
 	}
 }
 
@@ -702,7 +834,7 @@ void Resource::decodeOBJ(const uint8_t *tmp, int size) {
 	int tmpOffset = 0;
 	_numObjectNodes = 230;
 	for (int i = 0; i < _numObjectNodes; ++i) {
-		offsets[i] = READ_BE_UINT32(tmp + tmpOffset); tmpOffset += 4;
+		offsets[i] = _readUint32(tmp + tmpOffset); tmpOffset += 4;
 	}
 	offsets[_numObjectNodes] = size;
 	int numObjectsCount = 0;
@@ -724,23 +856,23 @@ void Resource::decodeOBJ(const uint8_t *tmp, int size) {
 				error("Unable to allocate ObjectNode num=%d", i);
 			}
 			const uint8_t *objData = tmp + offsets[i];
-			on->last_obj_number = READ_BE_UINT16(objData); objData += 2;
+			on->last_obj_number = _readUint16(objData); objData += 2;
 			on->num_objects = objectsCount[iObj];
 			on->objects = (Object *)malloc(sizeof(Object) * on->num_objects);
 			for (int j = 0; j < on->num_objects; ++j) {
 				Object *obj = &on->objects[j];
-				obj->type = READ_BE_UINT16(objData); objData += 2;
+				obj->type = _readUint16(objData); objData += 2;
 				obj->dx = *objData++;
 				obj->dy = *objData++;
-				obj->init_obj_type = READ_BE_UINT16(objData); objData += 2;
+				obj->init_obj_type = _readUint16(objData); objData += 2;
 				obj->opcode2 = *objData++;
 				obj->opcode1 = *objData++;
 				obj->flags = *objData++;
 				obj->opcode3 = *objData++;
-				obj->init_obj_number = READ_BE_UINT16(objData); objData += 2;
-				obj->opcode_arg1 = READ_BE_UINT16(objData); objData += 2;
-				obj->opcode_arg2 = READ_BE_UINT16(objData); objData += 2;
-				obj->opcode_arg3 = READ_BE_UINT16(objData); objData += 2;
+				obj->init_obj_number = _readUint16(objData); objData += 2;
+				obj->opcode_arg1 = _readUint16(objData); objData += 2;
+				obj->opcode_arg2 = _readUint16(objData); objData += 2;
+				obj->opcode_arg3 = _readUint16(objData); objData += 2;
 				debug(DBG_RES, "obj_node=%d obj=%d op1=0x%X op2=0x%X op3=0x%X", i, j, obj->opcode2, obj->opcode1, obj->opcode3);
 			}
 			++iObj;
@@ -753,13 +885,20 @@ void Resource::decodeOBJ(const uint8_t *tmp, int size) {
 
 void Resource::load_PGE(File *f) {
 	debug(DBG_RES, "Resource::load_PGE()");
-	int len = f->size() - 2;
-	_pgeNum = f->readUint16LE();
 	if (_type == kResourceTypeAmiga) {
-		SWAP_UINT16(&_pgeNum);
+		const int size = f->size();
+		uint8_t *tmp = (uint8_t *)malloc(size);
+		if (!tmp) {
+			error("Unable to allocate PGE temporary buffer");
+		}
+		f->read(tmp, size);
+		decodePGE(tmp, size);
+		free(tmp);
+		return;
 	}
+	_pgeNum = f->readUint16LE();
 	memset(_pgeInit, 0, sizeof(_pgeInit));
-	debug(DBG_RES, "len=%d _pgeNum=%d", len, _pgeNum);
+	debug(DBG_RES, "_pgeNum=%d", _pgeNum);
 	for (uint16_t i = 0; i < _pgeNum; ++i) {
 		InitPGE *pge = &_pgeInit[i];
 		pge->type = f->readUint16LE();
@@ -784,56 +923,46 @@ void Resource::load_PGE(File *f) {
 		f->readByte();
 		pge->text_num = f->readUint16LE();
 	}
-	if (_type == kResourceTypeAmiga) {
-		for (uint16_t i = 0; i < _pgeNum; ++i) {
-			InitPGE *pge = &_pgeInit[i];
-			SWAP_UINT16((uint16_t *)&pge->type);
-			SWAP_UINT16((uint16_t *)&pge->pos_x);
-			SWAP_UINT16((uint16_t *)&pge->pos_y);
-			SWAP_UINT16((uint16_t *)&pge->obj_node_number);
-			SWAP_UINT16((uint16_t *)&pge->life);
-			for (int lc = 0; lc < 4; ++lc) {
-				SWAP_UINT16((uint16_t *)&pge->counter_values[lc]);
-			}
-			SWAP_UINT16((uint16_t *)&pge->text_num);
+}
+
+void Resource::decodePGE(const uint8_t *p, int size) {
+	_pgeNum = _readUint16(p); p += 2;
+	memset(_pgeInit, 0, sizeof(_pgeInit));
+	debug(DBG_RES, "len=%d _pgeNum=%d", size, _pgeNum);
+	for (uint16_t i = 0; i < _pgeNum; ++i) {
+		InitPGE *pge = &_pgeInit[i];
+		pge->type = _readUint16(p); p += 2;
+		pge->pos_x = _readUint16(p); p += 2;
+		pge->pos_y = _readUint16(p); p += 2;
+		pge->obj_node_number = _readUint16(p); p += 2;
+		pge->life = _readUint16(p); p += 2;
+		for (int lc = 0; lc < 4; ++lc) {
+			pge->counter_values[lc] = _readUint16(p); p += 2;
 		}
+		pge->object_type = *p++;
+		pge->init_room = *p++;
+		pge->room_location = *p++;
+		pge->init_flags = *p++;
+		pge->colliding_icon_num = *p++;
+		pge->icon_num = *p++;
+		pge->object_id = *p++;
+		pge->skill = *p++;
+		pge->mirror_x = *p++;
+		pge->flags = *p++;
+		pge->unk1C = *p++;
+		++p;
+		pge->text_num = _readUint16(p); p += 2;
 	}
 }
 
 void Resource::load_ANI(File *f) {
 	debug(DBG_RES, "Resource::load_ANI()");
-	int size = f->size() - 2;
+	const int size = f->size();
 	_ani = (uint8_t *)malloc(size);
 	if (!_ani) {
 		error("Unable to allocate ANI buffer");
 	} else {
-		uint16_t count = f->readUint16LE();
 		f->read(_ani, size);
-		if (_type == kResourceTypeAmiga) {
-			const uint8_t *end = _ani + size;
-			SWAP_UINT16(&count);
-			// byte-swap animation data
-			for (uint16_t i = 0; i < count; ++i) {
-				uint8_t *p = _ani + READ_BE_UINT16(_ani + 2 * i);
-				// byte-swap offset
-				SWAP<uint8_t>(_ani[2 * i], _ani[2 * i + 1]);
-				if (p >= end) {
-					continue;
-				}
-				const int frames = READ_BE_UINT16(p);
-				if (p[0] != 0) {
-					// byte-swap only once
-					continue;
-				}
-				// byte-swap anim count
-				SWAP<uint8_t>(p[0], p[1]);
-				debug(DBG_RES, "ani=%d frames=%d", i, frames);
-				for (int j = 0; j < frames; ++j) {
-					// byte-swap next frame
-					SWAP<uint8_t>(p[6 + j * 4], p[6 + j * 4 + 1]);
-				}
-			}
-		}
 	}
 }
 
@@ -845,13 +974,6 @@ void Resource::load_TBN(File *f) {
 		error("Unable to allocate TBN buffer");
 	} else {
 		f->read(_tbn, len);
-	}
-	if (_type == kResourceTypeAmiga) {
-		const int firstOffset = READ_BE_UINT16(_tbn);
-		for (int i = 0; i < firstOffset; i += 2) {
-			// byte-swap offset
-			SWAP<uint8_t>(_tbn[i], _tbn[i + 1]);
-		}
 	}
 }
 
@@ -1011,6 +1133,17 @@ void Resource::load_LEV(File *f) {
 
 void Resource::load_SGD(File *f) {
 	const int len = f->size();
+	if (_type == kResourceTypeDOS) {
+		_sgd = (uint8_t *)malloc(len);
+		if (!_sgd) {
+			error("Unable to allocate SGD buffer");
+		} else {
+			f->read(_sgd, len);
+			// first byte == number of entries, clear to fix up 32 bits offset
+			_sgd[0] = 0;
+		}
+		return;
+	}
 	f->seek(len - 4);
 	int size = f->readUint32BE();
 	f->seek(0);
@@ -1027,6 +1160,16 @@ void Resource::load_SGD(File *f) {
 		error("Bad CRC for SGD data");
 	}
 	free(tmp);
+}
+
+void Resource::load_BNQ(File *f) {
+	const int len = f->size();
+	_bnq = (uint8_t *)malloc(len);
+	if (!_bnq) {
+		error("Unable to allocate BNQ buffer");
+	} else {
+		f->read(_bnq, len);
+	}
 }
 
 void Resource::load_SPM(File *f) {
@@ -1072,19 +1215,23 @@ void Resource::clearBankData() {
 
 int Resource::getBankDataSize(uint16_t num) {
 	int len = READ_BE_UINT16(_mbk + num * 6 + 4);
-	int size = 0;
 	switch (_type) {
 	case kResourceTypeAmiga:
 		if (len & 0x8000) {
 			len = -(int16_t)len;
 		}
-		size = len * 32;
 		break;
-	case kResourceTypePC:
-		size = (len & 0x7FFF) * 32;
+	case kResourceTypeDOS:
+		if (len & 0x8000) {
+			if (_mbk == _bnq) { // demo .bnq use signed int
+				len = -(int16_t)len;
+				break;
+			}
+			len &= 0x7FFF;
+		}
 		break;
 	}
-	return size;
+	return len * 32;
 }
 
 uint8_t *Resource::findBankData(uint16_t num) {
@@ -1099,7 +1246,7 @@ uint8_t *Resource::findBankData(uint16_t num) {
 uint8_t *Resource::loadBankData(uint16_t num) {
 	const uint8_t *ptr = _mbk + num * 6;
 	int dataOffset = READ_BE_UINT32(ptr);
-	if (_type == kResourceTypePC) {
+	if (_type == kResourceTypeDOS) {
 		// first byte of the data buffer corresponds
 		// to the total count of entries
 		dataOffset &= 0xFFFF;

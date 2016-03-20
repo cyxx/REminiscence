@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef INTERN_H__
@@ -24,21 +13,18 @@
 #include <cassert>
 #include <stdint.h>
 
-#include "util.h"
-
+#ifndef ABS
 #define ABS(x) ((x)<0?-(x):(x))
+#endif
+#ifndef MAX
 #define MAX(x,y) ((x)>(y)?(x):(y))
+#endif
+#ifndef MIN
 #define MIN(x,y) ((x)<(y)?(x):(y))
+#endif
 #ifndef ARRAYSIZE
 #define ARRAYSIZE(a) (sizeof(a)/sizeof(a[0]))
 #endif
-
-
-inline void SWAP_UINT16(uint16_t *ptr) {
-	const uint8_t hi = *ptr >> 8;
-	const uint8_t lo = *ptr & 255;
-	*ptr = (lo << 8) | hi;
-}
 
 inline uint16_t READ_BE_UINT16(const void *ptr) {
 	const uint8_t *b = (const uint8_t *)ptr;
@@ -77,7 +63,15 @@ enum Language {
 
 enum ResourceType {
 	kResourceTypeAmiga,
-	kResourceTypePC
+	kResourceTypeDOS
+};
+
+struct Options {
+	bool bypass_protection;
+	bool play_disabled_cutscenes;
+	bool enable_password_menu;
+	bool fade_out_palette;
+	bool use_tiledata;
 };
 
 struct Color {
@@ -219,6 +213,7 @@ struct SoundFx {
 	uint8_t *data;
 };
 
+extern Options g_options;
 extern const char *g_caption;
 
 #endif // INTERN_H__

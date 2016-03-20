@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.2.2 ($date)
+Release version: 0.3.0 ($date)
 -------------------------------------------------------------------------------
 
 
@@ -74,6 +74,7 @@ In-game hotkeys :
     Backspace       display the inventory
     Alt Enter       toggle windowed/fullscreen mode
     Alt + and -     change video scaler
+    Alt S           write screenshot as .bmp
     Ctrl S          save game state
     Ctrl L          load game state
     Ctrl + and -    change game state slot

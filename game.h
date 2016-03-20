@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef GAME_H__
@@ -94,10 +83,12 @@ struct Game {
 	uint16_t _deathCutsceneCounter;
 	bool _saveStateCompleted;
 	bool _endLoop;
+	uint32_t _frameTimestamp;
 
 	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang);
 
 	void run();
+	void displayTitleScreenAmiga();
 	void resetGameState();
 	void mainLoop();
 	void updateTiming();

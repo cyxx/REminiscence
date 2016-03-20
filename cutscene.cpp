@@ -1,28 +1,19 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
+#include <math.h>
+#include "cutscene.h"
 #include "resource.h"
 #include "systemstub.h"
+#include "util.h"
 #include "video.h"
-#include "cutscene.h"
-
 
 Cutscene::Cutscene(Resource *res, SystemStub *stub, Video *vid)
 	: _res(res), _stub(stub), _vid(vid) {
+	_patchedOffsetsTable = 0;
 	memset(_palBuf, 0, sizeof(_palBuf));
 }
 
@@ -51,12 +42,8 @@ void Cutscene::updatePalette() {
 	if (_newPal) {
 		const uint8_t *p = _palBuf;
 		for (int i = 0; i < 32; ++i) {
-			uint16_t color = READ_BE_UINT16(p); p += 2;
-			uint8_t t = (color == 0) ? 0 : 3;
-			Color c;
-			c.r = ((color & 0xF00) >> 6) | t;
-			c.g = ((color & 0x0F0) >> 2) | t;
-			c.b = ((color & 0x00F) << 2) | t;
+			const uint16_t color = READ_BE_UINT16(p); p += 2;
+			Color c = Video::AMIGA_convertColor(color);
 			_stub->setPaletteEntry(0xC0 + i, &c);
 		}
 		_newPal = false;
@@ -67,21 +54,36 @@ void Cutscene::setPalette() {
 	sync();
 	updatePalette();
 	SWAP(_page0, _page1);
-	_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _page0, 256);
+	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page0, 256);
 	_stub->updateScreen(0);
 }
 
-void Cutscene::initRotationData(uint16_t a, uint16_t b, uint16_t c) {
-	int16_t n1 = _sinTable[a];
-	int16_t n2 = _cosTable[a];
-	int16_t n3 = _sinTable[c];
-	int16_t n4 = _cosTable[c];
-	int16_t n5 = _sinTable[b];
-	int16_t n6 = _cosTable[b];
-	_rotData[0] = ((n2 * n6) >> 8) - ((((n4 * n1) >> 8) * n5) >> 8);
-	_rotData[1] = ((n1 * n6) >> 8) + ((((n4 * n2) >> 8) * n5) >> 8);
-	_rotData[2] = ( n3 * n1) >> 8;
-	_rotData[3] = (-n3 * n2) >> 8;
+#if 0
+#define SIN(a) (int16_t)(sin(a * M_PI / 180) * 256)
+#define COS(a) (int16_t)(cos(a * M_PI / 180) * 256)
+#else
+#define SIN(a) _sinTable[a]
+#define COS(a) _cosTable[a]
+#endif
+
+/*
+  cos(60)  table: 128, math: 127
+  cos(120) table:-127, math:-128
+  cos(240) table:-128, math:-127
+  sin(330) table: 221, math:-127
+*/
+
+void Cutscene::setRotationTransform(uint16_t a, uint16_t b, uint16_t c) { // identity a:0 b:180 c:90
+	const int16_t sin_a = SIN(a);
+	const int16_t cos_a = COS(a);
+	const int16_t sin_c = SIN(c);
+	const int16_t cos_c = COS(c);
+	const int16_t sin_b = SIN(b);
+	const int16_t cos_b = COS(b);
+	_rotMat[0] /* .x1 */ = ((cos_a * cos_b) >> 8) - ((((cos_c * sin_a) >> 8) * sin_b) >> 8);
+	_rotMat[1] /* .y1 */ = ((sin_a * cos_b) >> 8) + ((((cos_c * cos_a) >> 8) * sin_b) >> 8);
+	_rotMat[2] /* .x2 */ = ( sin_c * sin_a) >> 8;
+	_rotMat[3] /* .y2 */ = (-sin_c * cos_a) >> 8;
 }
 
 uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
@@ -159,9 +161,9 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 
 void Cutscene::swapLayers() {
 	if (_clearScreen == 0) {
-		memcpy(_page1, _pageC, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+		memcpy(_page1, _pageC, _vid->_layerSize);
 	} else {
-		memset(_page1, 0xC0, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+		memset(_page1, 0xC0, _vid->_layerSize);
 	}
 }
 
@@ -196,9 +198,7 @@ void Cutscene::drawCreditsText() {
 				}
 			} else {
 				*_textCurBuf++ = code;
-				_textCurBuf = _textCurBuf;
-				*_textCurBuf = 0xA;
-				++_textCurPtr;
+				*_textCurBuf++ = 0xA;
 			}
 		} else {
 			_creditsTextCounter -= 10; // XXX adjust
@@ -216,7 +216,7 @@ void Cutscene::drawProtectionShape(uint8_t shapeNum, int16_t zoom) {
 	int16_t x = 0;
 	int16_t y = 0;
 	zoom += 512;
-	initRotationData(0, 180, 90);
+	setRotationTransform(0, 180, 90);
 
 	const uint8_t *shapeOffsetTable    = _protectionShapeData + READ_BE_UINT16(_protectionShapeData + 0x02);
 	const uint8_t *shapeDataTable      = _protectionShapeData + READ_BE_UINT16(_protectionShapeData + 0x0E);
@@ -272,7 +272,7 @@ void Cutscene::op_waitForSync() {
 			if (_textBuf == _textCurBuf) {
 				_creditsTextCounter = 20;
 			}
-			memcpy(_page1, _page0, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+			memcpy(_page1, _page0, _vid->_layerSize);
 			drawCreditsText();
 			setPalette();
 		} while (--n);
@@ -364,7 +364,7 @@ void Cutscene::op_drawShape() {
 		drawShape(primitiveVertices, x + dx, y + dy);
 	}
 	if (_clearScreen != 0) {
-		memcpy(_pageC, _page1, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+		memcpy(_pageC, _page1, _vid->_layerSize);
 	}
 }
 
@@ -609,8 +609,8 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		y = READ_BE_UINT16(data); data += 2;
 		_shape_cur_x16 = _shape_ix - ix;
 		_shape_cur_y16 = _shape_iy - iy;
-		_shape_ox = _shape_cur_x = _shape_ix + ((_shape_cur_x16 * _rotData[0] + _shape_cur_y16 * _rotData[1]) >> 8);
-		_shape_oy = _shape_cur_y = _shape_iy + ((_shape_cur_x16 * _rotData[2] + _shape_cur_y16 * _rotData[3]) >> 8);
+		_shape_ox = _shape_cur_x = _shape_ix + ((_shape_cur_x16 * _rotMat[0] + _shape_cur_y16 * _rotMat[1]) >> 8);
+		_shape_oy = _shape_cur_y = _shape_iy + ((_shape_cur_x16 * _rotMat[2] + _shape_cur_y16 * _rotMat[3]) >> 8);
 		pr[0].x =  0;
 		pr[0].y = -y;
 		pr[1].x = -x;
@@ -655,8 +655,8 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		pt.y = c + READ_BE_UINT16(data); data += 2;
 		_shape_cur_x16 = _shape_ix - pt.x;
 		_shape_cur_y16 = _shape_iy - pt.y;
-		_shape_cur_x = _shape_ix + ((_rotData[0] * _shape_cur_x16 + _rotData[1] * _shape_cur_y16) >> 8);
-		_shape_cur_y = _shape_iy + ((_rotData[2] * _shape_cur_x16 + _rotData[3] * _shape_cur_y16) >> 8);
+		_shape_cur_x = _shape_ix + ((_rotMat[0] * _shape_cur_x16 + _rotMat[1] * _shape_cur_y16) >> 8);
+		_shape_cur_y = _shape_iy + ((_rotMat[2] * _shape_cur_x16 + _rotMat[3] * _shape_cur_y16) >> 8);
 		if (_shape_count != 0) {
 			_shape_cur_x16 = _shape_prev_x16 + (_shape_cur_x - _shape_prev_x) * zoom * 128;
 			pt.x = ((_shape_cur_x16 + 0x8000) >> 16) + _shape_ix + d;
@@ -685,12 +685,12 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		_shape_cur_x16 = _shape_ix - x;
 		_shape_cur_y16 = _shape_iy - y;
 
-		a = _shape_ix + ((_rotData[0] * _shape_cur_x16 + _rotData[1] * _shape_cur_y16) >> 8);
+		a = _shape_ix + ((_rotMat[0] * _shape_cur_x16 + _rotMat[1] * _shape_cur_y16) >> 8);
 		if (_shape_count == 0) {
 			_shape_ox = a;
 		}
 		_shape_cur_x = shape_last_x = a;
-		a = _shape_iy + ((_rotData[2] * _shape_cur_x16 + _rotData[3] * _shape_cur_y16) >> 8);
+		a = _shape_iy + ((_rotMat[2] * _shape_cur_x16 + _rotMat[3] * _shape_cur_y16) >> 8);
 		if (_shape_count == 0) {
 			_shape_oy = a;
 		}
@@ -712,10 +712,10 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 				sx = 0;
 				_shape_cur_x16 = _shape_ix - ix;
 				_shape_cur_y16 = _shape_iy - iy;
-				a = _shape_ix + ((_rotData[0] * _shape_cur_x16 + _rotData[1] * _shape_cur_y16) >> 8);
+				a = _shape_ix + ((_rotMat[0] * _shape_cur_x16 + _rotMat[1] * _shape_cur_y16) >> 8);
 				pt2->x = a - shape_last_x;
 				shape_last_x = a;
-				a = _shape_iy + ((_rotData[2] * _shape_cur_x16 + _rotData[3] * _shape_cur_y16) >> 8);
+				a = _shape_iy + ((_rotMat[2] * _shape_cur_x16 + _rotMat[3] * _shape_cur_y16) >> 8);
 				pt2->y = a - shape_last_y;
 				shape_last_y = a;
 				++pt2;
@@ -786,7 +786,7 @@ void Cutscene::op_drawShapeScaleRotate() {
 	if (shapeOffset & 0x1000) {
 		r3 = fetchNextCmdWord();
 	}
-	initRotationData(r1, r2, r3);
+	setRotationTransform(r1, r2, r3);
 
 	const uint8_t *shapeOffsetTable    = _polPtr + READ_BE_UINT16(_polPtr + 0x02);
 	const uint8_t *shapeDataTable      = _polPtr + READ_BE_UINT16(_polPtr + 0x0E);
@@ -822,7 +822,7 @@ void Cutscene::op_drawCreditsText() {
 	if (_textCurBuf == _textBuf) {
 		++_creditsTextCounter;
 	}
-	memcpy(_page1, _page0, Video::GAMESCREEN_W * Video::GAMESCREEN_H);
+	memcpy(_page1, _page0, _vid->_layerSize);
 	_frameDelay = 10;
 	setPalette();
 }
@@ -842,7 +842,7 @@ void Cutscene::op_drawStringAtPos() {
 			// workaround for buggy cutscene script
 			if (_id == 0x34 && (strId & 0xFFF) == 0x45) {
 				if ((_cmdPtr - _cmdPtrBak) == 0xA) {
-					_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _page1, 256);
+					_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
 					_stub->updateScreen(0);
 				} else {
 					_stub->sleep(15);
@@ -965,7 +965,7 @@ void Cutscene::load(uint16_t cutName) {
 		}
 		_res->load(name, Resource::OT_CMP);
 		break;
-	case kResourceTypePC:
+	case kResourceTypeDOS:
 		_res->load(name, Resource::OT_CMD);
 		_res->load(name, Resource::OT_POL);
 		_res->load_CINE();
@@ -1019,6 +1019,31 @@ void Cutscene::play() {
 		prepare();
 		uint16_t cutName = _offsetsTable[_id * 2 + 0];
 		uint16_t cutOff  = _offsetsTable[_id * 2 + 1];
+		if (cutName == 0xFFFF && g_options.play_disabled_cutscenes) {
+			switch (_id) {
+			case 19:
+				cutName = 31; // SERRURE
+				break;
+			case 22:
+			case 23:
+			case 24:
+				cutName = 12; // ASC
+				break;
+			case 30:
+			case 31:
+				cutName = 14; // METRO
+				break;
+			}
+		}
+		if (_patchedOffsetsTable) {
+			for (int i = 0; _patchedOffsetsTable[i] != 255; i += 3) {
+				if (_patchedOffsetsTable[i] == _id) {
+					cutName = _patchedOffsetsTable[i + 1];
+					cutOff = _patchedOffsetsTable[i + 2];
+					break;
+				}
+			}
+		}
 		if (cutName != 0xFFFF) {
 			load(cutName);
 			mainLoop(cutOff);

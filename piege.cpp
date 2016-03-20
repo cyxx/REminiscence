@@ -1,25 +1,14 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "cutscene.h"
+#include "game.h"
 #include "resource.h"
 #include "systemstub.h"
-#include "game.h"
-
+#include "util.h"
 
 void Game::pge_resetGroups() {
 	memset(_pge_groupsTable, 0, sizeof(_pge_groupsTable));
@@ -133,7 +122,7 @@ void Game::pge_process(LivePGE *pge) {
 		pge_setupNextAnimFrame(pge, le);
 	}
 	const uint8_t *anim_data = _res.getAniData(pge->obj_type);
-	if (READ_LE_UINT16(anim_data) <= pge->anim_seq) {
+	if (_res._readUint16(anim_data) <= pge->anim_seq) {
 		InitPGE *init_pge = pge->init_PGE;
 		assert(init_pge->obj_node_number < _res._numObjectNodes);
 		ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
@@ -200,7 +189,7 @@ void Game::pge_setupNextAnimFrame(LivePGE *pge, GroupPGE *le) {
 
 set_anim:
 	const uint8_t *anim_data = _res.getAniData(pge->obj_type);
-	uint8_t _dh = READ_LE_UINT16(anim_data);
+	uint8_t _dh = _res._readUint16(anim_data);
 	uint8_t _dl = pge->anim_seq;
 	const uint8_t *anim_frame = anim_data + 6 + _dl * 4;
 	while (_dh > _dl) {
@@ -239,12 +228,12 @@ void Game::pge_playAnimSound(LivePGE *pge, uint16_t arg2) {
 void Game::pge_setupAnim(LivePGE *pge) {
 	debug(DBG_PGE, "Game::pge_setupAnim() pgeNum=%d", pge - &_pgeLive[0]);
 	const uint8_t *anim_data = _res.getAniData(pge->obj_type);
-	if (READ_LE_UINT16(anim_data) < pge->anim_seq) {
+	if (_res._readUint16(anim_data) < pge->anim_seq) {
 		pge->anim_seq = 0;
 	}
 	const uint8_t *anim_frame = anim_data + 6 + pge->anim_seq * 4;
-	if (READ_LE_UINT16(anim_frame) != 0xFFFF) {
-		uint16_t fl = READ_LE_UINT16(anim_frame);
+	if (_res._readUint16(anim_frame) != 0xFFFF) {
+		uint16_t fl = _res._readUint16(anim_frame);
 		if (pge->flags & 1) {
 			fl ^= 0x8000;
 			pge->pos_x -= (int8_t)anim_frame[2];
@@ -257,10 +246,10 @@ void Game::pge_setupAnim(LivePGE *pge) {
 			pge->flags |= 2;
 		}
 		pge->flags &= ~8;
-		if (READ_LE_UINT16(anim_data + 4) & 0xFFFF) {
+		if (_res._readUint16(anim_data + 4) & 0xFFFF) {
 			pge->flags |= 8;
 		}
-		pge->anim_number = READ_LE_UINT16(anim_frame) & 0x7FFF;
+		pge->anim_number = _res._readUint16(anim_frame) & 0x7FFF;
 	}
 }
 
@@ -371,12 +360,12 @@ void Game::pge_prepare() {
 
 void Game::pge_setupDefaultAnim(LivePGE *pge) {
 	const uint8_t *anim_data = _res.getAniData(pge->obj_type);
-	if (pge->anim_seq < READ_LE_UINT16(anim_data)) {
+	if (pge->anim_seq < _res._readUint16(anim_data)) {
 		pge->anim_seq = 0;
 	}
 	const uint8_t *anim_frame = anim_data + 6 + pge->anim_seq * 4;
-	if (READ_LE_UINT16(anim_frame) != 0xFFFF) {
-		uint16_t f = READ_LE_UINT16(anim_data);
+	if (_res._readUint16(anim_frame) != 0xFFFF) {
+		uint16_t f = _res._readUint16(anim_data);
 		if (pge->flags & 1) {
 			f ^= 0x8000;
 		}
@@ -385,10 +374,10 @@ void Game::pge_setupDefaultAnim(LivePGE *pge) {
 			pge->flags |= 2;
 		}
 		pge->flags &= ~8;
-		if (READ_LE_UINT16(anim_data + 4) & 0xFFFF) {
+		if (_res._readUint16(anim_data + 4) & 0xFFFF) {
 			pge->flags |= 8;
 		}
-		pge->anim_number = READ_LE_UINT16(anim_frame) & 0x7FFF;
+		pge->anim_number = _res._readUint16(anim_frame) & 0x7FFF;
 		debug(DBG_PGE, "Game::pge_setupDefaultAnim() pgeNum=%d pge->flags=0x%X pge->anim_number=0x%X pge->anim_seq=0x%X", pge - &_pgeLive[0], pge->flags, pge->anim_number, pge->anim_seq);
 	}
 }
@@ -1277,7 +1266,8 @@ int Game::pge_op_setPiegeDefaultAnim(ObjectOpcodeArgs *args) {
 	int16_t r = args->pge->init_PGE->counter_values[args->a];
 	args->pge->room_location = r;
 	if (r == 1) {
-		warning("setting _loadMap to true");
+		// this happens after death tower, on earth, when Conrad passes
+		// by the first policeman who's about to shoot him in the back
 		_loadMap = true;
 	}
 	pge_setupDefaultAnim(args->pge);

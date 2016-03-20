@@ -1,18 +1,7 @@
-/* REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * REminiscence - Flashback interpreter
+ * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef CUTSCENE_H__
@@ -36,6 +25,7 @@ struct Cutscene {
 	static const OpcodeStub _opcodeTable[];
 	static const char *_namesTable[];
 	static const uint16_t _offsetsTable[];
+	static const uint8_t _amigaDemoOffsetsTable[];
 	static const uint16_t _cosTable[];
 	static const uint16_t _sinTable[];
 	static const uint8_t _creditsData[];
@@ -47,6 +37,7 @@ struct Cutscene {
 	Resource *_res;
 	SystemStub *_stub;
 	Video *_vid;
+	const uint8_t *_patchedOffsetsTable;
 
 	uint16_t _id;
 	uint16_t _deathCutsceneId;
@@ -61,7 +52,7 @@ struct Cutscene {
 	uint8_t _palBuf[0x20 * 2];
 	uint16_t _startOffset;
 	bool _creditsSequence;
-	uint32_t _rotData[4];
+	uint32_t _rotMat[4];
 	uint8_t _primitiveColor;
 	uint8_t _clearScreen;
 	Point _vertices[0x80];
@@ -97,7 +88,7 @@ struct Cutscene {
 	void copyPalette(const uint8_t *pal, uint16_t num);
 	void updatePalette();
 	void setPalette();
-	void initRotationData(uint16_t a, uint16_t b, uint16_t c);
+	void setRotationTransform(uint16_t a, uint16_t b, uint16_t c);
 	uint16_t findTextSeparators(const uint8_t *p);
 	void drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, uint8_t n);
 	void swapLayers();
