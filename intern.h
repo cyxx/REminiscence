@@ -46,6 +46,26 @@ inline uint32_t READ_LE_UINT32(const void *ptr) {
 	return (b[3] << 24) | (b[2] << 16) | (b[1] << 8) | b[0];
 }
 
+inline int8_t ADDC_S8(int a, int b) {
+	a += b;
+	if (a < -128) {
+		a = -128;
+	} else if (a > 127) {
+		a = 127;
+	}
+	return a;
+}
+
+inline int16_t ADDC_S16(int a, int b) {
+	a += b;
+	if (a < -32768) {
+		a = -32768;
+	} else if (a > 32767) {
+		a = 32767;
+	}
+	return a;
+}
+
 template<typename T>
 inline void SWAP(T &a, T &b) {
 	T tmp = a;
@@ -72,6 +92,7 @@ struct Options {
 	bool enable_password_menu;
 	bool fade_out_palette;
 	bool use_tiledata;
+	bool use_text_cutscenes;
 };
 
 struct Color {

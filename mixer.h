@@ -42,7 +42,7 @@ struct FileSystem;
 struct SystemStub;
 
 struct Mixer {
-	typedef bool (*PremixHook)(void *userData, int8_t *buf, int len);
+	typedef bool (*PremixHook)(void *userData, int16_t *buf, int len);
 
 	enum MusicType {
 		MT_NONE,
@@ -79,10 +79,9 @@ struct Mixer {
 	void stopAll();
 	void playMusic(int num);
 	void stopMusic();
-	void mix(int8_t *buf, int len);
+	void mix(int16_t *buf, int len);
 
-	static void addclamp(int8_t &a, int b);
-	static void mixCallback(void *param, int8_t *buf, int len);
+	static void mixCallback(void *param, int16_t *buf, int len);
 };
 
 #endif // MIXER_H__

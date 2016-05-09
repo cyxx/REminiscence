@@ -10,6 +10,7 @@
 #include "file.h"
 #include "mixer.h"
 #include "ogg_player.h"
+#include "util.h"
 
 #ifdef USE_TREMOR
 struct VorbisFile: File {
@@ -85,7 +86,7 @@ struct OggDecoder_impl {
 		_channels = vi->channels;
 		return true;
 	}
-	int read(int8_t *dst, int samples) {
+	int read(int16_t *dst, int samples) {
 		int size = samples * _channels * sizeof(int16_t);
 		if (size > _readBufSize) {
 			_readBufSize = size;
@@ -100,22 +101,26 @@ struct OggDecoder_impl {
 			const int len = ov_read(&_ovf, (char *)_readBuf, size, 0);
 			if (len < 0) {
 				// error in decoder
-				return 0;
+				return count;
 			} else if (len == 0) {
 				// loop
 				ov_raw_seek(&_ovf, 0);
 				continue;
 			}
+			assert((len & 1) == 0);
 			switch (_channels) {
 			case 2:
-				assert((len & 1) == 0);
+				assert((len & 3) == 0);
 				for (int i = 0; i < len / 2; i += 2) {
-					Mixer::addclamp(*dst++, ((_readBuf[i] + _readBuf[i + 1]) / 2) >> 8);
+					const int16_t s16 = (_readBuf[i] + _readBuf[i + 1]) / 2;
+					*dst = ADDC_S16(*dst, s16);
+					++dst;
 				}
 				break;
 			case 1:
 				for (int i = 0; i < len / 2; ++i) {
-					Mixer::addclamp(*dst++, _readBuf[i] >> 8);
+					*dst = ADDC_S16(*dst, _readBuf[i]);
+					++dst;
 				}
 				break;
 			}
@@ -188,7 +193,7 @@ void OggPlayer::resumeTrack() {
 #endif
 }
 
-bool OggPlayer::mix(int8_t *buf, int len) {
+bool OggPlayer::mix(int16_t *buf, int len) {
 #ifdef USE_TREMOR
 	if (_impl) {
 		return _impl->read(buf, len) != 0;
@@ -197,7 +202,7 @@ bool OggPlayer::mix(int8_t *buf, int len) {
 	return false;
 }
 
-bool OggPlayer::mixCallback(void *param, int8_t *buf, int len) {
+bool OggPlayer::mixCallback(void *param, int16_t *buf, int len) {
 	return ((OggPlayer *)param)->mix(buf, len);
 }
 

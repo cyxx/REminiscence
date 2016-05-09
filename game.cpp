@@ -69,21 +69,26 @@ void Game::run() {
 		break;
 	}
 
-	if (_res.isAmiga()) {
-		displayTitleScreenAmiga();
-		_stub->setScreenSize(Video::GAMESCREEN_W, Video::GAMESCREEN_H);
-	}
-
 	while (!_stub->_pi.quit) {
-		if (_res.isDOS()) {
+		switch (_res._type) {
+		case kResourceTypeDOS:
 			_mix.playMusic(1);
 			_menu.handleTitleScreen();
-			if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT) {
+			if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT || _stub->_pi.quit) {
+				_stub->_pi.quit = true;
 				break;
 			}
 			_skillLevel = _menu._skill;
 			_currentLevel = _menu._level;
 			_mix.stopMusic();
+			break;
+		case kResourceTypeAmiga:
+			displayTitleScreenAmiga();
+			_stub->setScreenSize(Video::GAMESCREEN_W, Video::GAMESCREEN_H);
+			break;
+		}
+		if (_stub->_pi.quit) {
+			break;
 		}
 		if (_currentLevel == 7) {
 			_vid.fadeOut();
@@ -328,7 +333,7 @@ void Game::playCutscene(int id) {
 			_cut.play();
 		}
 		if (id == 0x3D) {
-			_cut.startCredits();
+			_cut.playCredits();
 		}
 		_mix.stopMusic();
 	}

@@ -24,9 +24,9 @@ struct File_impl {
 	virtual uint32_t write(void *ptr, uint32_t len) = 0;
 };
 
-struct stdFile : File_impl {
+struct StdioFile : File_impl {
 	FILE *_fp;
-	stdFile() : _fp(0) {}
+	StdioFile() : _fp(0) {}
 	bool open(const char *path, const char *mode) {
 		_ioErr = false;
 		_fp = fopen(path, mode);
@@ -76,9 +76,9 @@ struct stdFile : File_impl {
 };
 
 #ifdef USE_ZLIB
-struct zlibFile : File_impl {
+struct GzipFile : File_impl {
 	gzFile _fp;
-	zlibFile() : _fp(0) {}
+	GzipFile() : _fp(0) {}
 	bool open(const char *path, const char *mode) {
 		_ioErr = false;
 		_fp = gzopen(path, mode);
@@ -147,7 +147,7 @@ bool File::open(const char *filename, const char *mode, FileSystem *fs) {
 		_impl = 0;
 	}
 	assert(mode[0] != 'z');
-	_impl = new stdFile;
+	_impl = new StdioFile;
 	char *path = fs->findPath(filename);
 	if (path) {
 		debug(DBG_FILE, "Open file name '%s' mode '%s' path '%s'", filename, mode, path);
@@ -166,12 +166,12 @@ bool File::open(const char *filename, const char *mode, const char *directory) {
 	}
 #ifdef USE_ZLIB
 	if (mode[0] == 'z') {
-		_impl = new zlibFile;
+		_impl = new GzipFile;
 		++mode;
 	}
 #endif
 	if (!_impl) {
-		_impl = new stdFile;
+		_impl = new StdioFile;
 	}
 	char path[MAXPATHLEN];
 	snprintf(path, sizeof(path), "%s/%s", directory, filename);

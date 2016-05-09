@@ -18,13 +18,16 @@ Cutscene::Cutscene(Resource *res, SystemStub *stub, Video *vid)
 }
 
 void Cutscene::sync() {
-	// XXX input handling
-	if (!(_stub->_pi.dbgMask & PlayerInput::DF_FASTMODE)) {
-		int32_t delay = _stub->getTimeStamp() - _tstamp;
-		int32_t pause = _frameDelay * TIMER_SLICE - delay;
-		if (pause > 0) {
-			_stub->sleep(pause);
-		}
+	if (_stub->_pi.quit) {
+		return;
+	}
+	if (_stub->_pi.dbgMask & PlayerInput::DF_FASTMODE) {
+		return;
+	}
+	const int32_t delay = _stub->getTimeStamp() - _tstamp;
+	const int32_t pause = _frameDelay * TIMER_SLICE - delay;
+	if (pause > 0) {
+		_stub->sleep(pause);
 	}
 	_tstamp = _stub->getTimeStamp();
 }
@@ -90,7 +93,7 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 	uint8_t *q = _textSep;
 	uint16_t ret = 0;
 	uint16_t pos = 0;
-	for (; *p != 0xA; ++p) {
+	for (; *p != 0xA && *p; ++p) {
 		if (*p == 0x7C) {
 			*q++ = pos;
 			if (pos > ret) {
@@ -111,6 +114,7 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 
 void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, uint8_t n) {
 	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d)", x, y, color);
+	Video::drawCharFunc dcf = _vid->_drawChar;
 	uint16_t last_sep = 0;
 	if (n != 0) {
 		last_sep = findTextSeparators(p);
@@ -126,7 +130,7 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 	if (n != 0) {
 		xx += ((last_sep - *sep++) & 0xFE) * 4;
 	}
-	for (; *p != 0xA; ++p) {
+	for (; *p != 0xA && *p; ++p) {
 		if (*p == 0x7C) {
 			yy += 8;
 			xx = x;
@@ -135,25 +139,11 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 			}
 		} else if (*p == 0x20) {
 			xx += 8;
+		} else if (*p == 0x9) {
+			// ignore tab
 		} else {
-			uint8_t *dst_char = page + 256 * yy + xx;
-			const uint8_t *src = _res->_fnt + (*p - 32) * 32;
-			for (int h = 0; h < 8; ++h) {
-				for (int w = 0; w < 4; ++w) {
-					uint8_t c1 = (*src & 0xF0) >> 4;
-					uint8_t c2 = (*src & 0x0F) >> 0;
-					++src;
-					if (c1 != 0) {
-						*dst_char = (c1 == 0xF) ? color : (0xE0 + c1);
-					}
-					++dst_char;
-					if (c2 != 0) {
-						*dst_char = (c2 == 0xF) ? color : (0xE0 + c2);
-					}
-					++dst_char;
-				}
-				dst_char += 256 - 8;
-			}
+			uint8_t *dst = page + 256 * yy + xx;
+			(_vid->*dcf)(dst, 256, _res->_fnt, color, *p);
 			xx += 8;
 		}
 	}
@@ -176,11 +166,10 @@ void Cutscene::drawCreditsText() {
 				return;
 			}
 		}
-		if (_creditsTextCounter <= 0) { // XXX
+		if (_creditsTextCounter <= 0) {
 			uint8_t code = *_textCurPtr;
 			if (code == 0xFF) {
 				_textBuf[0] = 0xA;
-//				_cut_status = 0;
 			} else if (code == 0xFE) {
 				++_textCurPtr;
 				code = *_textCurPtr++;
@@ -198,10 +187,11 @@ void Cutscene::drawCreditsText() {
 				}
 			} else {
 				*_textCurBuf++ = code;
-				*_textCurBuf++ = 0xA;
+				*_textCurBuf = 0xA;
+				++_textCurPtr;
 			}
 		} else {
-			_creditsTextCounter -= 10; // XXX adjust
+			_creditsTextCounter -= 10;
 		}
 		drawText((_creditsTextPosX - 1) * 8, _creditsTextPosY * 8, _textBuf, 0xEF, _page1, 0);
 	}
@@ -270,7 +260,7 @@ void Cutscene::op_waitForSync() {
 			_varText = 0xFF;
 			_frameDelay = 3;
 			if (_textBuf == _textCurBuf) {
-				_creditsTextCounter = 20;
+				_creditsTextCounter = _res->isAmiga() ? 60 : 20;
 			}
 			memcpy(_page1, _page0, _vid->_layerSize);
 			drawCreditsText();
@@ -385,6 +375,16 @@ void Cutscene::op_drawStringAtBottom() {
 	debug(DBG_CUT, "Cutscene::op_drawStringAtBottom()");
 	uint16_t strId = fetchNextCmdWord();
 	if (!_creditsSequence) {
+
+		// 'espions' - ignore last call, allows caption to be displayed longer on the screen
+		if (_id == 0x39 && strId == 0xFFFF) {
+			if ((_res->isDOS() && (_cmdPtr - _cmdPtrBak) == 0x10) || (_res->isAmiga() && (_cmdPtr - _res->_cmd) == 0x9F3)) {
+				_frameDelay = 100;
+				setPalette();
+				return;
+			}
+		}
+
 		memset(_pageC + 179 * 256, 0xC0, 45 * 256);
 		memset(_page1 + 179 * 256, 0xC0, 45 * 256);
 		memset(_page0 + 179 * 256, 0xC0, 45 * 256);
@@ -839,7 +839,7 @@ void Cutscene::op_drawStringAtPos() {
 				uint8_t color = 0xD0 + (strId >> 0xC);
 				drawText(x, y, str, color, _page1, 2);
 			}
-			// workaround for buggy cutscene script
+			// 'voyage' - cutscene script redraws the string to refresh the screen
 			if (_id == 0x34 && (strId & 0xFFF) == 0x45) {
 				if ((_cmdPtr - _cmdPtrBak) == 0xA) {
 					_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
@@ -964,13 +964,30 @@ void Cutscene::load(uint16_t cutName) {
 			name = "INTRO";
 		}
 		_res->load(name, Resource::OT_CMP);
+		if (_id == 0x39 && _res->_lang != LANG_FR) {
+			//
+			// 'espions' - '... the power which we need' caption is missing in Amiga English.
+			// fixed in DOS version, opcodes order is wrong
+			//
+			// opcode 0 pos 0x323
+			// opcode 6 pos 0x324
+			// str 0x3a
+			//
+			uint8_t *p = _res->_cmd + 0x322;
+			if (memcmp(p, "\x00\x18\x00\x3a", 4) == 0) {
+				p[0] = 0x06 << 2; // op_drawStringAtBottom
+				p[1] = 0x00;
+				p[2] = 0x3a;
+				p[3] = 0x00; // op_markCurPos
+			}
+		}
 		break;
 	case kResourceTypeDOS:
 		_res->load(name, Resource::OT_CMD);
 		_res->load(name, Resource::OT_POL);
-		_res->load_CINE();
 		break;
 	}
+	_res->load_CINE();
 }
 
 void Cutscene::prepare() {
@@ -986,12 +1003,11 @@ void Cutscene::prepare() {
 	_gfx.setClippingRect(8, 50, 240, 128);
 }
 
-void Cutscene::startCredits() {
-	_textCurPtr = _creditsData;
+void Cutscene::playCredits() {
+	_textCurPtr = _res->isAmiga() ? _creditsDataAmiga : _creditsDataDOS;
 	_textBuf[0] = 0xA;
 	_textCurBuf = _textBuf;
 	_creditsSequence = true;
-//	_cut_status = 1;
 	_varText = 0;
 	_textUnk2 = 0;
 	_creditsTextCounter = 0;
@@ -1009,6 +1025,37 @@ void Cutscene::startCredits() {
 		mainLoop(cutOff);
 	}
 	_creditsSequence = false;
+}
+
+void Cutscene::playText(const char *str) {
+	Color c;
+	// background
+	c.r = c.g = c.b = 0;
+	_stub->setPaletteEntry(0xC0, &c);
+	// text
+	c.r = c.g = c.b = 255;
+	_stub->setPaletteEntry(0xC1, &c);
+
+	int lines = 0;
+	for (int i = 0; str[i]; ++i) {
+		if (str[i] == '|') {
+			++lines;
+		}
+	}
+	const int y = (128 - lines * 8) / 2;
+	memset(_page1, 0xC0, _vid->_layerSize);
+	drawText(0, y, (const uint8_t *)str, 0xC1, _page1, 1);
+	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
+	_stub->updateScreen(0);
+
+	while (!_stub->_pi.quit) {
+		_stub->processEvents();
+		if (_stub->_pi.backspace) {
+			_stub->_pi.backspace = false;
+			break;
+		}
+		_stub->sleep(TIMER_SLICE);
+	}
 }
 
 void Cutscene::play() {
@@ -1044,7 +1091,14 @@ void Cutscene::play() {
 				}
 			}
 		}
-		if (cutName != 0xFFFF) {
+		if (g_options.use_text_cutscenes && _res->_lang == LANG_FR) {
+			for (int i = 0; _frTextsTable[i].str; ++i) {
+				if (_id == _frTextsTable[i].num) {
+					playText(_frTextsTable[i].str);
+					break;
+				}
+			}
+		} else if (cutName != 0xFFFF) {
 			load(cutName);
 			mainLoop(cutOff);
 		}

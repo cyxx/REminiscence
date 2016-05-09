@@ -102,10 +102,10 @@ void SeqDemuxer::readPalette(uint8_t *dst) {
 	_f->read(dst, 256 * 3);
 }
 
-void SeqDemuxer::readAudioS8(uint8_t *dst) {
+void SeqDemuxer::readAudio(int16_t *dst) {
 	_f->seek(_frameOffset + _audioDataOffset);
 	for (int i = 0; i < kAudioBufferSize; ++i) {
-		dst[i] = _f->readUint16BE() >> 8;
+		dst[i] = _f->readUint16BE();
 	}
 }
 
@@ -246,9 +246,9 @@ void SeqPlayer::play(File *f) {
 			if (_demux._audioDataSize != 0) {
 				SoundBufferQueue *sbq = (SoundBufferQueue *)malloc(sizeof(SoundBufferQueue));
 				if (sbq) {
-					sbq->data = (uint8_t *)malloc(SeqDemuxer::kAudioBufferSize);
+					sbq->data = (int16_t *)calloc(SeqDemuxer::kAudioBufferSize, sizeof(int16_t));
 					if (sbq->data) {
-						_demux.readAudioS8(sbq->data);
+						_demux.readAudio(sbq->data);
 						sbq->size = SeqDemuxer::kAudioBufferSize;
 						sbq->read = 0;
 						sbq->next = 0;
@@ -332,7 +332,7 @@ void SeqPlayer::play(File *f) {
 	}
 }
 
-bool SeqPlayer::mix(int8_t *buf, int samples) {
+bool SeqPlayer::mix(int16_t *buf, int samples) {
 	if (_soundQueuePreloadSize < kSoundPreloadSize) {
 		return true;
 	}
@@ -350,7 +350,7 @@ bool SeqPlayer::mix(int8_t *buf, int samples) {
 	return true;
 }
 
-bool SeqPlayer::mixCallback(void *param, int8_t *buf, int len) {
+bool SeqPlayer::mixCallback(void *param, int16_t *buf, int len) {
 	return ((SeqPlayer *)param)->mix(buf, len);
 }
 

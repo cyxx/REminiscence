@@ -31,7 +31,7 @@ struct ModPlayer {
 	void play(int num);
 	void stop();
 
-	static bool mixCallback(void *param, int8_t *buf, int len);
+	static bool mixCallback(void *param, int16_t *buf, int len);
 };
 
 #endif // MOD_PLAYER_H__

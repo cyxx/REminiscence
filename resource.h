@@ -90,6 +90,7 @@ struct Resource {
 	enum {
 		NUM_SFXS = 66,
 		NUM_BANK_BUFFERS = 50,
+		NUM_CUTSCENE_TEXTS = 117,
 		NUM_SPRITES = 1287
 	};
 
@@ -135,6 +136,7 @@ struct Resource {
 	uint8_t _numSfx;
 	uint8_t *_cmd;
 	uint8_t *_pol;
+	uint8_t *_cineStrings[NUM_CUTSCENE_TEXTS];
 	uint8_t *_cine_off;
 	uint8_t *_cine_txt;
 	char **_extTextsTable;
@@ -209,7 +211,7 @@ struct Resource {
 			const int offset = READ_BE_UINT16(_cine_off + num * 2);
 			return _cine_txt + offset;
 		}
-		return 0;
+		return (num >= 0 && num < NUM_CUTSCENE_TEXTS) ? _cineStrings[num] : 0;
 	}
 	const char *getMenuString(int num) {
 		return (num >= 0 && num < LocaleData::LI_NUM) ? _textsTable[num] : "";

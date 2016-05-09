@@ -127,7 +127,8 @@ void SfxPlayer::mixSamples(int8_t *buf, int samplesLen) {
 				}
 				while (count--) {
 					const int out = si->getPCM(pos >> FRAC_BITS);
-					Mixer::addclamp(*mixbuf++, out * si->vol / 64);
+					*mixbuf = ADDC_S8(*mixbuf, out * si->vol / 64);
+					++mixbuf;
 					pos += deltaPos;
 				}
 			}
@@ -138,7 +139,6 @@ void SfxPlayer::mixSamples(int8_t *buf, int samplesLen) {
 
 bool SfxPlayer::mix(int8_t *buf, int len) {
 	if (_playing) {
-		memset(buf, 0, len);
 		const int samplesPerTick = _mix->getSampleRate() / 50;
 		while (len != 0) {
 			if (_samplesLeft == 0) {
@@ -158,6 +158,12 @@ bool SfxPlayer::mix(int8_t *buf, int len) {
 	return _playing;
 }
 
-bool SfxPlayer::mixCallback(void *param, int8_t *buf, int len) {
-	return ((SfxPlayer *)param)->mix(buf, len);
+bool SfxPlayer::mixCallback(void *param, int16_t *samples, int len) {
+	int8_t buf[len];
+	memset(buf, 0, sizeof(buf));
+	const bool ret = ((SfxPlayer *)param)->mix(buf, len);
+	for (int i = 0; i < len; ++i) {
+		samples[i] = buf[i] << 8;
+	}
+	return ret;
 }

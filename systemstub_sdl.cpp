@@ -9,26 +9,31 @@
 #include "systemstub.h"
 #include "util.h"
 
-struct SystemStub_SDL : SystemStub {
-	enum {
-		MAX_BLIT_RECTS = 200,
-		SOUND_SAMPLE_RATE = 22050,
-		JOYSTICK_COMMIT_VALUE = 3200
-	};
+static const int kAudioHz = 22050;
+static const int kJoystickCommitValue = 3200;
 
+struct SystemStub_SDL : SystemStub {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_Window *_window;
+	SDL_Renderer *_renderer;
+	SDL_Texture *_texture;
+#else
+	SDL_Surface *_surface;
+#endif
+	SDL_PixelFormat *_fmt;
+	const char *_caption;
 	uint16_t *_screenBuffer;
 	uint16_t *_fadeScreenBuffer;
-	SDL_Surface *_screenSurface;
 	bool _fullscreen;
-	int _currentScaler;
+	int _scaler;
 	uint8_t _overscanColor;
 	uint16_t _pal[256];
 	int _screenW, _screenH;
 	SDL_Joystick *_joystick;
-	SDL_Rect _blitRects[MAX_BLIT_RECTS];
+	SDL_Rect _blitRects[200];
 	int _numBlitRects;
 	bool _fadeOnUpdateScreen;
-	void (*_audioCbProc)(void *, int8_t *, int);
+	void (*_audioCbProc)(void *, int16_t *, int);
 	void *_audioCbData;
 	int _screenshot;
 
@@ -53,11 +58,11 @@ struct SystemStub_SDL : SystemStub {
 	virtual void unlockAudio();
 
 	void processEvent(const SDL_Event &ev, bool &paused);
-	void prepareGfxMode();
-	void cleanupGfxMode();
-	void switchGfxMode(bool fullscreen, uint8_t scaler);
-	void flipGfx();
-	void forceGfxRedraw();
+	void prepareGraphics();
+	void cleanupGraphics();
+	void changeGraphics(bool fullscreen, uint8_t scaler);
+	void flipGraphics();
+	void forceGraphicsRedraw();
 	void drawRect(SDL_Rect *rect, uint8_t color, uint16_t *dst, uint16_t dstPitch);
 };
 
@@ -68,14 +73,15 @@ SystemStub *SystemStub_SDL_create() {
 void SystemStub_SDL::init(const char *title, int w, int h, int scaler, bool fullscreen) {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 	SDL_ShowCursor(SDL_DISABLE);
-	SDL_WM_SetCaption(title, NULL);
+	_caption = title;
 	memset(&_pi, 0, sizeof(_pi));
 	_screenBuffer = 0;
 	_fadeScreenBuffer = 0;
 	_fadeOnUpdateScreen = false;
 	_fullscreen = fullscreen;
-	_currentScaler = scaler;
+	_scaler = scaler;
 	memset(_pal, 0, sizeof(_pal));
+	_screenW = _screenH = 0;
 	setScreenSize(w, h);
 	_joystick = NULL;
 	if (SDL_NumJoysticks() > 0) {
@@ -85,9 +91,10 @@ void SystemStub_SDL::init(const char *title, int w, int h, int scaler, bool full
 }
 
 void SystemStub_SDL::destroy() {
-	cleanupGfxMode();
-	if (SDL_JoystickOpened(0)) {
+	cleanupGraphics();
+	if (_joystick) {
 		SDL_JoystickClose(_joystick);
+		_joystick = 0;
 	}
 	SDL_Quit();
 }
@@ -108,7 +115,7 @@ void SystemStub_SDL::setScreenSize(int w, int h) {
 	}
 	_screenW = w;
 	_screenH = h;
-	prepareGfxMode();
+	prepareGraphics();
 }
 
 void SystemStub_SDL::setPalette(const uint8_t *pal, int n) {
@@ -117,16 +124,16 @@ void SystemStub_SDL::setPalette(const uint8_t *pal, int n) {
 		uint8_t r = pal[i * 3 + 0];
 		uint8_t g = pal[i * 3 + 1];
 		uint8_t b = pal[i * 3 + 2];
-		_pal[i] = SDL_MapRGB(_screenSurface->format, r, g, b);
+		_pal[i] = SDL_MapRGB(_fmt, r, g, b);
 	}
 }
 
 void SystemStub_SDL::setPaletteEntry(int i, const Color *c) {
-	_pal[i] = SDL_MapRGB(_screenSurface->format, c->r, c->g, c->b);
+	_pal[i] = SDL_MapRGB(_fmt, c->r, c->g, c->b);
 }
 
 void SystemStub_SDL::getPaletteEntry(int i, Color *c) {
-	SDL_GetRGB(_pal[i], _screenSurface->format, &c->r, &c->g, &c->b);
+	SDL_GetRGB(_pal[i], _fmt, &c->r, &c->g, &c->b);
 }
 
 void SystemStub_SDL::setOverscanColor(int i) {
@@ -134,7 +141,7 @@ void SystemStub_SDL::setOverscanColor(int i) {
 }
 
 void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch) {
-	if (_numBlitRects >= MAX_BLIT_RECTS) {
+	if (_numBlitRects >= ARRAYSIZE(_blitRects)) {
 		warning("SystemStub_SDL::copyRect() Too many blit rects, you may experience graphical glitches");
 	} else {
 		// extend the dirty region by 1 pixel for scalers accessing 'outer' pixels
@@ -211,24 +218,39 @@ static uint16_t blendPixel16(uint16_t colorSrc, uint16_t colorDst, uint32_t mask
 }
 
 void SystemStub_SDL::updateScreen(int shakeOffset) {
-	const int mul = _scalers[_currentScaler].factor;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	// _fadeOnUpdateScreen
+	SDL_UpdateTexture(_texture, 0, _screenBuffer + _screenW + 1, _screenW * sizeof(uint16_t));
+	SDL_RenderClear(_renderer);
+	if (shakeOffset != 0) {
+		SDL_Rect r;
+		r.x = 0;
+		r.y = shakeOffset * _scalers[_scaler].factor;
+		SDL_GetRendererOutputSize(_renderer, &r.w, &r.h);
+		r.h -= r.y;
+		SDL_RenderCopy(_renderer, _texture, 0, &r);
+	} else {
+		SDL_RenderCopy(_renderer, _texture, 0, 0);
+	}
+	SDL_RenderPresent(_renderer);
+#else
+	const int mul = _scalers[_scaler].factor;
 	if (_fadeOnUpdateScreen) {
 		const int tempScreenBufferSize = (_screenH + 2) * (_screenW + 2) * sizeof(uint16_t);
 		uint16_t *tempScreenBuffer = (uint16_t *)calloc(tempScreenBufferSize, 1);
 		assert(tempScreenBuffer);
-		const SDL_PixelFormat *pf = _screenSurface->format;
-		const uint32_t colorMask = (pf->Gmask << 16) | (pf->Rmask | pf->Bmask);
+		const uint32_t colorMask = (_fmt->Gmask << 16) | (_fmt->Rmask | _fmt->Bmask);
 		const uint16_t *screenBuffer = _screenBuffer + _screenW + 1;
 		for (int i = 1; i <= 16; ++i) {
 			for (int x = 0; x < _screenH * _screenW; ++x) {
 				tempScreenBuffer[_screenW + 1 + x] = blendPixel16(_fadeScreenBuffer[x], screenBuffer[x], colorMask, i);
 			}
-			SDL_LockSurface(_screenSurface);
-			uint16_t *dst = (uint16_t *)_screenSurface->pixels;
+			SDL_LockSurface(_surface);
+			uint16_t *dst = (uint16_t *)_surface->pixels;
 			const uint16_t *src = tempScreenBuffer + _screenW + 1;
-			(*_scalers[_currentScaler].proc)(dst, _screenSurface->pitch, src, _screenW, _screenW, _screenH);
-			SDL_UnlockSurface(_screenSurface);
-			SDL_UpdateRect(_screenSurface, 0, 0, _screenW * mul, _screenH * mul);
+			(*_scalers[_scaler].proc)(dst, _surface->pitch, src, _screenW, _screenW, _screenH);
+			SDL_UnlockSurface(_surface);
+			SDL_UpdateRect(_surface, 0, 0, _screenW * mul, _screenH * mul);
 			SDL_Delay(30);
 		}
 		free(tempScreenBuffer);
@@ -240,35 +262,36 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 			SDL_Rect *br = &_blitRects[i];
 			int dx = br->x * mul;
 			int dy = br->y * mul;
-			SDL_LockSurface(_screenSurface);
-			uint16_t *dst = (uint16_t *)_screenSurface->pixels + dy * _screenSurface->pitch / 2 + dx;
+			SDL_LockSurface(_surface);
+			uint16_t *dst = (uint16_t *)_surface->pixels + dy * _surface->pitch / 2 + dx;
 			const uint16_t *src = _screenBuffer + (br->y + 1) * _screenW + (br->x + 1);
-			(*_scalers[_currentScaler].proc)(dst, _screenSurface->pitch, src, _screenW, br->w, br->h);
-			SDL_UnlockSurface(_screenSurface);
+			(*_scalers[_scaler].proc)(dst, _surface->pitch, src, _screenW, br->w, br->h);
+			SDL_UnlockSurface(_surface);
 			br->x *= mul;
 			br->y *= mul;
 			br->w *= mul;
 			br->h *= mul;
 		}
-		SDL_UpdateRects(_screenSurface, _numBlitRects, _blitRects);
+		SDL_UpdateRects(_surface, _numBlitRects, _blitRects);
 	} else {
-		SDL_LockSurface(_screenSurface);
+		SDL_LockSurface(_surface);
 		int w = _screenW;
 		int h = _screenH - shakeOffset;
-		uint16_t *dst = (uint16_t *)_screenSurface->pixels + shakeOffset * mul * _screenSurface->pitch / 2;
+		uint16_t *dst = (uint16_t *)_surface->pixels + shakeOffset * mul * _surface->pitch / 2;
 		const uint16_t *src = _screenBuffer + _screenW + 1;
-		(*_scalers[_currentScaler].proc)(dst, _screenSurface->pitch, src, _screenW, w, h);
-		SDL_UnlockSurface(_screenSurface);
+		(*_scalers[_scaler].proc)(dst, _surface->pitch, src, _screenW, w, h);
+		SDL_UnlockSurface(_surface);
 
 		SDL_Rect r;
 		r.x = 0;
 		r.y = 0;
 		r.w = _screenW * mul;
 		r.h = shakeOffset * mul;
-		SDL_FillRect(_screenSurface, &r, _pal[_overscanColor]);
+		SDL_FillRect(_surface, &r, _pal[_overscanColor]);
 
-		SDL_UpdateRect(_screenSurface, 0, 0, _screenW * mul, _screenH * mul);
+		SDL_UpdateRect(_surface, 0, 0, _screenW * mul, _screenH * mul);
 	}
+#endif
 	_numBlitRects = 0;
 }
 
@@ -294,13 +317,26 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 		case SDL_QUIT:
 			_pi.quit = true;
 			break;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	case SDL_WINDOWEVENT:
+		switch (ev.window.event) {
+		case SDL_WINDOWEVENT_FOCUS_GAINED:
+		case SDL_WINDOWEVENT_FOCUS_LOST:
+			paused = (ev.window.event == SDL_WINDOWEVENT_FOCUS_LOST);
+			SDL_PauseAudio(paused);
+			break;
+		}
+		break;
+#else
 		case SDL_ACTIVEEVENT:
 			if (ev.active.state & SDL_APPINPUTFOCUS) {
 				paused = ev.active.gain == 0;
 				SDL_PauseAudio(paused ? 1 : 0);
 			}
 			break;
-		case SDL_JOYHATMOTION:
+#endif
+	case SDL_JOYHATMOTION:
+		if (_joystick) {
 			_pi.dirMask = 0;
 			if (ev.jhat.value & SDL_HAT_UP) {
 				_pi.dirMask |= PlayerInput::DIR_UP;
@@ -314,42 +350,32 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 			if (ev.jhat.value & SDL_HAT_RIGHT) {
 				_pi.dirMask |= PlayerInput::DIR_RIGHT;
 			}
-			break;
-		case SDL_JOYAXISMOTION:
+		}
+		break;
+	case SDL_JOYAXISMOTION:
+		if (_joystick) {
 			switch (ev.jaxis.axis) {
 			case 0:
-				if (ev.jaxis.value > JOYSTICK_COMMIT_VALUE) {
+				_pi.dirMask &= ~(PlayerInput::DIR_RIGHT | PlayerInput::DIR_LEFT);
+				if (ev.jaxis.value > kJoystickCommitValue) {
 					_pi.dirMask |= PlayerInput::DIR_RIGHT;
-					if (_pi.dirMask & PlayerInput::DIR_LEFT) {
-						_pi.dirMask &= ~PlayerInput::DIR_LEFT;
-					}
-				} else if (ev.jaxis.value < -JOYSTICK_COMMIT_VALUE) {
+				} else if (ev.jaxis.value < -kJoystickCommitValue) {
 					_pi.dirMask |= PlayerInput::DIR_LEFT;
-					if (_pi.dirMask & PlayerInput::DIR_RIGHT) {
-						_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
-					}
-				} else {
-					_pi.dirMask &= ~(PlayerInput::DIR_RIGHT | PlayerInput::DIR_LEFT);
 				}
 				break;
 			case 1:
-				if (ev.jaxis.value > JOYSTICK_COMMIT_VALUE) {
+				_pi.dirMask &= ~(PlayerInput::DIR_UP | PlayerInput::DIR_DOWN);
+				if (ev.jaxis.value > kJoystickCommitValue) {
 					_pi.dirMask |= PlayerInput::DIR_DOWN;
-					if (_pi.dirMask & PlayerInput::DIR_UP) {
-						_pi.dirMask &= ~PlayerInput::DIR_UP;
-					}
-				} else if (ev.jaxis.value < -JOYSTICK_COMMIT_VALUE) {
+				} else if (ev.jaxis.value < -kJoystickCommitValue) {
 					_pi.dirMask |= PlayerInput::DIR_UP;
-					if (_pi.dirMask & PlayerInput::DIR_DOWN) {
-						_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-					}
-				} else {
-					_pi.dirMask &= ~(PlayerInput::DIR_UP | PlayerInput::DIR_DOWN);
 				}
 				break;
 			}
-			break;
-		case SDL_JOYBUTTONDOWN:
+		}
+		break;
+	case SDL_JOYBUTTONDOWN:
+		if (_joystick) {
 			switch (ev.jbutton.button) {
 			case 0:
 				_pi.space = true;
@@ -364,8 +390,10 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 				_pi.backspace = true;
 				break;
 			}
-			break;
-		case SDL_JOYBUTTONUP:
+		}
+		break;
+	case SDL_JOYBUTTONUP:
+		if (_joystick) {
 			switch (ev.jbutton.button) {
 			case 0:
 				_pi.space = false;
@@ -380,7 +408,8 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 				_pi.backspace = false;
 				break;
 			}
-			break;
+		}
+		break;
 		case SDL_KEYUP:
 			switch (ev.key.keysym.sym) {
 			case SDLK_LEFT:
@@ -415,23 +444,26 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 		case SDL_KEYDOWN:
 			if (ev.key.keysym.mod & KMOD_ALT) {
 				if (ev.key.keysym.sym == SDLK_RETURN) {
-					switchGfxMode(!_fullscreen, _currentScaler);
+					changeGraphics(!_fullscreen, _scaler);
 				} else if (ev.key.keysym.sym == SDLK_KP_PLUS || ev.key.keysym.sym == SDLK_PAGEUP) {
-					uint8_t s = _currentScaler + 1;
+					uint8_t s = _scaler + 1;
 					if (s < NUM_SCALERS) {
-						switchGfxMode(_fullscreen, s);
+						changeGraphics(_fullscreen, s);
 					}
 				} else if (ev.key.keysym.sym == SDLK_KP_MINUS || ev.key.keysym.sym == SDLK_PAGEDOWN) {
-					int8_t s = _currentScaler - 1;
-					if (_currentScaler > 0) {
-						switchGfxMode(_fullscreen, s);
+					int8_t s = _scaler - 1;
+					if (_scaler > 0) {
+						changeGraphics(_fullscreen, s);
 					}
 				} else if (ev.key.keysym.sym == SDLK_s) {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+#else
 					char name[32];
 					snprintf(name, sizeof(name), "screenshot-%03d.bmp", _screenshot);
-					SDL_SaveBMP(_screenSurface, name);
+					SDL_SaveBMP(_surface, name);
 					++_screenshot;
 					debug(DBG_INFO, "Written '%s'", name);
+#endif
 				}
 				break;
 			} else if (ev.key.keysym.mod & KMOD_CTRL) {
@@ -443,7 +475,7 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 					_pi.dbgMask ^= PlayerInput::DF_SETLIFE;
 				} else if (ev.key.keysym.sym == SDLK_m) {
 					_pi.mirrorMode = !_pi.mirrorMode;
-					flipGfx();
+					flipGraphics();
 				} else if (ev.key.keysym.sym == SDLK_s) {
 					_pi.save = true;
 				} else if (ev.key.keysym.sym == SDLK_l) {
@@ -506,22 +538,20 @@ uint32_t SystemStub_SDL::getTimeStamp() {
 	return SDL_GetTicks();
 }
 
-static void mixAudioS8ToU8(void *param, uint8_t *buf, int len) {
+static void mixAudioS16(void *param, uint8_t *buf, int len) {
 	SystemStub_SDL *stub = (SystemStub_SDL *)param;
-	stub->_audioCbProc(stub->_audioCbData, (int8_t *)buf, len);
-	for (int i = 0; i < len; ++i) {
-		buf[i] ^= 0x80;
-	}
+	memset(buf, 0, len);
+	stub->_audioCbProc(stub->_audioCbData, (int16_t *)buf, len / 2);
 }
 
 void SystemStub_SDL::startAudio(AudioCallback callback, void *param) {
 	SDL_AudioSpec desired, obtained;
 	memset(&desired, 0, sizeof(desired));
-	desired.freq = SOUND_SAMPLE_RATE;
-	desired.format = AUDIO_U8;
+	desired.freq = kAudioHz;
+	desired.format = AUDIO_S16SYS;
 	desired.channels = 1;
 	desired.samples = 2048;
-	desired.callback = mixAudioS8ToU8;
+	desired.callback = mixAudioS16;
 	desired.userdata = this;
 	if (SDL_OpenAudio(&desired, &obtained) == 0) {
 		_audioCbProc = callback;
@@ -537,7 +567,7 @@ void SystemStub_SDL::stopAudio() {
 }
 
 uint32_t SystemStub_SDL::getOutputSampleRate() {
-	return SOUND_SAMPLE_RATE;
+	return kAudioHz;
 }
 
 void SystemStub_SDL::lockAudio() {
@@ -548,17 +578,49 @@ void SystemStub_SDL::unlockAudio() {
 	SDL_UnlockAudio();
 }
 
-void SystemStub_SDL::prepareGfxMode() {
-	int w = _screenW * _scalers[_currentScaler].factor;
-	int h = _screenH * _scalers[_currentScaler].factor;
-	_screenSurface = SDL_SetVideoMode(w, h, 16, _fullscreen ? (SDL_FULLSCREEN | SDL_HWSURFACE) : SDL_HWSURFACE);
-	if (!_screenSurface) {
-		error("SystemStub_SDL::prepareGfxMode() Unable to allocate _screen buffer");
+void SystemStub_SDL::prepareGraphics() {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	switch (_scaler) {
+	case SCALER_SCALE_2X:
+	case SCALER_SCALE_3X:
+	case SCALER_SCALE_4X:
+		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+		break;
+	default:
+		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); // nearest pixel sampling
+		break;
 	}
-	forceGfxRedraw();
+	const int windowW = _screenW * _scalers[_scaler].factor;
+	const int windowH = _screenH * _scalers[_scaler].factor;
+	int flags = 0;
+	if (_fullscreen) {
+		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+	}
+	_window = SDL_CreateWindow(_caption, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowW, windowH, flags);
+	_renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED);
+	SDL_RenderSetLogicalSize(_renderer, windowW, windowH);
+        static const uint32_t kPixelFormat = SDL_PIXELFORMAT_RGB565;
+	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _screenW, _screenH);
+	_fmt = SDL_AllocFormat(kPixelFormat);
+#else
+	SDL_WM_SetCaption(_caption, NULL);
+	const int w = _screenW * _scalers[_scaler].factor;
+	const int h = _screenH * _scalers[_scaler].factor;
+	int flags = SDL_HWSURFACE;
+	if (_fullscreen) {
+		flags |= SDL_FULLSCREEN;
+	}
+	static const int kBitDepth = 16;
+	_surface = SDL_SetVideoMode(w, h, kBitDepth, flags);
+	if (!_surface) {
+		error("SystemStub_SDL::prepareGraphics() Unable to allocate _screen buffer");
+	}
+	_fmt = _surface->format;
+#endif
+	forceGraphicsRedraw();
 }
 
-void SystemStub_SDL::cleanupGfxMode() {
+void SystemStub_SDL::cleanupGraphics() {
 	if (_screenBuffer) {
 		free(_screenBuffer);
 		_screenBuffer = 0;
@@ -567,21 +629,56 @@ void SystemStub_SDL::cleanupGfxMode() {
 		free(_fadeScreenBuffer);
 		_fadeScreenBuffer = 0;
 	}
-	if (_screenSurface) {
-		// freed by SDL_Quit()
-		_screenSurface = 0;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	if (_window) {
+		SDL_DestroyWindow(_window);
+		_window = 0;
 	}
+	if (_renderer) {
+		SDL_DestroyRenderer(_renderer);
+		_renderer = 0;
+	}
+	if (_fmt) {
+		SDL_FreeFormat(_fmt);
+		_fmt = 0;
+	}
+#else
+	if (_surface) {
+		// freed by SDL_Quit()
+		_surface = 0;
+	}
+#endif
 }
 
-void SystemStub_SDL::switchGfxMode(bool fullscreen, uint8_t scaler) {
-	SDL_FreeSurface(_screenSurface);
+void SystemStub_SDL::changeGraphics(bool fullscreen, uint8_t scaler) {
+	if (_fadeScreenBuffer) {
+		free(_fadeScreenBuffer);
+		_fadeScreenBuffer = 0;
+	}
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	if (_window) {
+		SDL_DestroyWindow(_window);
+		_window = 0;
+	}
+	if (_renderer) {
+		SDL_DestroyRenderer(_renderer);
+		_renderer = 0;
+	}
+	if (_fmt) {
+		SDL_FreeFormat(_fmt);
+		_fmt = 0;
+	}
+#else
+	SDL_FreeSurface(_surface);
+	_surface = 0;
+#endif
 	_fullscreen = fullscreen;
-	_currentScaler = scaler;
-	prepareGfxMode();
-	forceGfxRedraw();
+	_scaler = scaler;
+	prepareGraphics();
+	forceGraphicsRedraw();
 }
 
-void SystemStub_SDL::flipGfx() {
+void SystemStub_SDL::flipGraphics() {
 	uint16_t scanline[256];
 	assert(_screenW <= 256);
 	uint16_t *p = _screenBuffer + _screenW + 1;
@@ -593,10 +690,10 @@ void SystemStub_SDL::flipGfx() {
 		memcpy(p, scanline, _screenW * sizeof(uint16_t));
 		p += _screenW;
 	}
-	forceGfxRedraw();
+	forceGraphicsRedraw();
 }
 
-void SystemStub_SDL::forceGfxRedraw() {
+void SystemStub_SDL::forceGraphicsRedraw() {
 	_numBlitRects = 1;
 	_blitRects[0].x = 0;
 	_blitRects[0].y = 0;

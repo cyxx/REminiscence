@@ -28,7 +28,7 @@ struct SeqDemuxer {
 	void fillBuffer(int num, int offset, int size);
 	void clearBuffer(int num);
 	void readPalette(uint8_t *dst);
-	void readAudioS8(uint8_t *dst);
+	void readAudio(int16_t *dst);
 
 	int _frameOffset;
 	int _audioDataOffset;
@@ -55,7 +55,7 @@ struct SeqPlayer {
 	static const char *_namesTable[];
 
 	struct SoundBufferQueue {
-		uint8_t *data;
+		int16_t *data;
 		int size;
 		int read;
 		SoundBufferQueue *next;
@@ -66,8 +66,8 @@ struct SeqPlayer {
 
 	void setBackBuffer(uint8_t *buf) { _buf = buf; }
 	void play(File *f);
-	bool mix(int8_t *buf, int len);
-	static bool mixCallback(void *param, int8_t *buf, int len);
+	bool mix(int16_t *buf, int len);
+	static bool mixCallback(void *param, int16_t *buf, int len);
 
 	SystemStub *_stub;
 	uint8_t *_buf;

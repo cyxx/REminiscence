@@ -1,12 +1,12 @@
 
 SDL_CFLAGS = `sdl-config --cflags`
 SDL_LIBS = `sdl-config --libs`
-VORBIS_LIBS = -lvorbisidec
 MODPLUG_LIBS = -lmodplug
+# TREMOR_LIBS = -lvorbisidec -logg
 ZLIB_LIBS = -lz
 
 CXX := clang++
-CXXFLAGS := -Wall -MMD $(SDL_CFLAGS) -DUSE_ZLIB # -DUSE_MODPLUG
+CXXFLAGS := -Wall -MMD $(SDL_CFLAGS) -DUSE_MODPLUG -DUSE_ZLIB # -DUSE_TREMOR
 
 SRCS = collision.cpp cutscene.cpp file.cpp fs.cpp game.cpp graphics.cpp main.cpp menu.cpp \
 	mixer.cpp mod_player.cpp ogg_player.cpp piege.cpp resource.cpp resource_aba.cpp \
@@ -16,7 +16,7 @@ SRCS = collision.cpp cutscene.cpp file.cpp fs.cpp game.cpp graphics.cpp main.cpp
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(SRCS:.cpp=.d)
 
-LIBS = $(SDL_LIBS) $(VORBIS_LIBS) $(MODPLUG_LIBS) $(ZLIB_LIBS)
+LIBS = $(SDL_LIBS) $(MODPLUG_LIBS) $(TREMOR_LIBS) $(ZLIB_LIBS)
 
 rs: $(OBJS)
 	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)

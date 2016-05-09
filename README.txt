@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.3.0 ($date)
+Release version: 0.3.1
 -------------------------------------------------------------------------------
 
 
@@ -15,7 +15,8 @@ game can be found at [1], [2] and [3].
 Compiling:
 ----------
 
-Update the defines in the Makefile if needed. The SDL and zlib libraries are required.
+Update the defines in the Makefile if needed. The SDL, zlib and modplug
+libraries are required.
 
 
 Data Files:
@@ -64,6 +65,10 @@ directory. These paths can be changed using command line switches :
     Usage: rs [OPTIONS]...
     --datapath=PATH   Path to data files (default 'DATA')
     --savepath=PATH   Path to save files (default '.')
+    --levelnum=NUM    Level to start from (default '0')
+    --fullscreen      Fullscreen display
+    --scaler=INDEX    Graphics scaler
+    --language=LANG   Language (fr,en,de,sp,it)
 
 In-game hotkeys :
 

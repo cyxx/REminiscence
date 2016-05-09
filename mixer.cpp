@@ -101,12 +101,19 @@ void Mixer::playMusic(int num) {
 			return;
 		}
 	}
+	if (_musicType == MT_OGG && isMusicSfx(num)) { // do not play level action music with background music
+		return;
+	}
 	if (isMusicSfx(num)) { // level action sequence
 		_sfx.play(num);
-		_musicType = MT_SFX;
+		if (_sfx._playing) {
+			_musicType = MT_SFX;
+		}
 	} else { // cutscene
 		_mod.play(num);
-		_musicType = MT_MOD;
+		if (_mod._playing) {
+			_musicType = MT_MOD;
+		}
 	}
 }
 
@@ -119,8 +126,7 @@ void Mixer::stopMusic() {
 		_mod.stop();
 		break;
 	case MT_OGG:
-		_ogg.stopTrack();
-		_musicTrack = -1;
+		_ogg.pauseTrack();
 		break;
 	case MT_SFX:
 		_sfx.stop();
@@ -133,20 +139,9 @@ void Mixer::stopMusic() {
 	}
 }
 
-static void nr(const int8_t *in, int len, int8_t *out) {
-	static int prev = 0;
-	for (int i = 0; i < len; ++i) {
-		const int vnr = in[i] >> 1;
-		out[i] = vnr + prev;
-		prev = vnr;
-	}
-}
-
-void Mixer::mix(int8_t *out, int len) {
-	int8_t buf[len];
-	memset(buf, 0, len);
+void Mixer::mix(int16_t *out, int len) {
 	if (_premixHook) {
-		if (!_premixHook(_premixHookData, buf, len)) {
+		if (!_premixHook(_premixHookData, out, len)) {
 			_premixHook = 0;
 			_premixHookData = 0;
 		}
@@ -160,24 +155,13 @@ void Mixer::mix(int8_t *out, int len) {
 					break;
 				}
 				const int sample = ch->chunk.getPCM(ch->chunkPos >> FRAC_BITS);
-				addclamp(buf[pos], sample * ch->volume / Mixer::MAX_VOLUME);
+				out[pos] = ADDC_S16(out[pos], (sample * ch->volume / Mixer::MAX_VOLUME) << 8);
 				ch->chunkPos += ch->chunkInc;
 			}
 		}
 	}
-	nr(buf, len, out);
 }
 
-void Mixer::addclamp(int8_t& a, int b) {
-	int add = a + b;
-	if (add < -128) {
-		add = -128;
-	} else if (add > 127) {
-		add = 127;
-	}
-	a = add;
-}
-
-void Mixer::mixCallback(void *param, int8_t *buf, int len) {
+void Mixer::mixCallback(void *param, int16_t *buf, int len) {
 	((Mixer *)param)->mix(buf, len);
 }

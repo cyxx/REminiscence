@@ -13,6 +13,8 @@ struct Resource;
 struct SystemStub;
 
 struct Video {
+	typedef void (Video::*drawCharFunc)(uint8_t *, int, const uint8_t *, uint8_t, uint8_t);
+
 	enum {
 		GAMESCREEN_W = 256,
 		GAMESCREEN_H = 224,
@@ -44,6 +46,7 @@ struct Video {
 	uint8_t *_screenBlocks;
 	bool _fullRefresh;
 	uint8_t _shakeOffset;
+	drawCharFunc _drawChar;
 
 	Video(Resource *res, SystemStub *stub);
 	~Video();

@@ -269,28 +269,65 @@ void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
 	error("Cannot load '%s'", _entryName);
 }
 
-void Resource::load_CINE() {
-	const char *baseName = 0;
-	switch (_lang) {
+static const char *getCineName(Language lang, ResourceType type) {
+	switch (lang) {
 	case LANG_FR:
-		baseName = "FR_CINE";
-		break;
-	case LANG_EN:
-		baseName = "ENGCINE";
-		break;
+		if (type == kResourceTypeAmiga) {
+			return "FR";
+		}
+		return "FR_";
 	case LANG_DE:
-		baseName = "GERCINE";
-		break;
+		return "GER";
 	case LANG_SP:
-		baseName = "SPACINE";
-		break;
+		return "SPA";
 	case LANG_IT:
-		baseName = "ITACINE";
-		break;
+		return "ITA";
+	case LANG_EN:
+	default:
+		return "ENG";
 	}
-	debug(DBG_RES, "Resource::load_CINE('%s')", baseName);
+}
+
+void Resource::load_CINE() {
+	const char *prefix = getCineName(_lang, _type);
+	debug(DBG_RES, "Resource::load_CINE('%s')", prefix);
+	if (_type == kResourceTypeAmiga) {
+		if (_isDemo) {
+			// file not present in demo data files
+			return;
+		}
+		if (_cine_txt == 0) {
+			snprintf(_entryName, sizeof(_entryName), "%sCINE.TXT", prefix);
+			File f;
+			if (f.open(_entryName, "rb", _fs)) {
+				const int len = f.size();
+				_cine_txt = (uint8_t *)malloc(len + 1);
+				if (!_cine_txt) {
+					error("Unable to allocate cinematics text data");
+				}
+				f.read(_cine_txt, len);
+				if (f.ioErr()) {
+					error("I/O error when reading '%s'", _entryName);
+				}
+				_cine_txt[len] = 0;
+				uint8_t *p = _cine_txt;
+				for (int i = 0; i < NUM_CUTSCENE_TEXTS; ++i) {
+					_cineStrings[i] = p;
+					uint8_t *sep = (uint8_t *)memchr(p, '\n', &_cine_txt[len] - p);
+					if (!sep) {
+						break;
+					}
+					p = sep + 1;
+				}
+			}
+			if (!_cine_txt) {
+				error("Cannot load '%s'", _entryName);
+			}
+		}
+		return;
+	}
 	if (_cine_off == 0) {
-		snprintf(_entryName, sizeof(_entryName), "%s.BIN", baseName);
+		snprintf(_entryName, sizeof(_entryName), "%sCINE.BIN", prefix);
 		File f;
 		if (f.open(_entryName, "rb", _fs)) {
 			int len = f.size();
@@ -310,7 +347,7 @@ void Resource::load_CINE() {
 		}
 	}
 	if (_cine_txt == 0) {
-		snprintf(_entryName, sizeof(_entryName), "%s.TXT", baseName);
+		snprintf(_entryName, sizeof(_entryName), "%sCINE.TXT", prefix);
 		File f;
 		if (f.open(_entryName, "rb", _fs)) {
 			int len = f.size();

@@ -25,6 +25,15 @@ Video::Video(Resource *res, SystemStub *stub)
 	_charFrontColor = 0;
 	_charTransparentColor = 0;
 	_charShadowColor = 0;
+	_drawChar = 0;
+	switch (_res->_type) {
+	case kResourceTypeAmiga:
+		_drawChar = &Video::AMIGA_drawStringChar;
+		break;
+	case kResourceTypeDOS:
+		_drawChar = &Video::PC_drawStringChar;
+		break;
+	}
 }
 
 Video::~Video() {
@@ -150,6 +159,12 @@ void Video::setPaletteSlotLE(int palSlot, const uint8_t *palData) {
 void Video::setTextPalette() {
 	debug(DBG_VIDEO, "Video::setTextPalette()");
 	setPaletteSlotLE(0xE, _textPal);
+	if (_res->isAmiga()) {
+		Color c;
+		c.r = c.g = 0xEE;
+		c.b = 0;
+		_stub->setPaletteEntry(0xE7, &c);
+	}
 }
 
 void Video::setPalette0xF() {
@@ -313,6 +328,35 @@ static void AMIGA_planar8(uint8_t *dst, int w, int h, const uint8_t *src) {
 	}
 }
 
+static void AMIGA_planar24(uint8_t *dst, int w, int h, const uint8_t *src) {
+	assert(w == 24);
+	for (int y = 0; y < h; ++y) {
+		for (int i = 0; i < 16; ++i) {
+			int color = 0;
+			const int mask = 1 << (15 - i);
+			for (int bit = 0; bit < 4; ++bit) {
+				if (READ_BE_UINT16(src + bit * 2) & mask) {
+					color |= 1 << bit;
+				}
+			}
+			dst[i] = color;
+		}
+		src += 8;
+		for (int i = 0; i < 8; ++i) {
+			int color = 0;
+			const int mask = 1 << (7 - i);
+			for (int bit = 0; bit < 4; ++bit) {
+				if (src[bit] & mask) {
+					color |= 1 << bit;
+				}
+			}
+			dst[16 + i] = color;
+		}
+		src += 4;
+		dst += w;
+	}
+}
+
 static void AMIGA_planar_mask(uint8_t *dst, int x0, int y0, int w, int h, uint8_t *src, uint8_t *mask, int size) {
 	dst += y0 * 256 + x0;
 	for (int y = 0; y < h; ++y) {
@@ -341,22 +385,23 @@ static void AMIGA_planar_mask(uint8_t *dst, int x0, int y0, int w, int h, uint8_
 }
 
 static void AMIGA_decodeRle(uint8_t *dst, const uint8_t *src) {
-	int code = READ_BE_UINT16(src) & 0x7FFF; src += 2;
-	const uint8_t *end = src + code;
-	do {
-		code = *src++;
+	const int size = READ_BE_UINT16(src) & 0x7FFF; src += 2;
+	for (int i = 0; i < size; ) {
+		int code = src[i++];
 		if ((code & 0x80) == 0) {
 			++code;
-			memcpy(dst, src, code);
-			src += code;
+			if (i + code > size) {
+				code = size - i;
+			}
+			memcpy(dst, &src[i], code);
+			i += code;
 		} else {
 			code = 1 - ((int8_t)code);
-			memset(dst, *src, code);
-			++src;
+			memset(dst, src[i], code);
+			++i;
 		}
 		dst += code;
-	} while (src < end);
-	assert(src == end);
+	}
 }
 
 static void PC_drawTileMask(uint8_t *dst, int x0, int y0, int w, int h, uint8_t *m, uint8_t *p, int size) {
@@ -615,12 +660,17 @@ void Video::AMIGA_decodeLev(int level, int room) {
 		// done in ::PC_setLevelPalettes
 		return;
 	}
+	// background
 	setPaletteSlotBE(0x0, _mapPalSlot1);
-	for (int i = 1; i < 5; ++i) {
-		setPaletteSlotBE(i, _mapPalSlot3);
-	}
-	setPaletteSlotBE(0x6, _mapPalSlot3);
+	// objects
+	setPaletteSlotBE(0x1, (level == 0 || level == 1) ? _mapPalSlot3 : _mapPalSlot2);
+	setPaletteSlotBE(0x2, _mapPalSlot3);
+	setPaletteSlotBE(0x3, _mapPalSlot3);
+	// conrad
+	setPaletteSlotBE(0x4, _mapPalSlot3);
+	// foreground
 	setPaletteSlotBE(0x8, _mapPalSlot1);
+	// inventory
 	setPaletteSlotBE(0xA, _mapPalSlot3);
 }
 
@@ -654,6 +704,9 @@ void Video::AMIGA_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst) {
 	case 16:
 	case 32:
 		AMIGA_planar16(dst, w / 16, h, 4, src);
+		break;
+	case 24:
+		AMIGA_planar24(dst, w, h, src);
 		break;
 	default:
 		warning("AMIGA_decodeSpc w=%d unimplemented", w);
@@ -788,7 +841,7 @@ void Video::AMIGA_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, ui
 	for (int y = 0; y < 8; ++y) {
 		for (int x = 0; x < 8; ++x) {
 			if (src[x] != 0) {
-				dst[x] = 0x1D;
+				dst[x] = color;
 			}
 		}
 		src += 16;
@@ -819,15 +872,7 @@ void Video::PC_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, uint8
 
 const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col) {
 	debug(DBG_VIDEO, "Video::drawString('%s', %d, %d, 0x%X)", str, x, y, col);
-	void (Video::*drawCharFunc)(uint8_t *, int, const uint8_t *, uint8_t, uint8_t) = 0;
-	switch (_res->_type) {
-	case kResourceTypeAmiga:
-		drawCharFunc = &Video::AMIGA_drawStringChar;
-		break;
-	case kResourceTypeDOS:
-		drawCharFunc = &Video::PC_drawStringChar;
-		break;
-	}
+	drawCharFunc dcf = _drawChar;
 	int len = 0;
 	uint8_t *dst = _frontLayer + y * 256 + x;
 	while (1) {
@@ -835,7 +880,7 @@ const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col
 		if (c == 0 || c == 0xB || c == 0xA) {
 			break;
 		}
-		(this->*drawCharFunc)(dst, 256, _res->_fnt, col, c);
+		(this->*dcf)(dst, 256, _res->_fnt, col, c);
 		dst += CHAR_W;
 		++len;
 	}

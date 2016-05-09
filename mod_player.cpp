@@ -27,7 +27,7 @@ struct ModPlayer_impl {
 		ModPlug_GetSettings(&_settings);
 		_settings.mFlags = MODPLUG_ENABLE_OVERSAMPLING | MODPLUG_ENABLE_NOISE_REDUCTION;
 		_settings.mChannels = 1;
-		_settings.mBits = 8;
+		_settings.mBits = 16;
 		_settings.mFrequency = rate;
 		_settings.mResamplingMode = MODPLUG_RESAMPLE_FIR;
 		ModPlug_SetSettings(&_settings);
@@ -50,18 +50,14 @@ struct ModPlayer_impl {
 		}
 	}
 
-	bool mix(int8_t *buf, int len) {
-		memset(buf, 0, len);
+	bool mix(int16_t *buf, int len) {
 		if (_mf) {
 			const int order = ModPlug_GetCurrentOrder(_mf);
 			if (order == 3 && _repeatIntro) {
 				ModPlug_SeekOrder(_mf, 1);
 				_repeatIntro = false;
 			}
-			const int count = ModPlug_Read(_mf, buf, len);
-			for (int i = 0; i < count; ++i) {
-				buf[i] ^= 0x80;
-			}
+			const int count = ModPlug_Read(_mf, buf, len * sizeof(int16_t));
 			return count > 0;
 		}
 		return false;
@@ -152,7 +148,8 @@ struct ModPlayer_impl {
 	void applyPortamento(int trackNum);
 	void handleEffect(int trackNum, bool tick);
 	void mixSamples(int8_t *buf, int len);
-	bool mix(int8_t *buf, int len);
+	bool mixS8(int8_t *buf, int len);
+	bool mix(int16_t *buf, int len);
 };
 
 ModPlayer_impl::ModPlayer_impl()
@@ -607,7 +604,8 @@ void ModPlayer_impl::mixSamples(int8_t *buf, int samplesLen) {
 				}
 				while (count--) {
 					const int out = si->getPCM(pos >> FRAC_BITS);
-					Mixer::addclamp(*mixbuf++, out * tk->volume / 64);
+					*mixbuf = ADDC_S8(*mixbuf, out * tk->volume / 64);
+					++mixbuf;
 					pos += deltaPos;
 				}
 			}
@@ -616,9 +614,8 @@ void ModPlayer_impl::mixSamples(int8_t *buf, int samplesLen) {
 	}
 }
 
-bool ModPlayer_impl::mix(int8_t *buf, int len) {
+bool ModPlayer_impl::mixS8(int8_t *buf, int len) {
 	if (_playing) {
-		memset(buf, 0, len);
 		const int samplesPerTick = _mixingRate / (50 * _songTempo / 125);
 		while (len != 0) {
 			if (_samplesLeft == 0) {
@@ -636,6 +633,16 @@ bool ModPlayer_impl::mix(int8_t *buf, int len) {
 		}
 	}
 	return _playing;
+}
+
+bool ModPlayer_impl::mix(int16_t *samples, int len) {
+	int8_t buf[len];
+	memset(buf, 0, sizeof(buf));
+	const bool ret = mixS8(buf, len);
+	for (int i = 0; i < len; ++i) {
+		samples[i] = buf[i] << 8;
+	}
+	return ret;
 }
 #endif
 
@@ -673,6 +680,6 @@ void ModPlayer::stop() {
 	}
 }
 
-bool ModPlayer::mixCallback(void *param, int8_t *buf, int len) {
+bool ModPlayer::mixCallback(void *param, int16_t *buf, int len) {
 	return ((ModPlayer_impl *)param)->mix(buf, len);
 }

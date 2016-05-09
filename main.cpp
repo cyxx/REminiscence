@@ -19,9 +19,10 @@ static const char *USAGE =
 	"Usage: %s [OPTIONS]...\n"
 	"  --datapath=PATH   Path to data files (default 'DATA')\n"
 	"  --savepath=PATH   Path to save files (default '.')\n"
-	"  --levelnum=NUM    Start level (default '0')\n"
-	"  --fullscreen      Start fullscreen\n"
+	"  --levelnum=NUM    Level to start from (default '0')\n"
+	"  --fullscreen      Fullscreen display\n"
 	"  --scaler=INDEX    Graphics scaler\n"
+	"  --language=LANG   Language (fr,en,de,sp,it)\n"
 ;
 
 static int detectVersion(FileSystem *fs) {
@@ -80,6 +81,7 @@ static void initOptions() {
 	g_options.play_disabled_cutscenes = false;
 	g_options.enable_password_menu = false;
 	g_options.fade_out_palette = true;
+	g_options.use_text_cutscenes = false;
 	// read configuration file
 	struct {
 		const char *name;
@@ -90,6 +92,7 @@ static void initOptions() {
 		{ "enable_password_menu", &g_options.enable_password_menu },
 		{ "fade_out_palette", &g_options.fade_out_palette },
 		{ "use_tiledata", &g_options.use_tiledata },
+		{ "use_text_cutscenes", &g_options.use_text_cutscenes },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";
@@ -130,6 +133,7 @@ int main(int argc, char *argv[]) {
 	int levelNum = 0;
 	int scaler = DEFAULT_SCALER;
 	bool fullscreen = false;
+	int forcedLanguage = -1;
 	if (argc == 2) {
 		// data path as the only command line argument
 		struct stat st;
@@ -144,6 +148,7 @@ int main(int argc, char *argv[]) {
 			{ "levelnum",   required_argument, 0, 3 },
 			{ "fullscreen", no_argument,       0, 4 },
 			{ "scaler",     required_argument, 0, 5 },
+			{ "language",   required_argument, 0, 6 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -170,6 +175,26 @@ int main(int argc, char *argv[]) {
 				scaler = DEFAULT_SCALER;
 			}
 			break;
+		case 6: {
+				static const struct {
+					int lang;
+					const char *str;
+				} languages[] = {
+					{ LANG_FR, "FR" },
+					{ LANG_EN, "EN" },
+					{ LANG_DE, "DE" },
+					{ LANG_SP, "SP" },
+					{ LANG_IT, "IT" },
+					{ -1, 0 }
+				};
+				for (int i = 0; languages[i].str; ++i) {
+					if (strcasecmp(languages[i].str, optarg) == 0) {
+						forcedLanguage = languages[i].lang;
+						break;
+					}
+				}
+			}
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
@@ -183,7 +208,7 @@ int main(int argc, char *argv[]) {
 		error("Unable to find data files, check that all required files are present");
 		return -1;
 	}
-	Language language = detectLanguage(&fs);
+	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language);
 	stub->init(g_caption, Video::GAMESCREEN_W, Video::GAMESCREEN_H, scaler, fullscreen);
