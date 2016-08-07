@@ -113,7 +113,7 @@ void Game::pge_loadForCurrentLevel(uint16_t idx) {
 }
 
 void Game::pge_process(LivePGE *pge) {
-	debug(DBG_PGE, "Game::pge_process() pge_num=%d", pge - &_pgeLive[0]);
+	debug(DBG_PGE, "Game::pge_process() pge_num=%ld", pge - &_pgeLive[0]);
 	_pge_playAnimSound = true;
 	_pge_currentPiegeFacingDir = (pge->flags & 1) != 0;
 	_pge_currentPiegeRoom = pge->room_location;
@@ -226,7 +226,7 @@ void Game::pge_playAnimSound(LivePGE *pge, uint16_t arg2) {
 }
 
 void Game::pge_setupAnim(LivePGE *pge) {
-	debug(DBG_PGE, "Game::pge_setupAnim() pgeNum=%d", pge - &_pgeLive[0]);
+	debug(DBG_PGE, "Game::pge_setupAnim() pgeNum=%ld", pge - &_pgeLive[0]);
 	const uint8_t *anim_data = _res.getAniData(pge->obj_type);
 	if (_res._readUint16(anim_data) < pge->anim_seq) {
 		pge->anim_seq = 0;
@@ -254,7 +254,7 @@ void Game::pge_setupAnim(LivePGE *pge) {
 }
 
 int Game::pge_execute(LivePGE *live_pge, InitPGE *init_pge, const Object *obj) {
-	debug(DBG_PGE, "Game::pge_execute() pge_num=%d op1=0x%X op2=0x%X op3=0x%X", live_pge - &_pgeLive[0], obj->opcode1, obj->opcode2, obj->opcode3);
+	debug(DBG_PGE, "Game::pge_execute() pge_num=%ld op1=0x%X op2=0x%X op3=0x%X", live_pge - &_pgeLive[0], obj->opcode1, obj->opcode2, obj->opcode3);
 	pge_OpcodeProc op;
 	ObjectOpcodeArgs args;
 	if (obj->opcode1) {
@@ -378,7 +378,7 @@ void Game::pge_setupDefaultAnim(LivePGE *pge) {
 			pge->flags |= 8;
 		}
 		pge->anim_number = _res._readUint16(anim_frame) & 0x7FFF;
-		debug(DBG_PGE, "Game::pge_setupDefaultAnim() pgeNum=%d pge->flags=0x%X pge->anim_number=0x%X pge->anim_seq=0x%X", pge - &_pgeLive[0], pge->flags, pge->anim_number, pge->anim_seq);
+		debug(DBG_PGE, "Game::pge_setupDefaultAnim() pgeNum=%ld pge->flags=0x%X pge->anim_number=0x%X pge->anim_seq=0x%X", pge - &_pgeLive[0], pge->flags, pge->anim_number, pge->anim_seq);
 	}
 }
 
@@ -464,7 +464,7 @@ void Game::pge_setupOtherPieges(LivePGE *pge, InitPGE *init_pge) {
 }
 
 void Game::pge_addToCurrentRoomList(LivePGE *pge, uint8_t room) {
-	debug(DBG_PGE, "Game::pge_addToCurrentRoomList() pgeNum=%d room=%d", pge - &_pgeLive[0], room);
+	debug(DBG_PGE, "Game::pge_addToCurrentRoomList() pgeNum=%ld room=%d", pge - &_pgeLive[0], room);
 	if (room != pge->room_location) {
 		LivePGE *cur_pge = _pge_liveTable1[room];
 		LivePGE *prev_pge = 0;

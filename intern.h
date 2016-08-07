@@ -106,6 +106,13 @@ struct Point {
 	int16_t y;
 };
 
+struct Demo {
+	const char *name;
+	int level;
+	int room;
+	int x, y;
+};
+
 struct Level {
 	const char *name;
 	const char *name2;

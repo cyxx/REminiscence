@@ -10,6 +10,8 @@
 #include "util.h"
 
 static const int kAudioHz = 22050;
+
+static const int kJoystickIndex = 0;
 static const int kJoystickCommitValue = 3200;
 
 struct SystemStub_SDL : SystemStub {
@@ -17,6 +19,7 @@ struct SystemStub_SDL : SystemStub {
 	SDL_Window *_window;
 	SDL_Renderer *_renderer;
 	SDL_Texture *_texture;
+	SDL_GameController *_controller;
 #else
 	SDL_Surface *_surface;
 #endif
@@ -83,15 +86,34 @@ void SystemStub_SDL::init(const char *title, int w, int h, int scaler, bool full
 	memset(_pal, 0, sizeof(_pal));
 	_screenW = _screenH = 0;
 	setScreenSize(w, h);
-	_joystick = NULL;
+	_joystick = 0;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	_controller = 0;
 	if (SDL_NumJoysticks() > 0) {
-		_joystick = SDL_JoystickOpen(0);
+		SDL_GameControllerAddMappingsFromFile("gamecontrollerdb.txt");
+		if (SDL_IsGameController(kJoystickIndex)) {
+			_controller = SDL_GameControllerOpen(kJoystickIndex);
+		}
+		if (!_controller) {
+			_joystick = SDL_JoystickOpen(kJoystickIndex);
+		}
 	}
+#else
+	if (SDL_NumJoysticks() > 0) {
+		_joystick = SDL_JoystickOpen(kJoystickIndex);
+	}
+#endif
 	_screenshot = 1;
 }
 
 void SystemStub_SDL::destroy() {
 	cleanupGraphics();
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	if (_controller) {
+		SDL_GameControllerClose(_controller);
+		_controller = 0;
+	}
+#endif
 	if (_joystick) {
 		SDL_JoystickClose(_joystick);
 		_joystick = 0;
@@ -141,7 +163,7 @@ void SystemStub_SDL::setOverscanColor(int i) {
 }
 
 void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch) {
-	if (_numBlitRects >= ARRAYSIZE(_blitRects)) {
+	if (_numBlitRects >= (int)ARRAYSIZE(_blitRects)) {
 		warning("SystemStub_SDL::copyRect() Too many blit rects, you may experience graphical glitches");
 	} else {
 		// extend the dirty region by 1 pixel for scalers accessing 'outer' pixels
@@ -201,13 +223,16 @@ void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, in
 }
 
 void SystemStub_SDL::fadeScreen() {
-	const int fadeScreenBufferSize = _screenH * _screenW * sizeof(uint16_t);
+	const int bufferSize = _screenH * _screenW * sizeof(uint16_t);
 	if (!_fadeScreenBuffer) {
-		_fadeScreenBuffer = (uint16_t *)malloc(fadeScreenBufferSize);
-		assert(_fadeScreenBuffer);
+		_fadeScreenBuffer = (uint16_t *)malloc(bufferSize);
+		if (!_fadeScreenBuffer) {
+			warning("SystemStub_SDL::fadeScreen() Unable to allocate buffer size %d", bufferSize);
+			return;
+		}
 	}
 	_fadeOnUpdateScreen = true;
-	memcpy(_fadeScreenBuffer, _screenBuffer + _screenW + 1, fadeScreenBufferSize);
+	memcpy(_fadeScreenBuffer, _screenBuffer + _screenW + 1, bufferSize);
 }
 
 static uint16_t blendPixel16(uint16_t colorSrc, uint16_t colorDst, uint32_t mask, int step) {
@@ -219,9 +244,23 @@ static uint16_t blendPixel16(uint16_t colorSrc, uint16_t colorDst, uint32_t mask
 
 void SystemStub_SDL::updateScreen(int shakeOffset) {
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	// _fadeOnUpdateScreen
 	SDL_UpdateTexture(_texture, 0, _screenBuffer + _screenW + 1, _screenW * sizeof(uint16_t));
 	SDL_RenderClear(_renderer);
+	if (_fadeOnUpdateScreen) {
+		SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
+		SDL_Rect r;
+		r.x = r.y = 0;
+		SDL_GetRendererOutputSize(_renderer, &r.w, &r.h);
+		for (int i = 1; i <= 16; ++i) {
+			SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 256 - i * 16);
+			SDL_RenderCopy(_renderer, _texture, 0, 0);
+			SDL_RenderFillRect(_renderer, &r);
+			SDL_RenderPresent(_renderer);
+			SDL_Delay(30);
+		}
+		_fadeOnUpdateScreen = false;
+		return;
+	}
 	if (shakeOffset != 0) {
 		SDL_Rect r;
 		r.x = 0;
@@ -375,41 +414,111 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 		}
 		break;
 	case SDL_JOYBUTTONDOWN:
-		if (_joystick) {
-			switch (ev.jbutton.button) {
-			case 0:
-				_pi.space = true;
-				break;
-			case 1:
-				_pi.shift = true;
-				break;
-			case 2:
-				_pi.enter = true;
-				break;
-			case 3:
-				_pi.backspace = true;
-				break;
-			}
-		}
-		break;
 	case SDL_JOYBUTTONUP:
 		if (_joystick) {
+			const bool pressed = (ev.jbutton.state == SDL_PRESSED);
 			switch (ev.jbutton.button) {
 			case 0:
-				_pi.space = false;
+				_pi.space = pressed;
 				break;
 			case 1:
-				_pi.shift = false;
+				_pi.shift = pressed;
 				break;
 			case 2:
-				_pi.enter = false;
+				_pi.enter = pressed;
 				break;
 			case 3:
-				_pi.backspace = false;
+				_pi.backspace = pressed;
 				break;
 			}
 		}
 		break;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	case SDL_CONTROLLERAXISMOTION:
+		if (_controller) {
+			switch (ev.caxis.axis) {
+			case SDL_CONTROLLER_AXIS_LEFTX:
+			case SDL_CONTROLLER_AXIS_RIGHTX:
+				if (ev.caxis.value < -kJoystickCommitValue) {
+					_pi.dirMask |= PlayerInput::DIR_LEFT;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_LEFT;
+				}
+				if (ev.caxis.value > kJoystickCommitValue) {
+					_pi.dirMask |= PlayerInput::DIR_RIGHT;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
+				}
+				break;
+			case SDL_CONTROLLER_AXIS_LEFTY:
+			case SDL_CONTROLLER_AXIS_RIGHTY:
+				if (ev.caxis.value < -kJoystickCommitValue) {
+					_pi.dirMask |= PlayerInput::DIR_UP;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_UP;
+				}
+				if (ev.caxis.value > kJoystickCommitValue) {
+					_pi.dirMask |= PlayerInput::DIR_DOWN;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+				}
+				break;
+			}
+		}
+		break;
+	case SDL_CONTROLLERBUTTONDOWN:
+	case SDL_CONTROLLERBUTTONUP:
+		if (_controller) {
+			const bool pressed = (ev.cbutton.state == SDL_PRESSED);
+			switch (ev.cbutton.button) {
+			case SDL_CONTROLLER_BUTTON_A:
+				_pi.enter = pressed;
+				break;
+			case SDL_CONTROLLER_BUTTON_B:
+				_pi.space = pressed;
+				break;
+			case SDL_CONTROLLER_BUTTON_X:
+				_pi.shift = pressed;
+				break;
+			case SDL_CONTROLLER_BUTTON_Y:
+				_pi.backspace = pressed;
+				break;
+			case SDL_CONTROLLER_BUTTON_BACK:
+			case SDL_CONTROLLER_BUTTON_START:
+				_pi.escape = pressed;
+				break;
+			case SDL_CONTROLLER_BUTTON_DPAD_UP:
+				if (pressed) {
+					_pi.dirMask |= PlayerInput::DIR_UP;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_UP;
+				}
+				break;
+			case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+				if (pressed) {
+					_pi.dirMask |= PlayerInput::DIR_DOWN;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+				}
+				break;
+			case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+				if (pressed) {
+					_pi.dirMask |= PlayerInput::DIR_LEFT;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_LEFT;
+				}
+				break;
+			case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+				if (pressed) {
+					_pi.dirMask |= PlayerInput::DIR_RIGHT;
+				} else {
+					_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
+				}
+				break;
+			}
+		}
+		break;
+#endif
 		case SDL_KEYUP:
 			switch (ev.key.keysym.sym) {
 			case SDLK_LEFT:
@@ -484,10 +593,6 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 					_pi.stateSlot = 1;
 				} else if (ev.key.keysym.sym == SDLK_KP_MINUS || ev.key.keysym.sym == SDLK_PAGEDOWN) {
 					_pi.stateSlot = -1;
-				} else if (ev.key.keysym.sym == SDLK_r) {
-					_pi.inpRecord = true;
-				} else if (ev.key.keysym.sym == SDLK_p) {
-					_pi.inpReplay = true;
 				}
 			}
 			_pi.lastChar = ev.key.keysym.sym;

@@ -64,7 +64,8 @@ const char *Cutscene::_namesTable[] = {
 	"INTRO2",
 	"SERRURE",
 	"HOLOCUBE",
-	"CHUTE2"
+	"CHUTE2",
+	"LOGOSSSI",
 };
 
 const uint16_t Cutscene::_offsetsTable[] = {
@@ -89,6 +90,11 @@ const uint16_t Cutscene::_offsetsTable[] = {
 const uint8_t Cutscene::_amigaDemoOffsetsTable[] = {
 	1, 32, 0, /* HOLOCUBE */
 	6, 33, 0, /* CHUTE2 */
+	255
+};
+
+const uint8_t Cutscene::_ssiOffsetsTable[] = {
+	64, 34, 0, /* LOGOSSSI */
 	255
 };
 
@@ -828,6 +834,12 @@ const Cutscene::Text Cutscene::_frTextsTable[] = {
 	{ 49, "IL VOUS DONNE||UNE CEINTURE ANTI-G" },
 	{ 60, "VOUS RAMASSEZ LE TELE RECEPTEUR" },
 	{ -1, 0 }
+};
+
+const Demo Game::_demoInputs[] = {
+	{ "demo1.bin",  0, 0x33, 0x60, 0x46 },
+	{ "demo51.bin", 5, 0x00, 0x60, 0xD6 },
+	{ "demo3.bin" , 2, 0xFF, 0x00, 0x00 }
 };
 
 const Level Game::_gameLevels[] = {

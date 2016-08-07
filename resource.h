@@ -148,6 +148,8 @@ struct Resource {
 	uint8_t *_bankDataTail;
 	BankSlot _bankBuffers[NUM_BANK_BUFFERS];
 	int _bankBuffersCount;
+	uint8_t *_dem;
+	int _demLen;
 
 	Resource(FileSystem *fs, ResourceType type, Language lang);
 	~Resource();
@@ -159,6 +161,7 @@ struct Resource {
 	bool isAmiga() const { return _type == kResourceTypeAmiga; }
 
 	void clearLevelRes();
+	void load_DEM(const char *filename);
 	void load_FIB(const char *fileName);
 	void load_SPL_demo();
 	void load_MAP_menu(const char *fileName, uint8_t *dstPtr);

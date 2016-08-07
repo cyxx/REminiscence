@@ -84,6 +84,19 @@ void Resource::clearLevelRes() {
 	free_OBJ();
 }
 
+void Resource::load_DEM(const char *filename) {
+	free(_dem); _dem = 0;
+	_demLen = 0;
+	File f;
+	if (f.open(filename, "rb", _fs)) {
+		_demLen = f.size();
+		_dem = (uint8_t *)malloc(_demLen);
+		if (_dem) {
+			f.read(_dem, _demLen);
+		}
+	}
+}
+
 void Resource::load_FIB(const char *fileName) {
 	debug(DBG_RES, "Resource::load_FIB('%s')", fileName);
 	static const uint8_t fibonacciTable[] = {

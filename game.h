@@ -32,6 +32,7 @@ struct Game {
 		CT_LEFT_ROOM  = 0xC0
 	};
 
+	static const Demo _demoInputs[3];
 	static const Level _gameLevels[];
 	static const uint16_t _scoreTable[];
 	static const uint8_t _monsterListLevel1[];
@@ -63,6 +64,7 @@ struct Game {
 	const char **_textsTable;
 	uint8_t _currentLevel;
 	uint8_t _skillLevel;
+	int _demoBin;
 	uint32_t _score;
 	uint8_t _currentRoom;
 	uint8_t _currentIcon;
@@ -85,7 +87,7 @@ struct Game {
 	bool _endLoop;
 	uint32_t _frameTimestamp;
 
-	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang);
+	Game(SystemStub *, FileSystem *, const char *savePath, int level, int demo, ResourceType ver, Language lang);
 
 	void run();
 	void displayTitleScreenAmiga();
@@ -351,9 +353,7 @@ struct Game {
 	// input
 	uint8_t _inp_lastKeysHit;
 	uint8_t _inp_lastKeysHitLeftRight;
-	bool _inp_replay;
-	bool _inp_record;
-	File *_inp_demo;
+	int _inp_demPos;
 
 	void inp_handleSpecialKeys();
 	void inp_update();
@@ -363,7 +363,6 @@ struct Game {
 	uint8_t _stateSlot;
 	bool _validSaveState;
 
-	void makeGameDemoName(char *buf);
 	void makeGameStateName(uint8_t slot, char *buf);
 	bool saveGameState(uint8_t slot);
 	bool loadGameState(uint8_t slot);

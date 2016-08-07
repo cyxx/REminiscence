@@ -40,7 +40,7 @@ void Game::col_clearState() {
 }
 
 void Game::col_preparePiegeState(LivePGE *pge) {
-	debug(DBG_COL, "Game::col_preparePiegeState() pge_num=%d", pge - &_pgeLive[0]);
+	debug(DBG_COL, "Game::col_preparePiegeState() pge_num=%ld", pge - &_pgeLive[0]);
 	CollisionSlot *ct_slot1, *ct_slot2;
 	if (pge->init_PGE->unk1C == 0) {
 		pge->collision_slot = 0xFF;
