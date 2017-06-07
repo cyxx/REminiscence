@@ -35,8 +35,6 @@ struct PlayerInput {
 	bool load;
 	int stateSlot;
 
-	bool mirrorMode;
-
 	uint8_t dbgMask;
 	bool quit;
 };

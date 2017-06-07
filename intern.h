@@ -7,24 +7,20 @@
 #ifndef INTERN_H__
 #define INTERN_H__
 
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <cassert>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <assert.h>
 #include <stdint.h>
 
-#ifndef ABS
+#undef ABS
 #define ABS(x) ((x)<0?-(x):(x))
-#endif
-#ifndef MAX
+#undef MAX
 #define MAX(x,y) ((x)>(y)?(x):(y))
-#endif
-#ifndef MIN
+#undef MIN
 #define MIN(x,y) ((x)<(y)?(x):(y))
-#endif
-#ifndef ARRAYSIZE
-#define ARRAYSIZE(a) (sizeof(a)/sizeof(a[0]))
-#endif
+#undef ARRAYSIZE
+#define ARRAYSIZE(a) (int)(sizeof(a)/sizeof(a[0]))
 
 inline uint16_t READ_BE_UINT16(const void *ptr) {
 	const uint8_t *b = (const uint8_t *)ptr;
@@ -93,6 +89,7 @@ struct Options {
 	bool fade_out_palette;
 	bool use_tiledata;
 	bool use_text_cutscenes;
+	bool use_seq_cutscenes;
 };
 
 struct Color {

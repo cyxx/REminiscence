@@ -33,7 +33,7 @@ void Cutscene::sync() {
 }
 
 void Cutscene::copyPalette(const uint8_t *pal, uint16_t num) {
-	uint8_t *dst = (uint8_t *)_palBuf;
+	uint8_t *dst = _palBuf;
 	if (num != 0) {
 		dst += 0x20;
 	}
@@ -1091,10 +1091,11 @@ void Cutscene::play() {
 				}
 			}
 		}
-		if (g_options.use_text_cutscenes && _res->_lang == LANG_FR) {
-			for (int i = 0; _frTextsTable[i].str; ++i) {
-				if (_id == _frTextsTable[i].num) {
-					playText(_frTextsTable[i].str);
+		if (g_options.use_text_cutscenes) {
+			const Text *textsTable = (_res->_lang == LANG_FR) ? _frTextsTable : _enTextsTable;
+			for (int i = 0; textsTable[i].str; ++i) {
+				if (_id == textsTable[i].num) {
+					playText(textsTable[i].str);
 					break;
 				}
 			}

@@ -19,6 +19,7 @@ struct SystemStub_SDL : SystemStub {
 	SDL_Window *_window;
 	SDL_Renderer *_renderer;
 	SDL_Texture *_texture;
+	int _texW, _texH;
 	SDL_GameController *_controller;
 #else
 	SDL_Surface *_surface;
@@ -125,10 +126,7 @@ void SystemStub_SDL::setScreenSize(int w, int h) {
 	if (_screenW == w && _screenH == h) {
 		return;
 	}
-	free(_screenBuffer);
-	_screenBuffer = 0;
-	free(_fadeScreenBuffer);
-	_fadeScreenBuffer = 0;
+	cleanupGraphics();
 	// allocate some extra bytes for the scaling routines
 	const int screenBufferSize = (w + 2) * (h + 2) * sizeof(uint16_t);
 	_screenBuffer = (uint16_t *)calloc(1, screenBufferSize);
@@ -190,7 +188,7 @@ void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, in
 		}
 		SDL_Rect *br = &_blitRects[_numBlitRects];
 
-		br->x = _pi.mirrorMode ? _screenW - (x + w) : x;
+		br->x = x;
 		br->y = y;
 		br->w = w;
 		br->h = h;
@@ -199,22 +197,12 @@ void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, in
 		uint16_t *p = _screenBuffer + (br->y + 1) * _screenW + (br->x + 1);
 		buf += y * pitch + x;
 
-		if (_pi.mirrorMode) {
-			while (h--) {
-				for (int i = 0; i < w; ++i) {
-					p[i] = _pal[buf[w - 1 - i]];
-				}
-				p += _screenW;
-				buf += pitch;
+		while (h--) {
+			for (int i = 0; i < w; ++i) {
+				p[i] = _pal[buf[i]];
 			}
-		} else {
-			while (h--) {
-				for (int i = 0; i < w; ++i) {
-					p[i] = _pal[buf[i]];
-				}
-				p += _screenW;
-				buf += pitch;
-			}
+			p += _screenW;
+			buf += pitch;
 		}
 		if (_pi.dbgMask & PlayerInput::DF_DBLOCKS) {
 			drawRect(br, 0xE7, _screenBuffer + _screenW + 1, _screenW * 2);
@@ -244,7 +232,16 @@ static uint16_t blendPixel16(uint16_t colorSrc, uint16_t colorDst, uint32_t mask
 
 void SystemStub_SDL::updateScreen(int shakeOffset) {
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	SDL_UpdateTexture(_texture, 0, _screenBuffer + _screenW + 1, _screenW * sizeof(uint16_t));
+	if (_texW != _screenW || _texH != _screenH) {
+		void *dst = 0;
+		int pitch = 0;
+		if (SDL_LockTexture(_texture, 0, &dst, &pitch) == 0) {
+			(*_scalers[_scaler].proc)((uint16_t *)dst, pitch, _screenBuffer + _screenW + 1, _screenW, _screenW, _screenH);
+			SDL_UnlockTexture(_texture);
+		}
+	} else {
+		SDL_UpdateTexture(_texture, 0, _screenBuffer + _screenW + 1, _screenW * sizeof(uint16_t));
+	}
 	SDL_RenderClear(_renderer);
 	if (_fadeOnUpdateScreen) {
 		SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
@@ -582,9 +579,6 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 					_pi.dbgMask ^= PlayerInput::DF_DBLOCKS;
 				} else if (ev.key.keysym.sym == SDLK_i) {
 					_pi.dbgMask ^= PlayerInput::DF_SETLIFE;
-				} else if (ev.key.keysym.sym == SDLK_m) {
-					_pi.mirrorMode = !_pi.mirrorMode;
-					flipGraphics();
 				} else if (ev.key.keysym.sym == SDLK_s) {
 					_pi.save = true;
 				} else if (ev.key.keysym.sym == SDLK_l) {
@@ -690,9 +684,13 @@ void SystemStub_SDL::prepareGraphics() {
 	case SCALER_SCALE_3X:
 	case SCALER_SCALE_4X:
 		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+		_texW = _screenW * _scalers[_scaler].factor;
+		_texH = _screenH * _scalers[_scaler].factor;
 		break;
 	default:
 		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); // nearest pixel sampling
+		_texW = _screenW;
+		_texH = _screenH;
 		break;
 	}
 	const int windowW = _screenW * _scalers[_scaler].factor;
@@ -705,7 +703,7 @@ void SystemStub_SDL::prepareGraphics() {
 	_renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED);
 	SDL_RenderSetLogicalSize(_renderer, windowW, windowH);
         static const uint32_t kPixelFormat = SDL_PIXELFORMAT_RGB565;
-	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _screenW, _screenH);
+	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _texW, _texH);
 	_fmt = SDL_AllocFormat(kPixelFormat);
 #else
 	SDL_WM_SetCaption(_caption, NULL);

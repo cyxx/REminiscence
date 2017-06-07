@@ -40,6 +40,7 @@ struct Cutscene {
 	static const uint8_t _musicTable[];
 	static const uint8_t _protectionShapeData[];
 	static const Text _frTextsTable[];
+	static const Text _enTextsTable[];
 
 	Graphics _gfx;
 	Resource *_res;

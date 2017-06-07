@@ -11,6 +11,10 @@
 #ifdef USE_ZLIB
 #include "zlib.h"
 #endif
+#ifdef USE_RWOPS
+#include <SDL_filesystem.h>
+#include <SDL_rwops.h>
+#endif
 
 struct File_impl {
 	bool _ioErr;
@@ -128,6 +132,62 @@ struct GzipFile : File_impl {
 };
 #endif
 
+#ifdef USE_RWOPS
+struct AssetFile: File_impl {
+	SDL_RWops *_rw;
+	AssetFile() : _rw(0) {}
+	bool open(const char *path, const char *mode) {
+		_ioErr = false;
+		_rw = SDL_RWFromFile(path, "rb");
+		if (!_rw) {
+			// try uppercase
+			char fixedPath[MAXPATHLEN];
+			{
+				int i = 0;
+				for (; path[i] && i < MAXPATHLEN - 1; ++i) {
+					fixedPath[i] = path[i];
+					if (fixedPath[i] >= 'a' && fixedPath[i] <= 'z') {
+						fixedPath[i] += 'A' - 'a';
+					}
+				}
+				fixedPath[i] = 0;
+			}
+			_rw = SDL_RWFromFile(fixedPath, "rb");
+		}
+		return _rw != 0;
+	}
+	void close() {
+		if (_rw) {
+			SDL_RWclose(_rw);
+			_rw = 0;
+		}
+	}
+	uint32_t size() {
+		if (_rw) {
+			return SDL_RWsize(_rw);
+		}
+		return 0;
+	}
+	void seek(int32_t off) {
+		if (_rw) {
+			SDL_RWseek(_rw, off, RW_SEEK_SET);
+		}
+	}
+	uint32_t read(void *ptr, uint32_t len) {
+		if (_rw) {
+			const int count = SDL_RWread(_rw, ptr, 1, len);
+			if (count != len) {
+				_ioErr = true;
+			}
+		}
+		return 0;
+	}
+	uint32_t write(void *ptr, uint32_t len) {
+		_ioErr = true;
+		return 0;
+	}
+};
+#endif
 
 File::File()
 	: _impl(0) {
@@ -155,6 +215,23 @@ bool File::open(const char *filename, const char *mode, FileSystem *fs) {
 		free(path);
 		return ret;
 	}
+#ifdef USE_RWOPS
+	if (mode[0] == 'r') {
+		_impl = new AssetFile;
+		return _impl->open(filename, mode);
+	} else if (mode[0] == 'w') {
+		bool ret = false;
+		char *prefPath = SDL_GetPrefPath("org.cyxdown", "fb");
+		if (prefPath) {
+			char path[MAXPATHLEN];
+			snprintf(path, sizeof(path), "%s/%s", prefPath, filename);
+			_impl = new StdioFile;
+			ret = _impl->open(path, mode);
+			SDL_free(prefPath);
+		}
+		return ret;
+	}
+#endif
 	return false;
 }
 

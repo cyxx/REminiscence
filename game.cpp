@@ -28,7 +28,7 @@ void Game::run() {
 	_randSeed = time(0);
 
 	if (_demoBin != -1) {
-		if (_demoBin < (int)ARRAYSIZE(_demoInputs)) {
+		if (_demoBin < ARRAYSIZE(_demoInputs)) {
 			const char *fn = _demoInputs[_demoBin].name;
 			debug(DBG_INFO, "Loading inputs from '%s'", fn);
 			_res.load_DEM(fn);
@@ -50,7 +50,9 @@ void Game::run() {
 		break;
 	case kResourceTypeDOS:
 		_res.load("FB_TXT", Resource::OT_FNT);
-		_res._hasSeqData = _fs->exists("INTRO.SEQ");
+		if (g_options.use_seq_cutscenes) {
+			_res._hasSeqData = _fs->exists("INTRO.SEQ");
+		}
 		if (_fs->exists("logosssi.cmd")) {
 			_cut._patchedOffsetsTable = Cutscene::_ssiOffsetsTable;
 		}
@@ -91,10 +93,12 @@ void Game::run() {
 		if (_demoBin != -1) {
 			_currentLevel = _demoInputs[_demoBin].level;
 			_randSeed = 0;
+		} else if (_res._isDemo) {
+			// do not present title screen and menus
 		} else {
+			_mix.playMusic(1);
 			switch (_res._type) {
 			case kResourceTypeDOS:
-				_mix.playMusic(1);
 				_menu.handleTitleScreen();
 				if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT || _stub->_pi.quit) {
 					_stub->_pi.quit = true;
@@ -148,11 +152,10 @@ void Game::displayTitleScreenAmiga() {
 	_res.load_CMP_menu(FILENAME, _res._memBuf);
 	static const int kW = 320;
 	static const int kH = 224;
-	uint8_t *buf = (uint8_t *)malloc(kW * kH);
+	uint8_t *buf = (uint8_t *)calloc(kW * kH, 1);
 	if (!buf) {
 		error("Failed to allocate screen buffer w=%d h=%d", kW, kH);
 	}
-	_vid.AMIGA_decodeCmp(_res._memBuf + 6, buf);
 	static const int kAmigaColors[] = {
 		0x000, 0x123, 0x012, 0x134, 0x433, 0x453, 0x046, 0x245,
 		0x751, 0x455, 0x665, 0x268, 0x961, 0x478, 0x677, 0x786,
@@ -166,7 +169,14 @@ void Game::displayTitleScreenAmiga() {
 	_stub->setScreenSize(kW, kH);
 	_stub->copyRect(0, 0, kW, kH, buf, kW);
 	_stub->updateScreen(0);
+	_vid.AMIGA_decodeCmp(_res._memBuf + 6, buf);
 	free(buf);
+	for (int h = 0; h < kH / 2; h += 2) {
+		const int y = kH / 2 - h;
+		_stub->copyRect(0, y, kW, h * 2, buf, kW);
+		_stub->updateScreen(0);
+		_stub->sleep(30);
+	}
 	while (1) {
 		_stub->processEvents();
 		if (_stub->_pi.quit) {
@@ -243,6 +253,9 @@ void Game::mainLoop() {
 		}
 	}
 	if (oldLevel != _currentLevel) {
+		if (_res._isDemo) {
+			_currentLevel = oldLevel;
+		}
 		changeLevel();
 		_pge_opTempVar1 = 0;
 		return;
@@ -598,7 +611,9 @@ bool Game::handleContinueAbort() {
 bool Game::handleProtectionScreen() {
 	bool valid = true;
 	_cut.prepare();
-	_cut.copyPalette(_protectionPal, 0);
+	const int palOffset = _res.isAmiga() ? 32 : 0;
+	_cut.copyPalette(_protectionPal + palOffset, 0);
+
 	_cut.updatePalette();
 	_cut._gfx.setClippingRect(64, 48, 128, 128);
 
@@ -622,10 +637,10 @@ bool Game::handleProtectionScreen() {
 	do {
 		codeText[len] = '\0';
 		memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
-		_menu.drawString("PROTECTION", 2, 11, 5);
+		_vid.drawString("PROTECTION", 11 * 8, 2 * 8, _menu._charVar2);
 		char buf[20];
 		snprintf(buf, sizeof(buf), "CODE %d :  %s", codeNum + 1, codeText);
-		_menu.drawString(buf, 23, 8, 5);
+		_vid.drawString(buf, 8 * 8, 23 * 8, _menu._charVar2);
 		_vid.updateScreen();
 		_stub->sleep(50);
 		_stub->processEvents();
@@ -679,7 +694,11 @@ void Game::printLevelCode() {
 		--_printLevelCodeCounter;
 		if (_printLevelCodeCounter != 0) {
 			char buf[32];
-			snprintf(buf, sizeof(buf), "CODE: %s", _menu._passwords[_currentLevel][_skillLevel]);
+			const char *code = Menu::_passwords[_currentLevel][_skillLevel];
+			if (_res.isAmiga() && _res._lang == LANG_FR) {
+				code = Menu::_passwordsFrAmiga[_skillLevel * 7 + _currentLevel];
+			}
+			snprintf(buf, sizeof(buf), "CODE: %s", code);
 			_vid.drawString(buf, (_vid._w - strlen(buf) * 8) / 2, 16, 0xE7);
 		}
 	}
@@ -1506,16 +1525,30 @@ void Game::handleInventory() {
 			int icon_h = 5;
 			int icon_y = 140;
 			int icon_num = 31;
+			static const int icon_spr_w = 16;
+			static const int icon_spr_h = 16;
 			do {
 				int icon_x = 56;
 				int icon_w = 9;
 				do {
 					drawIcon(icon_num, icon_x, icon_y, 0xF);
 					++icon_num;
-					icon_x += 16;
+					icon_x += icon_spr_w;
 				} while (--icon_w);
-				icon_y += 16;
+				icon_y += icon_spr_h;
 			} while (--icon_h);
+			if (_res._type == kResourceTypeAmiga) {
+				// draw outline rectangle
+				static const uint8_t outline_color = 0xE7;
+				uint8_t *p = _vid._frontLayer + 140 * Video::GAMESCREEN_W + 56;
+				memset(p + 1, outline_color, 9 * icon_spr_w - 2);
+				p += Video::GAMESCREEN_W;
+				for (int y = 1; y < 5 * icon_spr_h - 1; ++y) {
+					p[0] = p[9 * icon_spr_w - 1] = outline_color;
+					p += Video::GAMESCREEN_W;
+				}
+				memset(p + 1, outline_color, 9 * icon_spr_w - 2);
+			}
 
 			if (!display_score) {
 				int icon_x_pos = 72;

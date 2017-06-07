@@ -4,6 +4,7 @@
  * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
+#include <SDL.h>
 #include <ctype.h>
 #include <getopt.h>
 #include <sys/stat.h>
@@ -19,7 +20,7 @@ static const char *USAGE =
 	"Usage: %s [OPTIONS]...\n"
 	"  --datapath=PATH   Path to data files (default 'DATA')\n"
 	"  --savepath=PATH   Path to save files (default '.')\n"
-	"  --levelnum=NUM    Level to start from (default '0')\n"
+	"  --levelnum=NUM    Start to level, bypass introduction\n"
 	"  --fullscreen      Fullscreen display\n"
 	"  --scaler=INDEX    Graphics scaler\n"
 	"  --language=LANG   Language (fr,en,de,sp,it)\n"
@@ -36,7 +37,7 @@ static int detectVersion(FileSystem *fs) {
 		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS" },
 		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga" },
 		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)" },
-		{ 0, -1 }
+		{ 0, -1, 0 }
 	};
 	for (int i = 0; table[i].filename; ++i) {
 		File f;
@@ -82,6 +83,7 @@ static void initOptions() {
 	g_options.enable_password_menu = false;
 	g_options.fade_out_palette = true;
 	g_options.use_text_cutscenes = false;
+	g_options.use_seq_cutscenes = true;
 	// read configuration file
 	struct {
 		const char *name;
@@ -93,6 +95,7 @@ static void initOptions() {
 		{ "fade_out_palette", &g_options.fade_out_palette },
 		{ "use_tiledata", &g_options.use_tiledata },
 		{ "use_text_cutscenes", &g_options.use_text_cutscenes },
+		{ "use_seq_cutscenes", &g_options.use_seq_cutscenes },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";
@@ -126,7 +129,6 @@ static void initOptions() {
 
 static const int DEFAULT_SCALER = SCALER_SCALE_3X;
 
-#undef main
 int main(int argc, char *argv[]) {
 	const char *dataPath = "DATA";
 	const char *savePath = ".";

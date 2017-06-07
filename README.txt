@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.3.2
+Release version: 0.3.3
 -------------------------------------------------------------------------------
 
 
@@ -24,30 +24,9 @@ Data Files:
 
 You will need the original files of the PC (DOS or CD) or Amiga release.
 
-To hear background music during polygonal cutscenes with the PC version,
-you'll need to copy the .mod files of the Amiga version :
-
-	mod.flashback-ascenseur
-	mod.flashback-ceinturea
-	mod.flashback-chute
-	mod.flashback-desintegr
-	mod.flashback-donneobjt
-	mod.flashback-fin
-	mod.flashback-fin2
-	mod.flashback-game_over
-	mod.flashback-holocube
-	mod.flashback-introb
-	mod.flashback-jungle
-	mod.flashback-logo
-	mod.flashback-memoire
-	mod.flashback-missionca
-	mod.flashback-options1
-	mod.flashback-options2
-	mod.flashback-reunion
-	mod.flashback-taxi
-	mod.flashback-teleport2
-	mod.flashback-teleporta
-	mod.flashback-voyage
+To have background music during polygonal cutscenes with the PC version,
+you need to copy the music/ directory of the Amiga version or use the .mod
+fileset from unexotica.
 
 To hear voice during in-game dialogues, you'll need to copy the 'VOICE.VCE'
 file from the SegaCD version to the DATA directory.
@@ -87,7 +66,6 @@ Debug hotkeys :
     Ctrl F          toggle fast mode
     Ctrl I          Conrad 'infinite' life
     Ctrl B          toggle display of updated dirty blocks
-    Ctrl M          mirror mode (right - left swapped)
 
 
 Credits:

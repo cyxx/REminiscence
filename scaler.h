@@ -19,7 +19,7 @@ enum {
 	SCALER_SCALE_3X,
 	SCALER_POINT_4X,
 	SCALER_SCALE_4X,
-	NUM_SCALERS = 7
+	NUM_SCALERS
 };
 
 struct Scaler {

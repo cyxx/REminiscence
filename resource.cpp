@@ -949,6 +949,7 @@ void Resource::load_PGE(File *f) {
 	_pgeNum = f->readUint16LE();
 	memset(_pgeInit, 0, sizeof(_pgeInit));
 	debug(DBG_RES, "_pgeNum=%d", _pgeNum);
+	assert(_pgeNum <= ARRAYSIZE(_pgeInit));
 	for (uint16_t i = 0; i < _pgeNum; ++i) {
 		InitPGE *pge = &_pgeInit[i];
 		pge->type = f->readUint16LE();
@@ -979,6 +980,7 @@ void Resource::decodePGE(const uint8_t *p, int size) {
 	_pgeNum = _readUint16(p); p += 2;
 	memset(_pgeInit, 0, sizeof(_pgeInit));
 	debug(DBG_RES, "len=%d _pgeNum=%d", size, _pgeNum);
+	assert(_pgeNum <= ARRAYSIZE(_pgeInit));
 	for (uint16_t i = 0; i < _pgeNum; ++i) {
 		InitPGE *pge = &_pgeInit[i];
 		pge->type = _readUint16(p); p += 2;
