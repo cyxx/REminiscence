@@ -7,27 +7,28 @@
 #ifndef SCALER_H__
 #define SCALER_H__
 
-#include "intern.h"
+#include <stdint.h>
 
-typedef void (*ScaleProc)(uint16_t *dst, int dstPitch, const uint16_t *src, int srcPitch, int w, int h);
+typedef void (*ScaleProc32)(int factor, uint32_t *dst, int dstPitch, const uint32_t *src, int srcPitch, int w, int h);
 
-enum {
-	SCALER_POINT_1X = 0,
-	SCALER_POINT_2X,
-	SCALER_SCALE_2X,
-	SCALER_POINT_3X,
-	SCALER_SCALE_3X,
-	SCALER_POINT_4X,
-	SCALER_SCALE_4X,
-	NUM_SCALERS
+enum ScalerType {
+	kScalerTypePoint,
+	kScalerTypeLinear,
+	kScalerTypeInternal,
+	kScalerTypeExternal,
 };
+
+#define SCALER_TAG 1
 
 struct Scaler {
+	uint32_t tag;
 	const char *name;
-	ScaleProc proc;
-	uint8_t factor;
+	int factorMin, factorMax;
+	ScaleProc32 scale;
 };
 
-extern const Scaler _scalers[];
+extern const Scaler _internalScaler;
+
+const Scaler *findScaler(const char *name);
 
 #endif // SCALER_H__

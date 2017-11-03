@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.3.3
+Release version: 0.3.4
 -------------------------------------------------------------------------------
 
 
@@ -44,7 +44,7 @@ directory. These paths can be changed using command line switches :
     --savepath=PATH   Path to save files (default '.')
     --levelnum=NUM    Level to start from (default '0')
     --fullscreen      Fullscreen display
-    --scaler=INDEX    Graphics scaler
+    --scaler=NAME@X   Graphics scaler (default 'scale@3')
     --language=LANG   Language (fr,en,de,sp,it)
 
 In-game hotkeys :
@@ -56,7 +56,7 @@ In-game hotkeys :
     Backspace       display the inventory
     Alt Enter       toggle windowed/fullscreen mode
     Alt + and -     change video scaler
-    Alt S           write screenshot as .bmp
+    Alt S           write screenshot as .tga
     Ctrl S          save game state
     Ctrl L          load game state
     Ctrl + and -    change game state slot

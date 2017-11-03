@@ -41,6 +41,7 @@ struct Menu {
 
 	static const char *_passwords[8][3];
 	static const char *_passwordsFrAmiga[];
+	static const char *_passwordsEnAmiga[];
 
 	Resource *_res;
 	SystemStub *_stub;

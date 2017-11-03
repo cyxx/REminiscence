@@ -22,7 +22,7 @@ static const char *USAGE =
 	"  --savepath=PATH   Path to save files (default '.')\n"
 	"  --levelnum=NUM    Start to level, bypass introduction\n"
 	"  --fullscreen      Fullscreen display\n"
-	"  --scaler=INDEX    Graphics scaler\n"
+	"  --scaler=NAME@X   Graphics scaler (default 'scale@3')\n"
 	"  --language=LANG   Language (fr,en,de,sp,it)\n"
 ;
 
@@ -127,14 +127,50 @@ static void initOptions() {
 	}
 }
 
-static const int DEFAULT_SCALER = SCALER_SCALE_3X;
+static void parseScaler(char *name, ScalerParameters *scalerParameters) {
+	struct {
+		const char *name;
+		int type;
+	} scalers[] = {
+		{ "point", kScalerTypePoint },
+		{ "linear", kScalerTypeLinear },
+		{ "scale", kScalerTypeInternal },
+		{ 0, -1 }
+	};
+	bool found = false;
+	char *sep = strchr(name, '@');
+	if (sep) {
+		*sep = 0;
+	}
+	for (int i = 0; scalers[i].name; ++i) {
+		if (strcmp(scalers[i].name, name) == 0) {
+			scalerParameters->type = (ScalerType)scalers[i].type;
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		char libname[32];
+		snprintf(libname, sizeof(libname), "scaler_%s", name);
+		const Scaler *scaler = findScaler(libname);
+		if (scaler) {
+			scalerParameters->type = kScalerTypeExternal;
+			scalerParameters->scaler = scaler;
+		} else {
+			warning("Scaler '%s' not found, using default", libname);
+		}
+	}
+	if (sep) {
+		scalerParameters->factor = atoi(sep + 1);
+	}
+}
 
 int main(int argc, char *argv[]) {
 	const char *dataPath = "DATA";
 	const char *savePath = ".";
 	int levelNum = 0;
-	int scaler = DEFAULT_SCALER;
 	bool fullscreen = false;
+	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
 	int demoNum = -1;
 	if (argc == 2) {
@@ -174,10 +210,7 @@ int main(int argc, char *argv[]) {
 			fullscreen = true;
 			break;
 		case 5:
-			scaler = atoi(optarg);
-			if (scaler < 0 || scaler >= NUM_SCALERS) {
-				scaler = DEFAULT_SCALER;
-			}
+			parseScaler(optarg, &scalerParameters);
 			break;
 		case 6: {
 				static const struct {
@@ -218,7 +251,7 @@ int main(int argc, char *argv[]) {
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, demoNum, (ResourceType)version, language);
-	stub->init(g_caption, Video::GAMESCREEN_W, Video::GAMESCREEN_H, scaler, fullscreen);
+	stub->init(g_caption, Video::GAMESCREEN_W, Video::GAMESCREEN_H, fullscreen, &scalerParameters);
 	g->run();
 	delete g;
 	stub->destroy();
