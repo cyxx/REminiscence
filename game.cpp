@@ -452,25 +452,36 @@ bool Game::handleConfigPanel() {
 	_vid._charFrontColor = 0xEE;
 	_vid._charTransparentColor = 0xFF;
 
-	_vid.PC_drawChar(0x81, y, x);
+	// the panel background is drawn using special characters from FB_TXT.FNT
+	static const bool kUseDefaultFont = true;
+
+	// top-left rounded corder
+	_vid.PC_drawChar(0x81, y, x, kUseDefaultFont);
+	// top horizontal line
 	for (int i = 1; i < w; ++i) {
-		_vid.PC_drawChar(0x85, y, x + i);
+		_vid.PC_drawChar(0x85, y, x + i, kUseDefaultFont);
 	}
-	_vid.PC_drawChar(0x82, y, x + w);
+	// top-right rounded corner
+	_vid.PC_drawChar(0x82, y, x + w, kUseDefaultFont);
 	for (int j = 1; j < h; ++j) {
-		_vid.PC_drawChar(0x86, y + j, x);
+		// left vertical line
+		_vid.PC_drawChar(0x86, y + j, x, kUseDefaultFont);
 		for (int i = 1; i < w; ++i) {
 			_vid._charTransparentColor = 0xE2;
-			_vid.PC_drawChar(0x20, y + j, x + i);
+			_vid.PC_drawChar(0x20, y + j, x + i, kUseDefaultFont);
 		}
 		_vid._charTransparentColor = 0xFF;
-		_vid.PC_drawChar(0x87, y + j, x + w);
+		// right vertical line
+		_vid.PC_drawChar(0x87, y + j, x + w, kUseDefaultFont);
 	}
-	_vid.PC_drawChar(0x83, y + h, x);
+	// bottom-left rounded corner
+	_vid.PC_drawChar(0x83, y + h, x, kUseDefaultFont);
+	// bottom horizontal line
 	for (int i = 1; i < w; ++i) {
-		_vid.PC_drawChar(0x88, y + h, x + i);
+		_vid.PC_drawChar(0x88, y + h, x + i, kUseDefaultFont);
 	}
-	_vid.PC_drawChar(0x84, y + h, x + w);
+	// bottom-right rounded corner
+	_vid.PC_drawChar(0x84, y + h, x + w, kUseDefaultFont);
 
 	_menu._charVar3 = 0xE4;
 	_menu._charVar4 = 0xE5;
@@ -727,7 +738,7 @@ void Game::drawLevelTexts() {
 			uint8_t icon_num = obj - 1;
 			drawIcon(icon_num, 80, 8, 0xA);
 			uint8_t txt_num = pge->init_PGE->text_num;
-			const char *str = (const char *)_res.getTextString(txt_num);
+			const char *str = (const char *)_res.getTextString(_currentLevel, txt_num);
 			_vid.drawString(str, (176 - strlen(str) * 8) / 2, 26, 0xE6);
 			if (icon_num == 2) {
 				printSaveStateCompleted();
@@ -740,23 +751,48 @@ void Game::drawLevelTexts() {
 	_saveStateCompleted = false;
 }
 
+static int getLineLength(const uint8_t *str) {
+	int len = 0;
+	while (*str && *str != 0xB && *str != 0xA) {
+		++str;
+		++len;
+	}
+	return len;
+}
+
 void Game::drawStoryTexts() {
 	if (_textToDisplay != 0xFFFF) {
-		uint16_t text_col_mask = 0xE8;
+		uint8_t textColor = 0xE8;
 		const uint8_t *str = _res.getGameString(_textToDisplay);
 		memcpy(_vid._tempLayer, _vid._frontLayer, _vid._layerSize);
 		int textSpeechSegment = 0;
 		while (!_stub->_pi.quit) {
 			drawIcon(_currentInventoryIconNum, 80, 8, 0xA);
 			if (*str == 0xFF) {
-				text_col_mask = READ_LE_UINT16(str + 1);
-				str += 3;
+				if (_res._lang == LANG_JP) {
+					switch (str[1]) {
+					case 0:
+						textColor = 0xE9;
+						break;
+					case 1:
+						textColor = 0xEB;
+						break;
+					default:
+						warning("Unhandled JP color code 0x%x", str[1]);
+						break;
+					}
+					str += 2;
+				} else {
+					textColor = str[1];
+					// str[2] is an unused color (possibly the shadow)
+					str += 3;
+				}
 			}
-			int16_t text_y_pos = 26;
+			int yPos = 26;
 			while (1) {
-				uint16_t len = getLineLength(str);
-				str = (const uint8_t *)_vid.drawString((const char *)str, (176 - len * 8) / 2, text_y_pos, text_col_mask);
-				text_y_pos += 8;
+				const int len = getLineLength(str);
+				str = (const uint8_t *)_vid.drawString((const char *)str, (176 - len * 8) / 2, yPos, textColor);
+				yPos += 8;
 				if (*str == 0 || *str == 0xB) {
 					break;
 				}
@@ -1495,15 +1531,6 @@ void Game::changeLevel() {
 	_vid.fullRefresh();
 }
 
-uint16_t Game::getLineLength(const uint8_t *str) const {
-	uint16_t len = 0;
-	while (*str && *str != 0xB && *str != 0xA) {
-		++str;
-		++len;
-	}
-	return len;
-}
-
 void Game::handleInventory() {
 	LivePGE *selected_pge = 0;
 	LivePGE *pge = &_pgeLive[0];
@@ -1566,7 +1593,7 @@ void Game::handleInventory() {
 						drawIcon(76, icon_x_pos, 157, 0xA);
 						selected_pge = items[item_it].live_pge;
 						uint8_t txt_num = items[item_it].init_pge->text_num;
-						const char *str = (const char *)_res.getTextString(txt_num);
+						const char *str = (const char *)_res.getTextString(_currentLevel, txt_num);
 						_vid.drawString(str, (256 - strlen(str) * 8) / 2, 189, 0xED);
 						if (items[item_it].init_pge->init_flags & 4) {
 							char buf[10];

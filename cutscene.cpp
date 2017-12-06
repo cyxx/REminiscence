@@ -89,12 +89,17 @@ void Cutscene::setRotationTransform(uint16_t a, uint16_t b, uint16_t c) { // ide
 	_rotMat[3] /* .y2 */ = (-sin_c * cos_a) >> 8;
 }
 
+static bool isNewLineChar(uint8_t chr, Resource *res) {
+	const uint8_t nl = (res->_lang == LANG_JP) ? 0xD1 : 0x7C;
+	return chr == nl;
+}
+
 uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 	uint8_t *q = _textSep;
 	uint16_t ret = 0;
 	uint16_t pos = 0;
 	for (; *p != 0xA && *p; ++p) {
-		if (*p == 0x7C) {
+		if (isNewLineChar(*p, _res)) {
 			*q++ = pos;
 			if (pos > ret) {
 				ret = pos;
@@ -115,6 +120,7 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, uint8_t n) {
 	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d)", x, y, color);
 	Video::drawCharFunc dcf = _vid->_drawChar;
+	const uint8_t *fnt = (_res->_lang == LANG_JP) ? Video::_font8Jp : _res->_fnt;
 	uint16_t last_sep = 0;
 	if (n != 0) {
 		last_sep = findTextSeparators(p);
@@ -131,7 +137,7 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 		xx += ((last_sep - *sep++) & 0xFE) * 4;
 	}
 	for (; *p != 0xA && *p; ++p) {
-		if (*p == 0x7C) {
+		if (isNewLineChar(*p, _res)) {
 			yy += 8;
 			xx = x;
 			if (n != 0) {
@@ -143,7 +149,7 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 			// ignore tab
 		} else {
 			uint8_t *dst = page + 256 * yy + xx;
-			(_vid->*dcf)(dst, 256, _res->_fnt, color, *p);
+			(_vid->*dcf)(dst, 256, fnt, color, *p);
 			xx += 8;
 		}
 	}

@@ -66,7 +66,7 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 	debug(DBG_MENU, "Menu::drawString2()");
 	int i = 0;
 	for (; str[i]; ++i) {
-		_vid->PC_drawChar((uint8_t)str[i], y, x + i);
+		_vid->PC_drawChar((uint8_t)str[i], y, x + i, true);
 	}
 	_vid->markBlockAsDirty(x * 8, y * 8, i * 8, 8);
 }

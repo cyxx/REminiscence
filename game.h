@@ -120,7 +120,6 @@ struct Game {
 	void playSound(uint8_t sfxId, uint8_t softVol);
 	uint16_t getRandomNumber();
 	void changeLevel();
-	uint16_t getLineLength(const uint8_t *str) const;
 	void handleInventory();
 
 

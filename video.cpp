@@ -797,11 +797,12 @@ void Video::drawSpriteSub6(const uint8_t *src, uint8_t *dst, int pitch, int h, i
 	}
 }
 
-void Video::PC_drawChar(uint8_t c, int16_t y, int16_t x) {
+void Video::PC_drawChar(uint8_t c, int16_t y, int16_t x, bool forceDefaultFont) {
 	debug(DBG_VIDEO, "Video::PC_drawChar(0x%X, %d, %d)", c, y, x);
+	const uint8_t *fnt = (_res->_lang == LANG_JP && !forceDefaultFont) ? _font8Jp : _res->_fnt;
 	y *= 8;
 	x *= 8;
-	const uint8_t *src = _res->_fnt + (c - 32) * 32;
+	const uint8_t *src = fnt + (c - 32) * 32;
 	uint8_t *dst = _frontLayer + x + 256 * y;
 	for (int h = 0; h < 8; ++h) {
 		for (int i = 0; i < 4; ++i, ++src) {
@@ -870,6 +871,7 @@ void Video::PC_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, uint8
 
 const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col) {
 	debug(DBG_VIDEO, "Video::drawString('%s', %d, %d, 0x%X)", str, x, y, col);
+	const uint8_t *fnt = (_res->_lang == LANG_JP) ? _font8Jp : _res->_fnt;
 	drawCharFunc dcf = _drawChar;
 	int len = 0;
 	uint8_t *dst = _frontLayer + y * 256 + x;
@@ -878,7 +880,7 @@ const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col
 		if (c == 0 || c == 0xB || c == 0xA) {
 			break;
 		}
-		(this->*dcf)(dst, 256, _res->_fnt, col, c);
+		(this->*dcf)(dst, 256, fnt, col, c);
 		dst += CHAR_W;
 		++len;
 	}

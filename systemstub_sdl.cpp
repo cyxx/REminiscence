@@ -41,8 +41,6 @@ struct SystemStub_SDL : SystemStub {
 	uint32_t _rgbPalette[256];
 	int _screenW, _screenH;
 	SDL_Joystick *_joystick;
-	SDL_Rect _blitRects[200];
-	int _numBlitRects;
 	bool _fadeOnUpdateScreen;
 	void (*_audioCbProc)(void *, int16_t *, int);
 	void *_audioCbData;
@@ -75,8 +73,7 @@ struct SystemStub_SDL : SystemStub {
 	void prepareGraphics();
 	void cleanupGraphics();
 	void changeGraphics(bool fullscreen, int scaleFactor);
-	void forceGraphicsRedraw();
-	void drawRect(SDL_Rect *rect, uint8_t color);
+	void drawRect(int x, int y, int w, int h, uint8_t color);
 };
 
 SystemStub *SystemStub_SDL_create() {
@@ -162,52 +159,36 @@ void SystemStub_SDL::setOverscanColor(int i) {
 }
 
 void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch) {
-	if (_numBlitRects >= (int)ARRAYSIZE(_blitRects)) {
-		warning("SystemStub_SDL::copyRect() Too many blit rects, you may experience graphical glitches");
-	} else {
-		// extend the dirty region by 1 pixel for scalers accessing 'outer' pixels
-		--x;
-		--y;
-		w += 2;
-		h += 2;
+	if (x < 0) {
+		x = 0;
+	} else if (x >= _screenW) {
+		return;
+	}
+	if (y < 0) {
+		y = 0;
+	} else if (y >= _screenH) {
+		return;
+	}
+	if (x + w > _screenW) {
+		w = _screenW - x;
+	}
+	if (y + h > _screenH) {
+		h = _screenH - y;
+	}
 
-		if (x < 0) {
-			x = 0;
-		} else if (x >= _screenW) {
-			return;
-		}
-		if (y < 0) {
-			y = 0;
-		} else if (y >= _screenH) {
-			return;
-		}
-		if (x + w > _screenW) {
-			w = _screenW - x;
-		}
-		if (y + h > _screenH) {
-			h = _screenH - y;
-		}
-		SDL_Rect *br = &_blitRects[_numBlitRects];
+	uint32_t *p = _screenBuffer + y * _screenW + x;
+	buf += y * pitch + x;
 
-		br->x = x;
-		br->y = y;
-		br->w = w;
-		br->h = h;
-		++_numBlitRects;
-
-		uint32_t *p = _screenBuffer + br->y * _screenW + br->x;
-		buf += y * pitch + x;
-
-		while (h--) {
-			for (int i = 0; i < w; ++i) {
-				p[i] = _rgbPalette[buf[i]];
-			}
-			p += _screenW;
-			buf += pitch;
+	for (int j = 0; j < h; ++j) {
+		for (int i = 0; i < w; ++i) {
+			p[i] = _rgbPalette[buf[i]];
 		}
-		if (_pi.dbgMask & PlayerInput::DF_DBLOCKS) {
-			drawRect(br, 0xE7);
-		}
+		p += _screenW;
+		buf += pitch;
+	}
+
+	if (_pi.dbgMask & PlayerInput::DF_DBLOCKS) {
+		drawRect(x, y, w, h, 0xE7);
 	}
 }
 
@@ -255,7 +236,6 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 		SDL_RenderCopy(_renderer, _texture, 0, 0);
 	}
 	SDL_RenderPresent(_renderer);
-	_numBlitRects = 0;
 }
 
 void SystemStub_SDL::processEvents() {
@@ -520,7 +500,7 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 		break;
 	case SDL_KEYDOWN:
 		if (ev.key.keysym.mod & (KMOD_ALT | KMOD_CTRL)) {
-                               break;
+			break;
 		}
 		switch (ev.key.keysym.sym) {
 		case SDLK_LEFT:
@@ -576,7 +556,7 @@ static void mixAudioS16(void *param, uint8_t *buf, int len) {
 }
 
 void SystemStub_SDL::startAudio(AudioCallback callback, void *param) {
-	SDL_AudioSpec desired, obtained;
+	SDL_AudioSpec desired;
 	memset(&desired, 0, sizeof(desired));
 	desired.freq = kAudioHz;
 	desired.format = AUDIO_S16SYS;
@@ -584,7 +564,7 @@ void SystemStub_SDL::startAudio(AudioCallback callback, void *param) {
 	desired.samples = 2048;
 	desired.callback = mixAudioS16;
 	desired.userdata = this;
-	if (SDL_OpenAudio(&desired, &obtained) == 0) {
+	if (SDL_OpenAudio(&desired, 0) == 0) {
 		_audioCbProc = callback;
 		_audioCbData = param;
 		SDL_PauseAudio(0);
@@ -642,7 +622,6 @@ void SystemStub_SDL::prepareGraphics() {
 	SDL_RenderSetLogicalSize(_renderer, windowW, windowH);
 	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _texW, _texH);
 	_fmt = SDL_AllocFormat(kPixelFormat);
-	forceGraphicsRedraw();
 }
 
 void SystemStub_SDL::cleanupGraphics() {
@@ -650,13 +629,13 @@ void SystemStub_SDL::cleanupGraphics() {
 		free(_screenBuffer);
 		_screenBuffer = 0;
 	}
-	if (_window) {
-		SDL_DestroyWindow(_window);
-		_window = 0;
-	}
 	if (_renderer) {
 		SDL_DestroyRenderer(_renderer);
 		_renderer = 0;
+	}
+	if (_window) {
+		SDL_DestroyWindow(_window);
+		_window = 0;
 	}
 	if (_fmt) {
 		SDL_FreeFormat(_fmt);
@@ -665,39 +644,38 @@ void SystemStub_SDL::cleanupGraphics() {
 }
 
 void SystemStub_SDL::changeGraphics(bool fullscreen, int scaleFactor) {
-	if (_window) {
-		SDL_DestroyWindow(_window);
-		_window = 0;
+	int factor = scaleFactor;
+	if (factor < _scaler->factorMin) {
+		factor = _scaler->factorMin;
+	} else if (factor > _scaler->factorMax) {
+		factor = _scaler->factorMax;
 	}
+	if (fullscreen == _fullscreen && factor == _scaleFactor) {
+		// no change
+		return;
+	}
+	_fullscreen = fullscreen;
+	_scaleFactor = factor;
 	if (_renderer) {
 		SDL_DestroyRenderer(_renderer);
 		_renderer = 0;
+	}
+	if (_window) {
+		SDL_DestroyWindow(_window);
+		_window = 0;
 	}
 	if (_fmt) {
 		SDL_FreeFormat(_fmt);
 		_fmt = 0;
 	}
-	_fullscreen = fullscreen;
-	if (scaleFactor >= _scaler->factorMin && scaleFactor <= _scaler->factorMax) {
-		_scaleFactor = scaleFactor;
-	}
 	prepareGraphics();
-	forceGraphicsRedraw();
 }
 
-void SystemStub_SDL::forceGraphicsRedraw() {
-	_numBlitRects = 1;
-	_blitRects[0].x = 0;
-	_blitRects[0].y = 0;
-	_blitRects[0].w = _screenW;
-	_blitRects[0].h = _screenH;
-}
-
-void SystemStub_SDL::drawRect(SDL_Rect *rect, uint8_t color) {
-	int x1 = rect->x;
-	int y1 = rect->y;
-	int x2 = rect->x + rect->w - 1;
-	int y2 = rect->y + rect->h - 1;
+void SystemStub_SDL::drawRect(int x, int y, int w, int h, uint8_t color) {
+	const int x1 = x;
+	const int y1 = y;
+	const int x2 = x + w - 1;
+	const int y2 = y + h - 1;
 	assert(x1 >= 0 && x2 < _screenW && y1 >= 0 && y2 < _screenH);
 	for (int i = x1; i <= x2; ++i) {
 		*(_screenBuffer + y1 * _screenW + i) = *(_screenBuffer + y2 * _screenW + i) = _rgbPalette[color];

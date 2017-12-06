@@ -46,11 +46,24 @@ struct LocaleData {
 	static const char *_textsTableDE[];
 	static const char *_textsTableSP[];
 	static const char *_textsTableIT[];
+
 	static const uint8_t _stringsTableFR[];
 	static const uint8_t _stringsTableEN[];
 	static const uint8_t _stringsTableDE[];
 	static const uint8_t _stringsTableSP[];
 	static const uint8_t _stringsTableIT[];
+	static const uint8_t _stringsTableJP[];
+
+	static const uint8_t _level1TbnJP[];
+	static const uint8_t _level2TbnJP[];
+	static const uint8_t _level3TbnJP[];
+	static const uint8_t _level41TbnJP[];
+	static const uint8_t _level42TbnJP[];
+	static const uint8_t _level51TbnJP[];
+	static const uint8_t _level52TbnJP[];
+
+	static const uint8_t _cineBinJP[];
+	static const uint8_t _cineTxtJP[];
 };
 
 struct Resource {
@@ -139,9 +152,7 @@ struct Resource {
 	uint8_t *_cineStrings[NUM_CUTSCENE_TEXTS];
 	uint8_t *_cine_off;
 	uint8_t *_cine_txt;
-	char **_extTextsTable;
 	const char **_textsTable;
-	uint8_t *_extStringsTable;
 	const uint8_t *_stringsTable;
 	uint8_t *_bankData;
 	uint8_t *_bankDataHead;
@@ -203,13 +214,46 @@ struct Resource {
 		const int offset = _readUint16(_ani + 2 + num * 2);
 		return _ani + 2 + offset;
 	}
-	const uint8_t *getTextString(int num) {
+	const uint8_t *getTextString(int level, int num) {
+		if (_lang == LANG_JP) {
+			const uint8_t *p = 0;
+			switch (level) {
+			case 0:
+				p = LocaleData::_level1TbnJP;
+				break;
+			case 1:
+				p = LocaleData::_level2TbnJP;
+				break;
+			case 2:
+				p = LocaleData::_level3TbnJP;
+				break;
+			case 3:
+				p = LocaleData::_level41TbnJP;
+				break;
+			case 4:
+				p = LocaleData::_level42TbnJP;
+				break;
+			case 5:
+				p = LocaleData::_level51TbnJP;
+				break;
+			case 6:
+				p = LocaleData::_level52TbnJP;
+				break;
+			default:
+				return 0;
+			}
+			return p + READ_LE_UINT16(p + num * 2);
+		}
 		return _tbn + _readUint16(_tbn + num * 2);
 	}
 	const uint8_t *getGameString(int num) {
 		return _stringsTable + READ_LE_UINT16(_stringsTable + num * 2);
 	}
 	const uint8_t *getCineString(int num) {
+		if (_lang == LANG_JP) {
+			const int offset = READ_BE_UINT16(LocaleData::_cineBinJP + num * 2);
+			return LocaleData::_cineTxtJP + offset;
+		}
 		if (_cine_off) {
 			const int offset = READ_BE_UINT16(_cine_off + num * 2);
 			return _cine_txt + offset;

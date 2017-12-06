@@ -28,6 +28,7 @@ struct Video {
 	static const uint8_t _conradPal2[];
 	static const uint8_t _textPal[];
 	static const uint8_t _palSlot0xF[];
+	static const uint8_t _font8Jp[];
 
 	Resource *_res;
 	SystemStub *_stub;
@@ -77,7 +78,7 @@ struct Video {
 	void drawSpriteSub4(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
 	void drawSpriteSub5(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
 	void drawSpriteSub6(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
-	void PC_drawChar(uint8_t c, int16_t y, int16_t x);
+	void PC_drawChar(uint8_t c, int16_t y, int16_t x, bool forceDefaultFont = false);
 	void PC_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, uint8_t color, uint8_t chr);
 	void AMIGA_drawStringChar(uint8_t *dst, int pitch, const uint8_t *src, uint8_t color, uint8_t chr);
 	const char *drawString(const char *str, int16_t x, int16_t y, uint8_t col);

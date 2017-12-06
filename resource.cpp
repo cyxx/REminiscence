@@ -382,103 +382,72 @@ void Resource::load_CINE() {
 }
 
 void Resource::load_TEXT() {
-	File f;
-	// Load game strings
 	_stringsTable = 0;
-	if (f.open("STRINGS.TXT", "rb", _fs)) {
-		const int sz = f.size();
-		_extStringsTable = (uint8_t *)malloc(sz);
-		if (_extStringsTable) {
-			f.read(_extStringsTable, sz);
-			_stringsTable = _extStringsTable;
-		}
-		f.close();
-	}
-	if (!_stringsTable) {
-		switch (_lang) {
-		case LANG_FR:
-			_stringsTable = LocaleData::_stringsTableFR;
-			break;
-		case LANG_EN:
-			_stringsTable = LocaleData::_stringsTableEN;
-			break;
-		case LANG_DE:
-			_stringsTable = LocaleData::_stringsTableDE;
-			break;
-		case LANG_SP:
-			_stringsTable = LocaleData::_stringsTableSP;
-			break;
-		case LANG_IT:
-			_stringsTable = LocaleData::_stringsTableIT;
-			break;
-		}
+	switch (_lang) {
+	case LANG_FR:
+		_stringsTable = LocaleData::_stringsTableFR;
+		break;
+	case LANG_EN:
+		_stringsTable = LocaleData::_stringsTableEN;
+		break;
+	case LANG_DE:
+		_stringsTable = LocaleData::_stringsTableDE;
+		break;
+	case LANG_SP:
+		_stringsTable = LocaleData::_stringsTableSP;
+		break;
+	case LANG_IT:
+		_stringsTable = LocaleData::_stringsTableIT;
+		break;
+	case LANG_JP:
+		_stringsTable = LocaleData::_stringsTableJP;
+		break;
 	}
 	// Load menu strings
 	_textsTable = 0;
-	if (f.open("MENUS.TXT", "rb", _fs)) {
-		const int offs = LocaleData::LI_NUM * sizeof(char *);
-		const int sz = f.size() + 1;
-		_extTextsTable = (char **)malloc(offs + sz);
-		if (_extTextsTable) {
-			char *textData = (char *)_extTextsTable + offs;
-			f.read(textData, sz);
-			textData[sz] = 0;
-			int textsCount = 0;
-			for (char *eol; (eol = strpbrk(textData, "\r\n")) != 0; ) {
-				*eol++ = 0;
-				if (*eol == '\r' || *eol == '\n') {
-					*eol++ = 0;
-				}
-				if (textsCount < LocaleData::LI_NUM && textData[0] != 0) {
-					_extTextsTable[textsCount] = textData;
-					++textsCount;
-				}
-				textData = eol;
-			}
-			if (textsCount < LocaleData::LI_NUM && textData[0] != 0) {
-				_extTextsTable[textsCount] = textData;
-				++textsCount;
-			}
-			if (textsCount < LocaleData::LI_NUM) {
-				free(_extTextsTable);
-				_extTextsTable = 0;
-			} else {
-				_textsTable = (const char **)_extTextsTable;
-			}
-		}
-	}
-	if (!_textsTable) {
-		switch (_lang) {
-		case LANG_FR:
-			_textsTable = LocaleData::_textsTableFR;
-			break;
-		case LANG_EN:
-			_textsTable = LocaleData::_textsTableEN;
-			break;
-		case LANG_DE:
-			_textsTable = LocaleData::_textsTableDE;
-			break;
-		case LANG_SP:
-			_textsTable = LocaleData::_textsTableSP;
-			break;
-		case LANG_IT:
-			_textsTable = LocaleData::_textsTableIT;
-			break;
-		}
+	switch (_lang) {
+	case LANG_FR:
+		_textsTable = LocaleData::_textsTableFR;
+		break;
+	case LANG_EN:
+		_textsTable = LocaleData::_textsTableEN;
+		break;
+	case LANG_DE:
+		_textsTable = LocaleData::_textsTableDE;
+		break;
+	case LANG_SP:
+		_textsTable = LocaleData::_textsTableSP;
+		break;
+	case LANG_IT:
+		_textsTable = LocaleData::_textsTableIT;
+		break;
+	case LANG_JP:
+		_textsTable = LocaleData::_textsTableEN;
+		break;
 	}
 }
 
 void Resource::free_TEXT() {
-	if (_extTextsTable) {
-		free(_extTextsTable);
-		_extTextsTable = 0;
-	}
 	_stringsTable = 0;
-	if (_extStringsTable) {
-		free(_extStringsTable);
-		_extStringsTable = 0;
-	}
 	_textsTable = 0;
+}
+
+static const char *getTextBin(Language lang, ResourceType type) {
+	// FB PC-CD version has language specific files
+	// .TBN is used as fallback if open fails
+	switch (lang) {
+	case LANG_FR:
+		return "TBF";
+	case LANG_DE:
+		return "TBG";
+	case LANG_SP:
+		return "TBS";
+	case LANG_IT:
+		return "TBI";
+	case LANG_EN:
+	default:
+		return "TBN";
+	}
 }
 
 void Resource::load(const char *objName, int objType, const char *ext) {
@@ -542,7 +511,10 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 		loadStub = &Resource::load_ANI;
 		break;
 	case OT_TBN:
-		snprintf(_entryName, sizeof(_entryName), "%s.TBN", objName);
+		snprintf(_entryName, sizeof(_entryName), "%s.%s", objName, getTextBin(_lang, _type));
+		if (!_fs->exists(_entryName)) {
+			snprintf(_entryName, sizeof(_entryName), "%s.TBN", objName);
+		}
 		loadStub = &Resource::load_TBN;
 		break;
 	case OT_CMD:
