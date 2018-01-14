@@ -19,8 +19,8 @@ Resource::Resource(FileSystem *fs, ResourceType ver, Language lang) {
 	_aba = 0;
 	_readUint16 = (_type == kResourceTypeDOS) ? READ_LE_UINT16 : READ_BE_UINT16;
 	_readUint32 = (_type == kResourceTypeDOS) ? READ_LE_UINT32 : READ_BE_UINT32;
-	_memBuf = (uint8_t *)malloc(320 * 224 + 1024);
-	if (!_memBuf) {
+	_scratchBuffer = (uint8_t *)malloc(320 * 224 + 1024);
+	if (!_scratchBuffer) {
 		error("Unable to allocate temporary memory buffer");
 	}
 	static const int kBankDataSize = 0x7000;
@@ -40,7 +40,7 @@ Resource::~Resource() {
 	free(_tab);
 	free(_spc);
 	free(_spr1);
-	free(_memBuf);
+	free(_scratchBuffer);
 	free(_cmd);
 	free(_pol);
 	free(_cine_off);

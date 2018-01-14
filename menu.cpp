@@ -73,16 +73,16 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 
 void Menu::loadPicture(const char *prefix) {
 	debug(DBG_MENU, "Menu::loadPicture('%s')", prefix);
-	_res->load_MAP_menu(prefix, _res->_memBuf);
+	_res->load_MAP_menu(prefix, _res->_scratchBuffer);
 	for (int i = 0; i < 4; ++i) {
 		for (int y = 0; y < 224; ++y) {
 			for (int x = 0; x < 64; ++x) {
-				_vid->_frontLayer[i + x * 4 + 256 * y] = _res->_memBuf[0x3800 * i + x + 64 * y];
+				_vid->_frontLayer[i + x * 4 + 256 * y] = _res->_scratchBuffer[0x3800 * i + x + 64 * y];
 			}
 		}
 	}
-	_res->load_PAL_menu(prefix, _res->_memBuf);
-	_stub->setPalette(_res->_memBuf, 256);
+	_res->load_PAL_menu(prefix, _res->_scratchBuffer);
+	_stub->setPalette(_res->_scratchBuffer, 256);
 }
 
 void Menu::handleInfoScreen() {
@@ -309,7 +309,7 @@ void Menu::handleTitleScreen() {
 	_charVar4 = 0;
 	_charVar5 = 0;
 
-	static const int MAX_MENU_ITEMS = 5;
+	static const int MAX_MENU_ITEMS = 6;
 	Item menuItems[MAX_MENU_ITEMS];
 	int menuItemsCount = 0;
 
@@ -330,6 +330,9 @@ void Menu::handleTitleScreen() {
 	}
 	menuItems[menuItemsCount].str = LocaleData::LI_10_INFO;
 	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_INFO;
+	++menuItemsCount;
+	menuItems[menuItemsCount].str = LocaleData::LI_23_DEMO;
+	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_DEMO;
 	++menuItemsCount;
 	menuItems[menuItemsCount].str = LocaleData::LI_11_QUIT;
 	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_QUIT;
@@ -405,6 +408,9 @@ void Menu::handleTitleScreen() {
 			case MENU_OPTION_ITEM_INFO:
 				_currentScreen = SCREEN_INFO;
 				handleInfoScreen();
+				break;
+			case MENU_OPTION_ITEM_DEMO:
+				quitLoop = true;
 				break;
 			case MENU_OPTION_ITEM_QUIT:
 				quitLoop = true;

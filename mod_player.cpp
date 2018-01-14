@@ -30,6 +30,7 @@ struct ModPlayer_impl {
 		_settings.mBits = 16;
 		_settings.mFrequency = rate;
 		_settings.mResamplingMode = MODPLUG_RESAMPLE_FIR;
+		_settings.mLoopCount = -1;
 		ModPlug_SetSettings(&_settings);
 	}
 
@@ -58,7 +59,15 @@ struct ModPlayer_impl {
 				_repeatIntro = false;
 			}
 			const int count = ModPlug_Read(_mf, buf, len * sizeof(int16_t));
-			return count > 0;
+			// setting mLoopCount to non-zero does not trigger any looping in
+			// my test and ModPlug_Read returns 0.
+			// looking at the libmodplug-0.8.8 tarball, it seems the variable
+			// m_nRepeatCount is commented in sndmix.cpp. Not sure how if this
+			// is a known bug, we workaround it here.
+			if (count == 0) {
+				ModPlug_SeekOrder(_mf, 0);
+			}
+			return true;
 		}
 		return false;
 	}
@@ -570,7 +579,8 @@ void ModPlayer_impl::handleTick() {
 	}
 	if (_currentPatternOrder == _modInfo.numPatterns) {
 		debug(DBG_MOD, "ModPlayer::handleEffect() _currentPatternOrder == _modInfo.numPatterns");
-		_playing = false;
+//		_playing = false;
+		_currentPatternOrder = 0;
 	}
 }
 

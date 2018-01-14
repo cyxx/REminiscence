@@ -37,6 +37,7 @@ struct LocaleData {
 		LI_20_LOAD_GAME,
 		LI_21_SAVE_GAME,
 		LI_22_SAVE_SLOT,
+		LI_23_DEMO,
 
 		LI_NUM
 	};
@@ -144,7 +145,7 @@ struct Resource {
 	uint8_t *_bnq;
 	uint16_t _numObjectNodes;
 	ObjectNode *_objectNodesMap[255];
-	uint8_t *_memBuf;
+	uint8_t *_scratchBuffer;
 	SoundFx *_sfxList;
 	uint8_t _numSfx;
 	uint8_t *_cmd;

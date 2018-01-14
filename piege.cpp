@@ -193,7 +193,7 @@ set_anim:
 	uint8_t _dl = pge->anim_seq;
 	const uint8_t *anim_frame = anim_data + 6 + _dl * 4;
 	while (_dh > _dl) {
-		if (READ_LE_UINT16(anim_frame) != 0xFFFF) {
+		if (_res._readUint16(anim_frame) != 0xFFFF) {
 			if (_pge_currentPiegeFacingDir) {
 				pge->pos_x -= (int8_t)anim_frame[2];
 			} else {

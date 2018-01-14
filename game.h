@@ -87,7 +87,7 @@ struct Game {
 	bool _endLoop;
 	uint32_t _frameTimestamp;
 
-	Game(SystemStub *, FileSystem *, const char *savePath, int level, int demo, ResourceType ver, Language lang);
+	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang);
 
 	void run();
 	void displayTitleScreenAmiga();
@@ -96,6 +96,7 @@ struct Game {
 	void updateTiming();
 	void playCutscene(int id = -1);
 	bool playCutsceneSeq(const char *name);
+	bool hasLevelMap(int level, int room) const;
 	void loadLevelMap();
 	void loadLevelData();
 	void drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask);

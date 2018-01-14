@@ -13,7 +13,7 @@
 #include "unpack.h"
 #include "util.h"
 
-Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, int demo, ResourceType ver, Language lang)
+Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
 	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub),
 	_stub(stub), _fs(fs), _savePath(savePath) {
@@ -21,22 +21,11 @@ Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, in
 	_inp_demPos = 0;
 	_skillLevel = _menu._skill = 1;
 	_currentLevel = _menu._level = level;
-	_demoBin = demo;
+	_demoBin = -1;
 }
 
 void Game::run() {
 	_randSeed = time(0);
-
-	if (_demoBin != -1) {
-		if (_demoBin < ARRAYSIZE(_demoInputs)) {
-			const char *fn = _demoInputs[_demoBin].name;
-			debug(DBG_INFO, "Loading inputs from '%s'", fn);
-			_res.load_DEM(fn);
-		}
-		if (_res._demLen == 0) {
-			return;
-		}
-	}
 
 	_res.init();
 	_res.load_TEXT();
@@ -69,10 +58,8 @@ void Game::run() {
 	_mix.init();
 	_mix._mod._isAmiga = _res.isAmiga();
 
-	if (_demoBin == -1) {
-		playCutscene(0x40);
-		playCutscene(0x0D);
-	}
+	playCutscene(0x40);
+	playCutscene(0x0D);
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
@@ -90,10 +77,7 @@ void Game::run() {
 	}
 
 	while (!_stub->_pi.quit) {
-		if (_demoBin != -1) {
-			_currentLevel = _demoInputs[_demoBin].level;
-			_randSeed = 0;
-		} else if (_res._isDemo) {
+		if (_res._isDemo) {
 			// do not present title screen and menus
 		} else {
 			_mix.playMusic(1);
@@ -104,6 +88,21 @@ void Game::run() {
 					_stub->_pi.quit = true;
 					break;
 				}
+				if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_DEMO) {
+					_demoBin = (_demoBin + 1) % ARRAYSIZE(_demoInputs);
+					const char *fn = _demoInputs[_demoBin].name;
+					debug(DBG_DEMO, "Loading inputs from '%s'", fn);
+					_res.load_DEM(fn);
+					if (_res._demLen == 0) {
+						continue;
+					}
+					_skillLevel = 1;
+					_currentLevel = _demoInputs[_demoBin].level;
+					_randSeed = 0;
+					_mix.stopMusic();
+					break;
+				}
+				_demoBin = -1;
 				_skillLevel = _menu._skill;
 				_currentLevel = _menu._level;
 				_mix.stopMusic();
@@ -135,10 +134,17 @@ void Game::run() {
 			while (!_stub->_pi.quit && !_endLoop) {
 				mainLoop();
 				if (_demoBin != -1 && _inp_demPos >= _res._demLen) {
-					debug(DBG_INFO, "End of demo");
-					_stub->_pi.quit = true;
+					debug(DBG_DEMO, "End of demo");
+					// exit level
+					_demoBin = -1;
+					_endLoop = true;
 				}
 			}
+			// flush inputs
+			_stub->_pi.dirMask = 0;
+			_stub->_pi.enter = false;
+			_stub->_pi.space = false;
+			_stub->_pi.shift = false;
 		}
 	}
 
@@ -149,7 +155,7 @@ void Game::run() {
 
 void Game::displayTitleScreenAmiga() {
 	static const char *FILENAME = "present.cmp";
-	_res.load_CMP_menu(FILENAME, _res._memBuf);
+	_res.load_CMP_menu(FILENAME, _res._scratchBuffer);
 	static const int kW = 320;
 	static const int kH = 224;
 	uint8_t *buf = (uint8_t *)calloc(kW * kH, 1);
@@ -169,7 +175,7 @@ void Game::displayTitleScreenAmiga() {
 	_stub->setScreenSize(kW, kH);
 	_stub->copyRect(0, 0, kW, kH, buf, kW);
 	_stub->updateScreen(0);
-	_vid.AMIGA_decodeCmp(_res._memBuf + 6, buf);
+	_vid.AMIGA_decodeCmp(_res._scratchBuffer + 6, buf);
 	free(buf);
 	for (int h = 0; h < kH / 2; h += 2) {
 		const int y = kH / 2 - h;
@@ -261,7 +267,7 @@ void Game::mainLoop() {
 		return;
 	}
 	if (_loadMap) {
-		if (_currentRoom == 0xFF) {
+		if (_currentRoom == 0xFF || !hasLevelMap(_currentLevel, _pgeLive[0].room_location)) {
 			_cut._id = 6;
 			_deathCutsceneCounter = 1;
 		} else {
@@ -288,7 +294,7 @@ void Game::mainLoop() {
 	}
 	if (_stub->_pi.escape) {
 		_stub->_pi.escape = false;
-		if (handleConfigPanel()) {
+		if (_demoBin != -1 || handleConfigPanel()) {
 			_endLoop = true;
 			return;
 		}
@@ -382,7 +388,7 @@ void Game::playCutscene(int id) {
 bool Game::playCutsceneSeq(const char *name) {
 	File f;
 	if (f.open(name, "rb", _fs)) {
-		_seq.setBackBuffer(_res._memBuf);
+		_seq.setBackBuffer(_res._scratchBuffer);
 		_seq.play(&f);
 		_vid.fullRefresh();
 		return true;
@@ -967,13 +973,13 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 				}
 				switch (_res._type) {
 				case kResourceTypeAmiga:
-					_vid.AMIGA_decodeSpm(state->dataPtr, _res._memBuf);
-					drawCharacter(_res._memBuf, state->x, state->y, state->h, state->w, pge->flags);
+					_vid.AMIGA_decodeSpm(state->dataPtr, _res._scratchBuffer);
+					drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
 					break;
 				case kResourceTypeDOS:
 					if (!(state->dataPtr[-2] & 0x80)) {
-						decodeCharacterFrame(state->dataPtr, _res._memBuf);
-						drawCharacter(_res._memBuf, state->x, state->y, state->h, state->w, pge->flags);
+						decodeCharacterFrame(state->dataPtr, _res._scratchBuffer);
+						drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
 					} else {
 						drawCharacter(state->dataPtr, state->x, state->y, state->h, state->w, pge->flags);
 					}
@@ -1041,14 +1047,14 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
-		_vid.AMIGA_decodeSpc(src, sprite_w, sprite_h, _res._memBuf);
+		_vid.AMIGA_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
 		break;
 	case kResourceTypeDOS:
-		_vid.PC_decodeSpc(src, sprite_w, sprite_h, _res._memBuf);
+		_vid.PC_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
 		break;
 	}
 
-	src = _res._memBuf;
+	src = _res._scratchBuffer;
 	bool sprite_mirror_x = false;
 	int16_t sprite_clipped_w;
 	if (sprite_x >= 0) {
@@ -1294,6 +1300,15 @@ int Game::loadMonsterSprites(LivePGE *pge) {
 	return 0xFFFF;
 }
 
+bool Game::hasLevelMap(int level, int room) const {
+	if (_res._map) {
+		return READ_LE_UINT32(_res._map + room * 6) != 0;
+	} else if (_res._lev) {
+		return READ_BE_UINT32(_res._lev + room * 4) != 0;
+	}
+	return false;
+}
+
 void Game::loadLevelMap() {
 	debug(DBG_GAME, "Game::loadLevelMap() room=%d", _currentRoom);
 	_currentIcon = 0xFF;
@@ -1441,6 +1456,7 @@ void Game::loadLevelData() {
 			_pgeLive[0].room_location = _demoInputs[_demoBin].room;
 			_pgeLive[0].pos_x = _demoInputs[_demoBin].x;
 			_pgeLive[0].pos_y = _demoInputs[_demoBin].y;
+			_inp_demPos = 0;
 		} else {
 			_inp_demPos = 1;
 		}
@@ -1669,7 +1685,7 @@ void Game::handleInventory() {
 
 void Game::inp_update() {
 	_stub->processEvents();
-	if (_inp_demPos < _res._demLen) {
+	if (_demoBin != -1 && _inp_demPos < _res._demLen) {
 		const int keymask = _res._dem[_inp_demPos++];
 		_stub->_pi.dirMask = keymask & 0xF;
 		_stub->_pi.enter = (keymask & 0x10) != 0;

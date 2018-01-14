@@ -2261,7 +2261,7 @@ const uint8_t LocaleData::_stringsTableJP[] = {
 	0x0a, 0x61, 0x7a, 0x73, 0x20, 0x7d, 0x73, 0x6a, 0xcf, 0x92, 0x00
 };
 
-const char *LocaleData::_textsTableFR[] = {
+const char *LocaleData::_textsTableFR[LocaleData::LI_NUM] = {
 	"CONTINUER OU ABANDONNER ?",
 	"TEMPS",
 	"CONTINUER",
@@ -2283,10 +2283,11 @@ const char *LocaleData::_textsTableFR[] = {
 	"ABANDONNER",
 	"CHARGER",
 	"SAUVEGARDER",
-	"PARTIE"
+	"PARTIE",
+	"DEMO"
 };
 
-const char *LocaleData::_textsTableEN[] = {
+const char *LocaleData::_textsTableEN[LocaleData::LI_NUM] = {
 	"CONTINUE OR ABORT THIS GAME ?",
 	"TIME",
 	"CONTINUE",
@@ -2308,10 +2309,11 @@ const char *LocaleData::_textsTableEN[] = {
 	"ABORT GAME",
 	"LOAD GAME",
 	"SAVE GAME",
-	"SLOT"
+	"SLOT",
+	"DEMO"
 };
 
-const char *LocaleData::_textsTableDE[] = {
+const char *LocaleData::_textsTableDE[LocaleData::LI_NUM] = {
 	"WEITERSPIELEN ODER ABBRECHEN ?",
 	"ZEIT : ",
 	"WEITERSPIELEN",
@@ -2333,10 +2335,11 @@ const char *LocaleData::_textsTableDE[] = {
 	"SPIEL ABBRECHEN",
 	"LADEN",
 	"SPEICHERN",
-	"SPIEL"
+	"SPIEL",
+	"DEMO"
 };
 
-const char *LocaleData::_textsTableSP[] = {
+const char *LocaleData::_textsTableSP[LocaleData::LI_NUM] = {
 	"CONTINUAR O TERMINAR JUEGO ?",
 	"TIEMPO",
 	"SEGUIR",
@@ -2358,10 +2361,11 @@ const char *LocaleData::_textsTableSP[] = {
 	"PARAR JUEGO",
 	"CARGAR DATOS",
 	"GUARDAR DATOS",
-	"JUEGO"
+	"JUEGO",
+	"DEMO"
 };
 
-const char *LocaleData::_textsTableIT[] = {
+const char *LocaleData::_textsTableIT[LocaleData::LI_NUM] = {
 	"CONTINUA O ABBANDONA GIOCO",
 	"TEMPO",
 	"CONTINUA",
@@ -2383,7 +2387,8 @@ const char *LocaleData::_textsTableIT[] = {
 	"ESCI DAL GIOCO",
 	"CARICA IL GIOCO",
 	"SALVA IL GIOCO",
-	"SLOT"
+	"SLOT",
+	"DEMO"
 };
 
 const uint8_t LocaleData::_level1TbnJP[] = {
