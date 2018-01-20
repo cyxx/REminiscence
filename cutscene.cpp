@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <math.h>
@@ -117,31 +117,31 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 	return ret;
 }
 
-void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, uint8_t n) {
-	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d)", x, y, color);
+void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify) {
+	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d, justify=%d)", x, y, color, textJustify);
 	Video::drawCharFunc dcf = _vid->_drawChar;
 	const uint8_t *fnt = (_res->_lang == LANG_JP) ? Video::_font8Jp : _res->_fnt;
 	uint16_t last_sep = 0;
-	if (n != 0) {
+	if (textJustify != kTextJustifyLeft) {
 		last_sep = findTextSeparators(p);
-		if (n != 2) {
-			last_sep = 30;
+		if (textJustify != kTextJustifyCenter) {
+			last_sep = (_res->_lang == LANG_JP) ? 20 : 30;
 		}
 	}
 	const uint8_t *sep = _textSep;
 	y += 50;
-	x += 8;
+	x += (_res->_lang == LANG_JP) ? 0 : 8;
 	int16_t yy = y;
 	int16_t xx = x;
-	if (n != 0) {
-		xx += ((last_sep - *sep++) & 0xFE) * 4;
+	if (textJustify != kTextJustifyLeft) {
+		xx += ((last_sep - *sep++) / 2) * 8;
 	}
 	for (; *p != 0xA && *p; ++p) {
 		if (isNewLineChar(*p, _res)) {
 			yy += 8;
 			xx = x;
-			if (n != 0) {
-				xx += ((last_sep - *sep++) & 0xFE) * 4;
+			if (textJustify != kTextJustifyLeft) {
+				xx += ((last_sep - *sep++) / 2) * 8;
 			}
 		} else if (*p == 0x20) {
 			xx += 8;
@@ -199,7 +199,7 @@ void Cutscene::drawCreditsText() {
 		} else {
 			_creditsTextCounter -= 10;
 		}
-		drawText((_creditsTextPosX - 1) * 8, _creditsTextPosY * 8, _textBuf, 0xEF, _page1, 0);
+		drawText((_creditsTextPosX - 1) * 8, _creditsTextPosY * 8, _textBuf, 0xEF, _page1, kTextJustifyLeft);
 	}
 }
 
@@ -397,8 +397,8 @@ void Cutscene::op_drawStringAtBottom() {
 		if (strId != 0xFFFF) {
 			const uint8_t *str = _res->getCineString(strId);
 			if (str) {
-				drawText(0, 129, str, 0xEF, _page1, 1);
-				drawText(0, 129, str, 0xEF, _pageC, 1);
+				drawText(0, 129, str, 0xEF, _page1, kTextJustifyAlign);
+				drawText(0, 129, str, 0xEF, _pageC, kTextJustifyAlign);
 			}
 		}
 	}
@@ -843,7 +843,7 @@ void Cutscene::op_drawStringAtPos() {
 			const uint8_t *str = _res->getCineString(strId & 0xFFF);
 			if (str) {
 				uint8_t color = 0xD0 + (strId >> 0xC);
-				drawText(x, y, str, color, _page1, 2);
+				drawText(x, y, str, color, _page1, kTextJustifyCenter);
 			}
 			// 'voyage' - cutscene script redraws the string to refresh the screen
 			if (_id == 0x34 && (strId & 0xFFF) == 0x45) {
@@ -961,7 +961,7 @@ void Cutscene::mainLoop(uint16_t offset) {
 	}
 }
 
-void Cutscene::load(uint16_t cutName) {
+bool Cutscene::load(uint16_t cutName) {
 	assert(cutName != 0xFFFF);
 	const char *name = _namesTable[cutName & 0xFF];
 	switch (_res->_type) {
@@ -994,6 +994,19 @@ void Cutscene::load(uint16_t cutName) {
 		break;
 	}
 	_res->load_CINE();
+	return _res->_cmd && _res->_pol;
+}
+
+void Cutscene::unload() {
+	switch (_res->_type) {
+	case kResourceTypeAmiga:
+		_res->unload(Resource::OT_CMP);
+		break;
+	case kResourceTypeDOS:
+		_res->unload(Resource::OT_CMD);
+		_res->unload(Resource::OT_POL);
+		break;
+	}
 }
 
 void Cutscene::prepare() {
@@ -1027,8 +1040,10 @@ void Cutscene::playCredits() {
 		prepare();
 		uint16_t cutName = _offsetsTable[cut_id * 2 + 0];
 		uint16_t cutOff  = _offsetsTable[cut_id * 2 + 1];
-		load(cutName);
-		mainLoop(cutOff);
+		if (load(cutName)) {
+			mainLoop(cutOff);
+			unload();
+		}
 	}
 	_creditsSequence = false;
 }
@@ -1050,7 +1065,7 @@ void Cutscene::playText(const char *str) {
 	}
 	const int y = (128 - lines * 8) / 2;
 	memset(_page1, 0xC0, _vid->_layerSize);
-	drawText(0, y, (const uint8_t *)str, 0xC1, _page1, 1);
+	drawText(0, y, (const uint8_t *)str, 0xC1, _page1, kTextJustifyAlign);
 	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
 	_stub->updateScreen(0);
 
@@ -1106,12 +1121,151 @@ void Cutscene::play() {
 				}
 			}
 		} else if (cutName != 0xFFFF) {
-			load(cutName);
-			mainLoop(cutOff);
+			if (load(cutName)) {
+				mainLoop(cutOff);
+				unload();
+			}
+		} else if (_id == 8 && g_options.play_stone_cutscene) {
+			playSet(_caillouSetData, 0x5E4);
 		}
 		_vid->fullRefresh();
 		if (_id != 0x3D) {
 			_id = 0xFFFF;
 		}
+	}
+}
+
+static void readSetPalette(const uint8_t *p, uint16_t offset, uint16_t *palette) {
+	offset += 12;
+	for (int i = 0; i < 16; ++i) {
+		const uint16_t color = READ_BE_UINT16(p + offset); offset += 2;
+		palette[i] = color;
+	}
+}
+
+void Cutscene::drawSetShape(const uint8_t *p, uint16_t offset, int x, int y, uint8_t *paletteLut) {
+	const int count = READ_BE_UINT16(p + offset); offset += 2;
+	for (int i = 0; i < count - 1; ++i) {
+		offset += 5; // shape_marker
+		const int verticesCount = p[offset++];
+		const int ix = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+		const int iy = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+		uint8_t color = paletteLut[p[offset]]; offset += 2;
+
+		if (verticesCount == 255) {
+			int rx = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+			int ry = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+			Point pt;
+			pt.x = x + ix;
+			pt.y = y + iy;
+			_gfx.drawEllipse(color, false, &pt, rx, ry);
+		} else {
+			for (int i = 0; i < verticesCount; ++i) {
+				_vertices[i].x = x + (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+				_vertices[i].y = y + (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+			}
+			_gfx.drawPolygon(color, false, _vertices, verticesCount);
+		}
+	}
+}
+
+static uint16_t readSetShapeOffset(const uint8_t *p, int offset) {
+	const int count = READ_BE_UINT16(p + offset); offset += 2;
+	for (int i = 0; i < count - 1; ++i) {
+		offset += 5; // shape_marker
+		const int verticesCount = p[offset++];
+		offset += 6;
+		if (verticesCount == 255) {
+			offset += 4; // ellipse
+		} else {
+			offset += verticesCount * 4; // polygon
+		}
+	}
+	return offset;
+}
+
+static const int kMaxShapesCount = 16;
+static const int kMaxPaletteSize = 32;
+
+void Cutscene::playSet(const uint8_t *p, int offset) {
+	SetShape backgroundShapes[kMaxShapesCount];
+	const int bgCount = READ_BE_UINT16(p + offset); offset += 2;
+	assert(bgCount <= kMaxShapesCount);
+	for (int i = 0; i < bgCount; ++i) {
+		uint16_t nextOffset = readSetShapeOffset(p, offset);
+		backgroundShapes[i].offset = offset;
+		backgroundShapes[i].size = nextOffset - offset;
+		offset = nextOffset + 45;
+	}
+	SetShape foregroundShapes[kMaxShapesCount];
+	const int fgCount = READ_BE_UINT16(p + offset); offset += 2;
+	assert(fgCount <= kMaxShapesCount);
+	for (int i = 0; i < fgCount; ++i) {
+		uint16_t nextOffset = readSetShapeOffset(p, offset);
+		foregroundShapes[i].offset = offset;
+		foregroundShapes[i].size = nextOffset - offset;
+		offset = nextOffset + 45;
+	}
+
+	prepare();
+	_gfx._layer = _page1;
+
+	offset = 10;
+	const int frames = READ_BE_UINT16(p + offset); offset += 2;
+	for (int i = 0; i < frames && !_stub->_pi.quit; ++i) {
+		const uint32_t timestamp = _stub->getTimeStamp();
+
+		memset(_page1, 0xC0, _vid->_layerSize);
+
+		const int shapeBg = READ_BE_UINT16(p + offset); offset += 2;
+		const int count = READ_BE_UINT16(p + offset); offset += 2;
+
+		uint16_t paletteBuffer[kMaxPaletteSize];
+		memset(paletteBuffer, 0, sizeof(paletteBuffer));
+		readSetPalette(p, backgroundShapes[shapeBg].offset + backgroundShapes[shapeBg].size, paletteBuffer);
+		int paletteLutSize = 16;
+
+		uint8_t paletteLut[kMaxPaletteSize];
+		for (int j = 0; j < 16; ++j) {
+			paletteLut[j] = 0xC0 + j;
+		}
+
+		drawSetShape(p, backgroundShapes[shapeBg].offset, 0, 0, paletteLut);
+		for (int j = 0; j < count; ++j) {
+			const int shapeFg = READ_BE_UINT16(p + offset); offset += 2;
+			const int shapeX = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+			const int shapeY = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+
+			uint16_t tempPalette[16];
+			readSetPalette(p, foregroundShapes[shapeFg].offset + foregroundShapes[shapeFg].size, tempPalette);
+			for (int k = 0; k < 16; ++k) {
+				bool found = false;
+				for (int l = 0; l < paletteLutSize; ++l) {
+					if (tempPalette[k] == paletteBuffer[l]) {
+						found = true;
+						paletteLut[k] = 0xC0 + l;
+						break;
+					}
+				}
+				if (!found) {
+					assert(paletteLutSize < kMaxPaletteSize);
+					paletteLut[k] = 0xC0 + paletteLutSize;
+					paletteBuffer[paletteLutSize++] = tempPalette[k];
+				}
+			}
+
+			drawSetShape(p, foregroundShapes[shapeFg].offset, shapeX, shapeY, paletteLut);
+		}
+
+		for (int j = 0; j < paletteLutSize; ++j) {
+			Color c = Video::AMIGA_convertColor(paletteBuffer[j]);
+			_stub->setPaletteEntry(0xC0 + j, &c);
+		}
+
+		_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
+		_stub->updateScreen(0);
+		const int diff = 6 * TIMER_SLICE - (_stub->getTimeStamp() - timestamp);
+		_stub->sleep((diff < 16) ? 16 : diff);
+		_stub->processEvents();
 	}
 }

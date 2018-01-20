@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef CUTSCENE_H__
@@ -20,6 +20,17 @@ struct Cutscene {
 	enum {
 		NUM_OPCODES = 15,
 		TIMER_SLICE = 15
+	};
+
+	enum {
+		kTextJustifyLeft = 0,
+		kTextJustifyAlign = 1,
+		kTextJustifyCenter = 2,
+	};
+
+	struct SetShape {
+		uint16_t offset;
+		uint16_t size;
 	};
 
 	struct Text {
@@ -41,6 +52,7 @@ struct Cutscene {
 	static const uint8_t _protectionShapeData[];
 	static const Text _frTextsTable[];
 	static const Text _enTextsTable[];
+	static const uint8_t _caillouSetData[];
 
 	Graphics _gfx;
 	Resource *_res;
@@ -99,7 +111,7 @@ struct Cutscene {
 	void setPalette();
 	void setRotationTransform(uint16_t a, uint16_t b, uint16_t c);
 	uint16_t findTextSeparators(const uint8_t *p);
-	void drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, uint8_t n);
+	void drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify);
 	void swapLayers();
 	void drawCreditsText();
 	void drawProtectionShape(uint8_t shapeNum, int16_t zoom);
@@ -125,11 +137,15 @@ struct Cutscene {
 	uint8_t fetchNextCmdByte();
 	uint16_t fetchNextCmdWord();
 	void mainLoop(uint16_t offset);
-	void load(uint16_t cutName);
+	bool load(uint16_t cutName);
+	void unload();
 	void prepare();
 	void playCredits();
 	void playText(const char *str);
 	void play();
+
+	void drawSetShape(const uint8_t *p, uint16_t offset, int x, int y, uint8_t *paletteLut);
+	void playSet(const uint8_t *p, int offset);
 };
 
 #endif // CUTSCENE_H__

@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <SDL.h>
@@ -85,6 +85,10 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, Scal
 	SDL_ShowCursor(SDL_DISABLE);
 	_caption = title;
 	memset(&_pi, 0, sizeof(_pi));
+	_window = 0;
+	_renderer = 0;
+	_texture = 0;
+	_fmt = 0;
 	_screenBuffer = 0;
 	_fadeOnUpdateScreen = false;
 	_fullscreen = fullscreen;

@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <SDL.h>
@@ -35,6 +35,7 @@ static int detectVersion(FileSystem *fs) {
 		{ "DEMO_UK.ABA", kResourceTypeDOS, "DOS (Demo)" },
 		{ "INTRO.SEQ", kResourceTypeDOS, "DOS CD" },
 		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS" },
+		{ "LEVEL1.BNQ", kResourceTypeDOS, "DOS (Demo)" },
 		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga" },
 		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)" },
 		{ 0, -1, 0 }
@@ -96,6 +97,7 @@ static void initOptions() {
 		{ "use_tiledata", &g_options.use_tiledata },
 		{ "use_text_cutscenes", &g_options.use_text_cutscenes },
 		{ "use_seq_cutscenes", &g_options.use_seq_cutscenes },
+		{ "play_stone_cutscene", &g_options.play_stone_cutscene },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";

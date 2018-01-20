@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef INTERN_H__
@@ -83,6 +83,12 @@ enum ResourceType {
 	kResourceTypeDOS
 };
 
+enum Skill {
+	kSkillEasy = 0,
+	kSkillNormal,
+	kSkillExpert,
+};
+
 struct Options {
 	bool bypass_protection;
 	bool play_disabled_cutscenes;
@@ -91,6 +97,7 @@ struct Options {
 	bool use_tiledata;
 	bool use_text_cutscenes;
 	bool use_seq_cutscenes;
+	bool play_stone_cutscene;
 };
 
 struct Color {

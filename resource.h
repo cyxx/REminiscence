@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef RESOURCE_H__
@@ -183,6 +183,7 @@ struct Resource {
 	void load_CINE();
 	void load_TEXT();
 	void free_TEXT();
+	void unload(int objType);
 	void load(const char *objName, int objType, const char *ext = 0);
 	void load_CT(File *pf);
 	void load_FNT(File *pf);

@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "game.h"
@@ -13,7 +13,7 @@
 
 Menu::Menu(Resource *res, SystemStub *stub, Video *vid)
 	: _res(res), _stub(stub), _vid(vid) {
-	_skill = 1;
+	_skill = kSkillNormal;
 	_level = 0;
 }
 
@@ -120,11 +120,11 @@ void Menu::handleSkillScreen() {
 	loadPicture("menu3");
 	_vid->fullRefresh();
 	drawString(_res->getMenuString(LocaleData::LI_12_SKILL_LEVEL), 12, 4, 3);
-	int skill_level = _skill;
+	int currentSkill = _skill;
 	do {
-		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   15, 14, colors[skill_level][0]);
-		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 17, 14, colors[skill_level][1]);
-		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 19, 14, colors[skill_level][2]);
+		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   15, 14, colors[currentSkill][0]);
+		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 17, 14, colors[currentSkill][1]);
+		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 19, 14, colors[currentSkill][2]);
 
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
@@ -132,18 +132,24 @@ void Menu::handleSkillScreen() {
 
 		if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
-			if (skill_level != 0) {
-				--skill_level;
-			} else {
-				skill_level = 2;
+			switch (currentSkill) {
+			case kSkillNormal:
+				currentSkill = kSkillEasy;
+				break;
+			case kSkillExpert:
+				currentSkill = kSkillNormal;
+				break;
 			}
 		}
 		if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-			if (skill_level != 2) {
-				++skill_level;
-			} else {
-				skill_level = 0;
+			switch (currentSkill) {
+			case kSkillEasy:
+				currentSkill = kSkillNormal;
+				break;
+			case kSkillNormal:
+				currentSkill = kSkillExpert;
+				break;
 			}
 		}
 		if (_stub->_pi.escape) {
@@ -152,7 +158,7 @@ void Menu::handleSkillScreen() {
 		}
 		if (_stub->_pi.enter) {
 			_stub->_pi.enter = false;
-			_skill = skill_level;
+			_skill = currentSkill;
 			return;
 		}
 	} while (!_stub->_pi.quit);
@@ -272,18 +278,24 @@ bool Menu::handleLevelScreen() {
 		}
 		if (_stub->_pi.dirMask & PlayerInput::DIR_LEFT) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_LEFT;
-			if (currentSkill != 0) {
-				--currentSkill;
-			} else {
-				currentSkill = 2;
+			switch (currentSkill) {
+			case kSkillNormal:
+				currentSkill = kSkillEasy;
+				break;
+			case kSkillExpert:
+				currentSkill = kSkillNormal;
+				break;
 			}
 		}
 		if (_stub->_pi.dirMask & PlayerInput::DIR_RIGHT) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
-			if (currentSkill != 2) {
-				++currentSkill;
-			} else {
-				currentSkill = 0;
+			switch (currentSkill) {
+			case kSkillEasy:
+				currentSkill = kSkillNormal;
+				break;
+			case kSkillNormal:
+				currentSkill = kSkillExpert;
+				break;
 			}
 		}
 		if (_stub->_pi.escape) {

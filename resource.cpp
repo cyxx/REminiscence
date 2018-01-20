@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2015 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "file.h"
@@ -59,9 +59,11 @@ void Resource::init() {
 		_isDemo = _fs->exists("demo.lev");
 		break;
 	case kResourceTypeDOS:
-		if (_fs->exists(ResourceAba::FILENAME)) {
+		if (_fs->exists(ResourceAba::FILENAME)) { // fbdemous
 			_aba = new ResourceAba(_fs);
 			_aba->readEntries();
+			_isDemo = true;
+		} else if (!_fs->exists("LEVEL1.MAP")) { // fbdemofr (no cutscenes)
 			_isDemo = true;
 		}
 		break;
@@ -304,11 +306,8 @@ static const char *getCineName(Language lang, ResourceType type) {
 void Resource::load_CINE() {
 	const char *prefix = getCineName(_lang, _type);
 	debug(DBG_RES, "Resource::load_CINE('%s')", prefix);
-	if (_type == kResourceTypeAmiga) {
-		if (_isDemo) {
-			// file not present in demo data files
-			return;
-		}
+	switch (_type) {
+	case kResourceTypeAmiga:
 		if (_cine_txt == 0) {
 			snprintf(_entryName, sizeof(_entryName), "%sCINE.TXT", prefix);
 			File f;
@@ -332,52 +331,61 @@ void Resource::load_CINE() {
 					}
 					p = sep + 1;
 				}
+			} else if (_isDemo) {
+				// file not present in demo datafiles
+				return;
 			}
-			if (!_cine_txt) {
-				error("Cannot load '%s'", _entryName);
-			}
-		}
-		return;
-	}
-	if (_cine_off == 0) {
-		snprintf(_entryName, sizeof(_entryName), "%sCINE.BIN", prefix);
-		File f;
-		if (f.open(_entryName, "rb", _fs)) {
-			int len = f.size();
-			_cine_off = (uint8_t *)malloc(len);
-			if (!_cine_off) {
-				error("Unable to allocate cinematics offsets");
-			}
-			f.read(_cine_off, len);
-			if (f.ioErr()) {
-				error("I/O error when reading '%s'", _entryName);
-			}
-		} else if (_aba) {
-			_cine_off = _aba->loadEntry(_entryName);
-		}
-		if (!_cine_off) {
-			error("Cannot load '%s'", _entryName);
-		}
-	}
-	if (_cine_txt == 0) {
-		snprintf(_entryName, sizeof(_entryName), "%sCINE.TXT", prefix);
-		File f;
-		if (f.open(_entryName, "rb", _fs)) {
-			int len = f.size();
-			_cine_txt = (uint8_t *)malloc(len);
-			if (!_cine_txt) {
-				error("Unable to allocate cinematics text data");
-			}
-			f.read(_cine_txt, len);
-			if (f.ioErr()) {
-				error("I/O error when reading '%s'", _entryName);
-			}
-		} else if (_aba) {
-			_cine_txt = _aba->loadEntry(_entryName);
 		}
 		if (!_cine_txt) {
 			error("Cannot load '%s'", _entryName);
 		}
+		break;
+	case kResourceTypeDOS:
+		if (_cine_off == 0) {
+			snprintf(_entryName, sizeof(_entryName), "%sCINE.BIN", prefix);
+			File f;
+			if (f.open(_entryName, "rb", _fs)) {
+				int len = f.size();
+				_cine_off = (uint8_t *)malloc(len);
+				if (!_cine_off) {
+					error("Unable to allocate cinematics offsets");
+				}
+				f.read(_cine_off, len);
+				if (f.ioErr()) {
+					error("I/O error when reading '%s'", _entryName);
+				}
+			} else if (_aba) {
+				_cine_off = _aba->loadEntry(_entryName);
+			} else if (_isDemo) {
+				return; // some demos do not have cutscene datafiles
+			}
+		}
+		if (!_cine_off) {
+			error("Cannot load '%s'", _entryName);
+		}
+		if (_cine_txt == 0) {
+			snprintf(_entryName, sizeof(_entryName), "%sCINE.TXT", prefix);
+			File f;
+			if (f.open(_entryName, "rb", _fs)) {
+				int len = f.size();
+				_cine_txt = (uint8_t *)malloc(len);
+				if (!_cine_txt) {
+					error("Unable to allocate cinematics text data");
+				}
+				f.read(_cine_txt, len);
+				if (f.ioErr()) {
+					error("I/O error when reading '%s'", _entryName);
+				}
+			} else if (_aba) {
+				_cine_txt = _aba->loadEntry(_entryName);
+			} else if (_isDemo) {
+				return; // some demos do not have cutscene datafiles
+			}
+		}
+		if (!_cine_txt) {
+			error("Cannot load '%s'", _entryName);
+		}
+		break;
 	}
 }
 
@@ -447,6 +455,28 @@ static const char *getTextBin(Language lang, ResourceType type) {
 	case LANG_EN:
 	default:
 		return "TBN";
+	}
+}
+
+void Resource::unload(int objType) {
+	switch (objType) {
+	case OT_CMD:
+		free(_cmd);
+		_cmd = 0;
+		break;
+	case OT_POL:
+		free(_pol);
+		_pol = 0;
+		break;
+	case OT_CMP:
+		free(_cmd);
+		_cmd = 0;
+		free(_pol);
+		_pol = 0;
+		break;
+	default:
+		error("Unimplemented Resource::load() type %d", objType);
+		break;
 	}
 }
 
@@ -628,6 +658,14 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 				default:
 					error("Cannot load '%s' type %d", _entryName, objType);
 				}
+				return;
+			}
+		} else if (_isDemo) {
+			// some demos (fbdemofr.zip) do not have the cutscene datafiles included
+			switch (objType) {
+			case OT_CMD:
+			case OT_POL:
+				warning("Unable to load '%s' type %d", _entryName, objType);
 				return;
 			}
 		}
