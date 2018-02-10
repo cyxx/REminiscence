@@ -11,10 +11,28 @@
 #include "util.h"
 #include "video.h"
 
+static void scalePoints(Point *pt, int count, int scale) {
+	if (scale != 1) {
+		while (count-- > 0) {
+			pt->x *= scale;
+			pt->y *= scale;
+			++pt;
+		}
+	}
+}
+
 Cutscene::Cutscene(Resource *res, SystemStub *stub, Video *vid)
 	: _res(res), _stub(stub), _vid(vid) {
 	_patchedOffsetsTable = 0;
 	memset(_palBuf, 0, sizeof(_palBuf));
+}
+
+const uint8_t *Cutscene::getCommandData() const {
+	return _res->_cmd;
+}
+
+const uint8_t *Cutscene::getPolygonData() const {
+	return _res->_pol;
 }
 
 void Cutscene::sync() {
@@ -57,7 +75,7 @@ void Cutscene::setPalette() {
 	sync();
 	updatePalette();
 	SWAP(_page0, _page1);
-	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page0, 256);
+	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page0, _vid->_w);
 	_stub->updateScreen(0);
 }
 
@@ -119,6 +137,10 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 
 void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify) {
 	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d, justify=%d)", x, y, color, textJustify);
+	if (_res->_type == kResourceTypeMac) {
+		warning("Unhandled Cutscene::drawText"); // TODO
+		return;
+	}
 	Video::drawCharFunc dcf = _vid->_drawChar;
 	const uint8_t *fnt = (_res->_lang == LANG_JP) ? Video::_font8Jp : _res->_fnt;
 	uint16_t last_sep = 0;
@@ -134,23 +156,22 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 	int16_t yy = y;
 	int16_t xx = x;
 	if (textJustify != kTextJustifyLeft) {
-		xx += ((last_sep - *sep++) / 2) * 8;
+		xx += ((last_sep - *sep++) / 2) * Video::CHAR_W;
 	}
 	for (; *p != 0xA && *p; ++p) {
 		if (isNewLineChar(*p, _res)) {
-			yy += 8;
+			yy += Video::CHAR_H;
 			xx = x;
 			if (textJustify != kTextJustifyLeft) {
-				xx += ((last_sep - *sep++) / 2) * 8;
+				xx += ((last_sep - *sep++) / 2) * Video::CHAR_W;
 			}
 		} else if (*p == 0x20) {
-			xx += 8;
+			xx += Video::CHAR_W;
 		} else if (*p == 0x9) {
 			// ignore tab
 		} else {
-			uint8_t *dst = page + 256 * yy + xx;
-			(_vid->*dcf)(dst, 256, fnt, color, *p);
-			xx += 8;
+			(_vid->*dcf)(page, _vid->_w, xx, yy, fnt, color, *p);
+			xx += Video::CHAR_W;
 		}
 	}
 }
@@ -282,7 +303,7 @@ void Cutscene::op_waitForSync() {
 
 void Cutscene::drawShape(const uint8_t *data, int16_t x, int16_t y) {
 	debug(DBG_CUT, "Cutscene::drawShape()");
-	_gfx._layer = _page1;
+	_gfx.setLayer(_page1, _vid->_w);
 	uint8_t numVertices = *data++;
 	if (numVertices & 0x80) {
 		Point pt;
@@ -290,11 +311,13 @@ void Cutscene::drawShape(const uint8_t *data, int16_t x, int16_t y) {
 		pt.y = READ_BE_UINT16(data) + y; data += 2;
 		uint16_t rx = READ_BE_UINT16(data); data += 2;
 		uint16_t ry = READ_BE_UINT16(data); data += 2;
+		scalePoints(&pt, 1, _vid->_layerScale);
 		_gfx.drawEllipse(_primitiveColor, _hasAlphaColor, &pt, rx, ry);
 	} else if (numVertices == 0) {
 		Point pt;
 		pt.x = READ_BE_UINT16(data) + x; data += 2;
 		pt.y = READ_BE_UINT16(data) + y; data += 2;
+		scalePoints(&pt, 1, _vid->_layerScale);
 		_gfx.drawPoint(_primitiveColor, &pt);
 	} else {
 		Point *pt = _vertices;
@@ -319,6 +342,7 @@ void Cutscene::drawShape(const uint8_t *data, int16_t x, int16_t y) {
 				++pt;
 			}
 		}
+		scalePoints(_vertices, numVertices, _vid->_layerScale);
 		_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices);
 	}
 }
@@ -384,16 +408,16 @@ void Cutscene::op_drawStringAtBottom() {
 
 		// 'espions' - ignore last call, allows caption to be displayed longer on the screen
 		if (_id == 0x39 && strId == 0xFFFF) {
-			if ((_res->isDOS() && (_cmdPtr - _cmdPtrBak) == 0x10) || (_res->isAmiga() && (_cmdPtr - _res->_cmd) == 0x9F3)) {
+			if ((_res->isDOS() && (_cmdPtr - _cmdPtrBak) == 0x10) || (_res->isAmiga() && (_cmdPtr - getCommandData()) == 0x9F3)) {
 				_frameDelay = 100;
 				setPalette();
 				return;
 			}
 		}
 
-		memset(_pageC + 179 * 256, 0xC0, 45 * 256);
-		memset(_page1 + 179 * 256, 0xC0, 45 * 256);
-		memset(_page0 + 179 * 256, 0xC0, 45 * 256);
+		memset(_pageC + 179 * _vid->_w, 0xC0, 45 * _vid->_w);
+		memset(_page1 + 179 * _vid->_w, 0xC0, 45 * _vid->_w);
+		memset(_page0 + 179 * _vid->_w, 0xC0, 45 * _vid->_w);
 		if (strId != 0xFFFF) {
 			const uint8_t *str = _res->getCineString(strId);
 			if (str) {
@@ -424,7 +448,7 @@ void Cutscene::op_refreshAll() {
 
 void Cutscene::drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int16_t c, int16_t d, int16_t e, int16_t f, int16_t g) {
 	debug(DBG_CUT, "Cutscene::drawShapeScale(%d, %d, %d, %d, %d, %d, %d)", zoom, b, c, d, e, f, g);
-	_gfx._layer = _page1;
+	_gfx.setLayer(_page1, _vid->_w);
 	uint8_t numVertices = *data++;
 	if (numVertices & 0x80) {
 		int16_t x, y;
@@ -473,6 +497,7 @@ void Cutscene::drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int1
 		po.y = _vertices[0].y + e + _shape_iy;
 		int16_t rx = _vertices[0].x - _vertices[2].x;
 		int16_t ry = _vertices[0].y - _vertices[1].y;
+		scalePoints(&po, 1, _vid->_layerScale);
 		_gfx.drawEllipse(_primitiveColor, _hasAlphaColor, &po, rx, ry);
 	} else if (numVertices == 0) {
 		Point pt;
@@ -495,6 +520,7 @@ void Cutscene::drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int1
 		_shape_prev_y = _shape_cur_y;
 		_shape_prev_x16 = _shape_cur_x16;
 		_shape_prev_y16 = _shape_cur_y16;
+		scalePoints(&pt, 1, _vid->_layerScale);
 		_gfx.drawPoint(_primitiveColor, &pt);
 	} else {
 		Point *pt = _vertices;
@@ -540,6 +566,7 @@ void Cutscene::drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int1
 		_shape_prev_y = _shape_cur_y;
 		_shape_prev_x16 = _shape_cur_x16;
 		_shape_prev_y16 = _shape_cur_y16;
+		scalePoints(_vertices, numVertices, _vid->_layerScale);
 		_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices);
 	}
 }
@@ -603,7 +630,7 @@ void Cutscene::op_drawShapeScale() {
 
 void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b, int16_t c, int16_t d, int16_t e, int16_t f, int16_t g) {
 	debug(DBG_CUT, "Cutscene::drawShapeScaleRotate(%d, %d, %d, %d, %d, %d, %d)", zoom, b, c, d, e, f, g);
-	_gfx._layer = _page1;
+	_gfx.setLayer(_page1, _vid->_w);
 	uint8_t numVertices = *data++;
 	if (numVertices & 0x80) {
 		int16_t x, y, ix, iy;
@@ -654,6 +681,7 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		po.y = _vertices[0].y + e + _shape_iy;
 		int16_t rx = _vertices[0].x - _vertices[2].x;
 		int16_t ry = _vertices[0].y - _vertices[1].y;
+		scalePoints(&po, 1, _vid->_layerScale);
 		_gfx.drawEllipse(_primitiveColor, _hasAlphaColor, &po, rx, ry);
 	} else if (numVertices == 0) {
 		Point pt;
@@ -680,6 +708,7 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		_shape_prev_y = _shape_cur_y;
 		_shape_prev_x16 = _shape_cur_x16;
 		_shape_prev_y16 = _shape_cur_y16;
+		scalePoints(&pt, 1, _vid->_layerScale);
 		_gfx.drawPoint(_primitiveColor, &pt);
 	} else {
 		int16_t x, y, a, shape_last_x, shape_last_y;
@@ -758,6 +787,7 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		_shape_prev_y = _shape_cur_y;
 		_shape_prev_x16 = _shape_cur_x16;
 		_shape_prev_y16 = _shape_cur_y16;
+		scalePoints(_vertices, numVertices + 1, _vid->_layerScale);
 		_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices + 1);
 	}
 }
@@ -905,10 +935,10 @@ void Cutscene::op_handleKeys() {
 		}
 		_varKey = 0;
 		--n;
-		_cmdPtr = _res->_cmd;
+		_cmdPtr = getCommandData();
 		n = READ_BE_UINT16(_cmdPtr + n * 2 + 2);
 	}
-	_cmdPtr = _cmdPtrBak = _res->_cmd + n + _startOffset;
+	_cmdPtr = _cmdPtrBak = getCommandData() + n + _startOffset;
 }
 
 uint8_t Cutscene::fetchNextCmdByte() {
@@ -932,14 +962,14 @@ void Cutscene::mainLoop(uint16_t offset) {
 	}
 	_newPal = false;
 	_hasAlphaColor = false;
-	uint8_t *p = _res->_cmd;
+	const uint8_t *p = getCommandData();
 	if (offset != 0) {
 		offset = READ_BE_UINT16(p + (offset + 1) * 2);
 	}
 	_startOffset = (READ_BE_UINT16(p) + 1) * 2;
 	_varKey = 0;
 	_cmdPtr = _cmdPtrBak = p + _startOffset + offset;
-	_polPtr = _res->_pol;
+	_polPtr = getPolygonData();
 	debug(DBG_CUT, "_startOffset = %d offset = %d", _startOffset, offset);
 
 	while (!_stub->_pi.quit && !_interrupted && !_stop) {
@@ -992,6 +1022,9 @@ bool Cutscene::load(uint16_t cutName) {
 		_res->load(name, Resource::OT_CMD);
 		_res->load(name, Resource::OT_POL);
 		break;
+	case kResourceTypeMac:
+		_res->MAC_loadCutscene(name);
+		break;
 	}
 	_res->load_CINE();
 	return _res->_cmd && _res->_pol;
@@ -1006,6 +1039,9 @@ void Cutscene::unload() {
 		_res->unload(Resource::OT_CMD);
 		_res->unload(Resource::OT_POL);
 		break;
+	case kResourceTypeMac:
+		_res->MAC_unloadCutscene();
+		break;
 	}
 }
 
@@ -1019,7 +1055,15 @@ void Cutscene::prepare() {
 	_stub->_pi.shift = false;
 	_interrupted = false;
 	_stop = false;
-	_gfx.setClippingRect(8, 50, 240, 128);
+	const int w = 240;
+	const int h = 128;
+	const int x = (Video::GAMESCREEN_W - w) / 2;
+	const int y = 50;
+	const int sw = w * _vid->_layerScale;
+	const int sh = h * _vid->_layerScale;
+	const int sx = x * _vid->_layerScale;
+	const int sy = y * _vid->_layerScale;
+	_gfx.setClippingRect(sx, sy, sw, sh);
 }
 
 void Cutscene::playCredits() {
@@ -1066,7 +1110,7 @@ void Cutscene::playText(const char *str) {
 	const int y = (128 - lines * 8) / 2;
 	memset(_page1, 0xC0, _vid->_layerSize);
 	drawText(0, y, (const uint8_t *)str, 0xC1, _page1, kTextJustifyAlign);
-	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
+	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, _vid->_w);
 	_stub->updateScreen(0);
 
 	while (!_stub->_pi.quit) {
@@ -1087,19 +1131,25 @@ void Cutscene::play() {
 		prepare();
 		uint16_t cutName = _offsetsTable[_id * 2 + 0];
 		uint16_t cutOff  = _offsetsTable[_id * 2 + 1];
-		if (cutName == 0xFFFF && g_options.play_disabled_cutscenes) {
+		if (cutName == 0xFFFF) {
 			switch (_id) {
 			case 19:
-				cutName = 31; // SERRURE
+				if (g_options.play_serrure_cutscene) {
+					cutName = 31; // SERRURE
+				}
 				break;
 			case 22:
 			case 23:
 			case 24:
-				cutName = 12; // ASC
+				if (g_options.play_asc_cutscene) {
+					cutName = 12; // ASC
+				}
 				break;
 			case 30:
 			case 31:
-				cutName = 14; // METRO
+				if (g_options.play_metro_cutscene) {
+					cutName = 14; // METRO
+				}
 				break;
 			}
 		}
@@ -1125,7 +1175,7 @@ void Cutscene::play() {
 				mainLoop(cutOff);
 				unload();
 			}
-		} else if (_id == 8 && g_options.play_stone_cutscene) {
+		} else if (_id == 8 && g_options.play_caillou_cutscene) {
 			playSet(_caillouSetData, 0x5E4);
 		}
 		_vid->fullRefresh();
@@ -1158,12 +1208,14 @@ void Cutscene::drawSetShape(const uint8_t *p, uint16_t offset, int x, int y, uin
 			Point pt;
 			pt.x = x + ix;
 			pt.y = y + iy;
+			scalePoints(&pt, 1, _vid->_layerScale);
 			_gfx.drawEllipse(color, false, &pt, rx, ry);
 		} else {
 			for (int i = 0; i < verticesCount; ++i) {
 				_vertices[i].x = x + (int16_t)READ_BE_UINT16(p + offset); offset += 2;
 				_vertices[i].y = y + (int16_t)READ_BE_UINT16(p + offset); offset += 2;
 			}
+			scalePoints(_vertices, verticesCount, _vid->_layerScale);
 			_gfx.drawPolygon(color, false, _vertices, verticesCount);
 		}
 	}
@@ -1208,7 +1260,7 @@ void Cutscene::playSet(const uint8_t *p, int offset) {
 	}
 
 	prepare();
-	_gfx._layer = _page1;
+	_gfx.setLayer(_page1, _vid->_w);
 
 	offset = 10;
 	const int frames = READ_BE_UINT16(p + offset); offset += 2;
@@ -1262,7 +1314,7 @@ void Cutscene::playSet(const uint8_t *p, int offset) {
 			_stub->setPaletteEntry(0xC0 + j, &c);
 		}
 
-		_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
+		_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, _vid->_w);
 		_stub->updateScreen(0);
 		const int diff = 6 * TIMER_SLICE - (_stub->getTimeStamp() - timestamp);
 		_stub->sleep((diff < 16) ? 16 : diff);

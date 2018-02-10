@@ -64,11 +64,24 @@ void Menu::drawString(const char *str, int16_t y, int16_t x, uint8_t color) {
 
 void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 	debug(DBG_MENU, "Menu::drawString2()");
-	int i = 0;
-	for (; str[i]; ++i) {
-		_vid->PC_drawChar((uint8_t)str[i], y, x + i, true);
+	int w = Video::CHAR_W;
+	int h = Video::CHAR_H;
+	int len = 0;
+	switch (_res->_type) {
+	case kResourceTypeDOS:
+		for (; str[len]; ++len) {
+			_vid->PC_drawChar((uint8_t)str[len], y, x + len, true);
+		}
+		break;
+	case kResourceTypeMac:
+		for (; str[len]; ++len) {
+			_vid->MAC_drawStringChar(_vid->_frontLayer, _vid->_w, Video::CHAR_W * (x + len), Video::CHAR_H * y, _res->_fnt, _vid->_charFrontColor, (uint8_t)str[len]);
+		}
+		w *= _vid->_layerScale;
+		h *= _vid->_layerScale;
+		break;
 	}
-	_vid->markBlockAsDirty(x * 8, y * 8, i * 8, 8);
+	_vid->markBlockAsDirty(x * w, y * h, len * w, h);
 }
 
 void Menu::loadPicture(const char *prefix) {
@@ -216,7 +229,7 @@ bool Menu::handlePasswordScreen() {
 			password[len] = '\0';
 			for (int level = 0; level < 8; ++level) {
 				for (int skill = 0; skill < 3; ++skill) {
-					if (strcmp(_passwords[level][skill], password) == 0) {
+					if (strcmp(getLevelPassword(level, skill), password) == 0) {
 						_level = level;
 						_skill = skill;
 						return true;
@@ -328,17 +341,19 @@ void Menu::handleTitleScreen() {
 	menuItems[menuItemsCount].str = LocaleData::LI_07_START;
 	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_START;
 	++menuItemsCount;
-	if (g_options.enable_password_menu) {
-		menuItems[menuItemsCount].str = LocaleData::LI_08_SKILL;
-		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_SKILL;
-		++menuItemsCount;
-		menuItems[menuItemsCount].str = LocaleData::LI_09_PASSWORD;
-		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_PASSWORD;
-		++menuItemsCount;
-	} else {
-		menuItems[menuItemsCount].str = LocaleData::LI_06_LEVEL;
-		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_LEVEL;
-		++menuItemsCount;
+	if (!_res->_isDemo) {
+		if (g_options.enable_password_menu) {
+			menuItems[menuItemsCount].str = LocaleData::LI_08_SKILL;
+			menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_SKILL;
+			++menuItemsCount;
+			menuItems[menuItemsCount].str = LocaleData::LI_09_PASSWORD;
+			menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_PASSWORD;
+			++menuItemsCount;
+		} else {
+			menuItems[menuItemsCount].str = LocaleData::LI_06_LEVEL;
+			menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_LEVEL;
+			++menuItemsCount;
+		}
 	}
 	menuItems[menuItemsCount].str = LocaleData::LI_10_INFO;
 	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_INFO;
@@ -434,4 +449,24 @@ void Menu::handleTitleScreen() {
 			break;
 		}
 	}
+}
+
+const char *Menu::getLevelPassword(int level, int skill) const {
+	switch (_res->_type) {
+	case kResourceTypeAmiga:
+		if (level < 7) {
+			if (_res->_lang == LANG_FR) {
+				return _passwordsFrAmiga[skill * 7 + level];
+			} else {
+				return _passwordsEnAmiga[skill * 7 + level];
+			}
+		}
+		break;
+	case kResourceTypeMac:
+		return _passwordsMac[skill * 8 + level];
+	case kResourceTypeDOS:
+		// default
+		break;
+	}
+	return _passwordsDOS[skill * 8 + level];
 }

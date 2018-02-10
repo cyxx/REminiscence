@@ -38,6 +38,7 @@ static int detectVersion(FileSystem *fs) {
 		{ "LEVEL1.BNQ", kResourceTypeDOS, "DOS (Demo)" },
 		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga" },
 		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)" },
+		{ "FLASHBACK.BIN", kResourceTypeMac, "Macintosh" },
 		{ 0, -1, 0 }
 	};
 	for (int i = 0; table[i].filename; ++i) {
@@ -80,24 +81,29 @@ const char *g_caption = "REminiscence";
 static void initOptions() {
 	// defaults
 	g_options.bypass_protection = true;
-	g_options.play_disabled_cutscenes = false;
 	g_options.enable_password_menu = false;
 	g_options.fade_out_palette = true;
 	g_options.use_text_cutscenes = false;
 	g_options.use_seq_cutscenes = true;
+	g_options.play_asc_cutscene = false;
+	g_options.play_caillou_cutscene = false;
+	g_options.play_metro_cutscene = false;
+	g_options.play_serrure_cutscene = false;
 	// read configuration file
 	struct {
 		const char *name;
 		bool *value;
 	} opts[] = {
 		{ "bypass_protection", &g_options.bypass_protection },
-		{ "play_disabled_cutscenes", &g_options.play_disabled_cutscenes },
 		{ "enable_password_menu", &g_options.enable_password_menu },
 		{ "fade_out_palette", &g_options.fade_out_palette },
 		{ "use_tiledata", &g_options.use_tiledata },
 		{ "use_text_cutscenes", &g_options.use_text_cutscenes },
 		{ "use_seq_cutscenes", &g_options.use_seq_cutscenes },
-		{ "play_stone_cutscene", &g_options.play_stone_cutscene },
+		{ "play_asc_cutscene", &g_options.play_asc_cutscene },
+		{ "play_caillou_cutscene", &g_options.play_caillou_cutscene },
+		{ "play_metro_cutscene", &g_options.play_metro_cutscene },
+		{ "play_serrure_cutscene", &g_options.play_serrure_cutscene },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";
@@ -251,7 +257,7 @@ int main(int argc, char *argv[]) {
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language);
-	stub->init(g_caption, Video::GAMESCREEN_W, Video::GAMESCREEN_H, fullscreen, &scalerParameters);
+	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, &scalerParameters);
 	g->run();
 	delete g;
 	stub->destroy();

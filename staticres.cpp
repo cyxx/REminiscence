@@ -3223,15 +3223,10 @@ const uint8_t Game::_protectionPal[] = {
 	0x08, 0x88, 0x09, 0x99, 0x0A, 0xAA, 0x0B, 0xBB, 0x0C, 0xCC, 0x0D, 0xDD, 0x0E, 0xEE, 0x0F, 0xFF
 };
 
-const char *Menu::_passwords[8][3] = {
-	{ "JAGUAR", "BANTHA", "TOHOLD" },
-	{ "COMBEL", "SHIVA",  "PICOLO" },
-	{ "ANTIC",  "KASYYK", "FUGU" },
-	{ "NOLAN",  "SARLAC", "CAPSUL" },
-	{ "ARTHUR", "MAENOC", "ZZZAP" },
-	{ "SHIRYU", "SULUST", "MANIAC" },
-	{ "RENDER", "NEPTUN", "NO WAY" },
-	{ "BELUGA", "BELUGA", "BELUGA" }
+const char *Menu::_passwordsDOS[] = {
+	"JAGUAR", "COMBEL", "ANTIC",  "NOLAN",  "ARTHUR", "SHIRYU", "RENDER", "BELUGA", // easy
+	"BANTHA", "SHIVA",  "KASYYK", "SARLAC", "MAENOC", "SULUST", "NEPTUN", "BELUGA", // normal
+	"TOHOLD", "PICOLO", "FUGU",   "CAPSUL", "ZZZAP",  "MANIAC", "NO WAY", "BELUGA", // hard
 };
 
 const char *Menu::_passwordsFrAmiga[] = {
@@ -3244,6 +3239,12 @@ const char *Menu::_passwordsEnAmiga[] = {
 	"WIND", "SPIN", "KAVA", "HIRO", "TEST", "GOLD", "WALL", // easy
 	"FIRE", "BURN", "EGGS", "GURT", "CHIP", "TREE", "BOLD", // normal
 	"MINE", "YOUR", "NEST", "LINE", "LISA", "MARY", "MICE", // hard
+};
+
+const char *Menu::_passwordsMac[] = {
+	"QUENCH",  "GHOST",  "LEGEND", "SPHERE",  "BULLET", "DISRUPT", "TRAUMA", "OPAQUE", // easy
+	"HICK",    "FRGO",   "JERK",   "KOIK",    "KIMO",   "LEDUX",   "MORDO",  "OPAQUE", // normal
+	"CURIOUS", "IMPACT", "LETHAL", "PERSIST", "MORTAL", "VERDICT", "KNIGHT", "OPAQUE", // hard
 };
 
 const uint8_t Video::_conradPal1[] = {

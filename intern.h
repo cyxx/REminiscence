@@ -80,7 +80,8 @@ enum Language {
 
 enum ResourceType {
 	kResourceTypeAmiga,
-	kResourceTypeDOS
+	kResourceTypeDOS,
+	kResourceTypeMac,
 };
 
 enum Skill {
@@ -91,13 +92,15 @@ enum Skill {
 
 struct Options {
 	bool bypass_protection;
-	bool play_disabled_cutscenes;
 	bool enable_password_menu;
 	bool fade_out_palette;
 	bool use_tiledata;
 	bool use_text_cutscenes;
 	bool use_seq_cutscenes;
-	bool play_stone_cutscene;
+	bool play_asc_cutscene;
+	bool play_caillou_cutscene;
+	bool play_metro_cutscene;
+	bool play_serrure_cutscene;
 };
 
 struct Color {

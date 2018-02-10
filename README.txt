@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.3.7
+Release version: 0.4.0
 -------------------------------------------------------------------------------
 
 
@@ -22,11 +22,15 @@ libraries are required.
 Data Files:
 -----------
 
-You will need the original files of the PC (DOS or CD) or Amiga release.
+You will need the original files of the PC (DOS or CD), Amiga or Macintosh
+release.
+
+For the Macintosh release, the resource fork must dumped as a file named
+'FLASHBACK.BIN'. It shall contain 38 distinct data types.
 
 To have background music during polygonal cutscenes with the PC version,
 you need to copy the music/ directory of the Amiga version or use the .mod
-fileset from unexotica.
+fileset from unexotica [4].
 
 To hear voice during in-game dialogues, you'll need to copy the 'VOICE.VCE'
 file from the SegaCD version to the DATA directory.
@@ -93,3 +97,4 @@ URLs:
 [1] http://www.mobygames.com/game/flashback-the-quest-for-identity
 [2] http://en.wikipedia.org/wiki/Flashback:_The_Quest_for_Identity
 [3] http://ramal.free.fr/fb_en.htm
+[4] https://www.exotica.org.uk/wiki/Flashback

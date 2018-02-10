@@ -109,10 +109,12 @@ struct Game {
 	void printSaveStateCompleted();
 	void drawLevelTexts();
 	void drawStoryTexts();
+	void drawString(const uint8_t *p, int x, int y, uint8_t color, bool hcenter = false);
 	void prepareAnims();
 	void prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy);
 	void drawAnims();
 	void drawAnimBuffer(uint8_t stateNum, AnimBufferState *state);
+	void drawPiege(AnimBufferState *state);
 	void drawObject(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flags);
 	void drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flags);
 	void decodeCharacterFrame(const uint8_t *dataPtr, uint8_t *dstPtr);

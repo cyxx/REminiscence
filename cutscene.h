@@ -64,9 +64,9 @@ struct Cutscene {
 	uint16_t _deathCutsceneId;
 	bool _interrupted;
 	bool _stop;
-	uint8_t *_polPtr;
-	uint8_t *_cmdPtr;
-	uint8_t *_cmdPtrBak;
+	const uint8_t *_polPtr;
+	const uint8_t *_cmdPtr;
+	const uint8_t *_cmdPtrBak;
 	uint32_t _tstamp;
 	uint8_t _frameDelay;
 	bool _newPal;
@@ -104,6 +104,9 @@ struct Cutscene {
 	uint8_t *_page0, *_page1, *_pageC;
 
 	Cutscene(Resource *res, SystemStub *stub, Video *vid);
+
+	const uint8_t *getCommandData() const;
+	const uint8_t *getPolygonData() const;
 
 	void sync();
 	void copyPalette(const uint8_t *pal, uint16_t num);

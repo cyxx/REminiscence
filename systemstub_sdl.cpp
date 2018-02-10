@@ -234,7 +234,6 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 		r.x = 0;
 		r.y = shakeOffset * _scaleFactor;
 		SDL_GetRendererOutputSize(_renderer, &r.w, &r.h);
-		r.h -= r.y;
 		SDL_RenderCopy(_renderer, _texture, 0, &r);
 	} else {
 		SDL_RenderCopy(_renderer, _texture, 0, 0);

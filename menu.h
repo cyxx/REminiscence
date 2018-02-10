@@ -40,9 +40,10 @@ struct Menu {
 		int opt;
 	};
 
-	static const char *_passwords[8][3];
+	static const char *_passwordsDOS[];
 	static const char *_passwordsFrAmiga[];
 	static const char *_passwordsEnAmiga[];
+	static const char *_passwordsMac[];
 
 	Resource *_res;
 	SystemStub *_stub;
@@ -72,6 +73,8 @@ struct Menu {
 	bool handlePasswordScreen();
 	bool handleLevelScreen();
 	void handleTitleScreen();
+
+	const char *getLevelPassword(int level, int skill) const;
 };
 
 #endif // MENU_H__
