@@ -7,7 +7,7 @@ MODPLUG_LIBS := -lmodplug
 TREMOR_LIBS  := -lvorbisidec -logg
 ZLIB_LIBS    := -lz
 
-CXXFLAGS += -Wall -MMD $(SDL_CFLAGS) -DUSE_MODPLUG -DUSE_TREMOR -DUSE_ZLIB
+CXXFLAGS += -O2 -Wall -MMD $(SDL_CFLAGS) -DUSE_MODPLUG -DUSE_TREMOR -DUSE_ZLIB
 
 SRCS = collision.cpp cutscene.cpp decode_mac.cpp dynlib.cpp file.cpp fs.cpp game.cpp graphics.cpp main.cpp \
 	menu.cpp mixer.cpp mod_player.cpp ogg_player.cpp piege.cpp resource.cpp resource_aba.cpp \

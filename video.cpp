@@ -259,18 +259,23 @@ void Video::PC_setLevelPalettes() {
 	if (_unkPalSlot1 == 0) {
 		_unkPalSlot1 = _mapPalSlot3;
 	}
+	// background
 	setPaletteSlotBE(0x0, _mapPalSlot1);
+	// objects
 	setPaletteSlotBE(0x1, _mapPalSlot2);
 	setPaletteSlotBE(0x2, _mapPalSlot3);
 	setPaletteSlotBE(0x3, _mapPalSlot4);
+	// conrad
 	if (_unkPalSlot1 == _mapPalSlot3) {
 		setPaletteSlotLE(4, _conradPal1);
 	} else {
 		setPaletteSlotLE(4, _conradPal2);
 	}
 	// slot 5 is monster palette
+	// foreground
 	setPaletteSlotBE(0x8, _mapPalSlot1);
 	setPaletteSlotBE(0x9, _mapPalSlot2);
+	// inventory
 	setPaletteSlotBE(0xA, _unkPalSlot2);
 	setPaletteSlotBE(0xB, _mapPalSlot4);
 	// slots 0xC and 0xD are cutscene palettes
@@ -438,8 +443,8 @@ static void decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data, con
 	int count = READ_BE_UINT16(src) - 1; src += 2;
 	do {
 		int d2 = READ_BE_UINT16(src); src += 2;
-		int d0 = READ_BE_UINT16(src); src += 2;
-		int d1 = READ_BE_UINT16(src); src += 2;
+		const int d0 = (int16_t)READ_BE_UINT16(src); src += 2;
+		const int d1 = (int16_t)READ_BE_UINT16(src); src += 2;
 		if (d2 != 0xFFFF) {
 			d2 &= ~(1 << 15);
 			const int32_t offset = READ_BE_UINT32(data + d2 * 4);
@@ -464,9 +469,9 @@ static void decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data, con
 		const int h = buf[1] + 1;
 		const int planarSize = READ_BE_UINT16(buf + 2);
 		if (isAmiga) {
-			AMIGA_planar_mask(dst, (int16_t)d0, (int16_t)d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+			AMIGA_planar_mask(dst, d0, d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
 		} else {
-			PC_drawTileMask(dst, (int16_t)d0, (int16_t)d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+			PC_drawTileMask(dst, d0, d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
 		}
 	} while (--count >= 0);
 }
@@ -662,7 +667,10 @@ void Video::AMIGA_decodeLev(int level, int room) {
 	_mapPalSlot3 = READ_BE_UINT16(tmp + 6);
 	_mapPalSlot4 = READ_BE_UINT16(tmp + 8);
 	if (_res->isDOS()) {
-		// done in ::PC_setLevelPalettes
+		PC_setLevelPalettes();
+		if (level == 0) { // tiles with color slot 0x9
+			setPaletteSlotBE(0x9, _mapPalSlot1);
+		}
 		return;
 	}
 	// background

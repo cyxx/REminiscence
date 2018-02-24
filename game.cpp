@@ -82,6 +82,7 @@ void Game::run() {
 	case kResourceTypeMac:
 		_res.MAC_loadIconData();
 		_res.MAC_loadPersoData();
+		_res.MAC_loadSounds();
 		break;
 	}
 
@@ -1496,10 +1497,10 @@ void Game::loadLevelMap() {
 	case kResourceTypeDOS:
 		if (_res._map) {
 			_vid.PC_decodeMap(_currentLevel, _currentRoom);
+			_vid.PC_setLevelPalettes();
 		} else if (_res._lev) {
 			_vid.PC_decodeLev(_currentLevel, _currentRoom);
 		}
-		_vid.PC_setLevelPalettes();
 		break;
 	case kResourceTypeMac:
 		{
@@ -1728,8 +1729,7 @@ void Game::playSound(uint8_t sfxId, uint8_t softVol) {
 			MixerChunk mc;
 			mc.data = sfx->data;
 			mc.len = sfx->len;
-			const int freq = _res.isAmiga() ? 3546897 / 650 : 6000;
-			_mix.play(&mc, freq, Mixer::MAX_VOLUME >> softVol);
+			_mix.play(&mc, sfx->freq, Mixer::MAX_VOLUME >> softVol);
 		}
 	} else {
 		// in-game music

@@ -140,6 +140,7 @@ void Resource::load_FIB(const char *fileName) {
 			SoundFx *sfx = &_sfxList[i];
 			sfx->offset = f.readUint32LE();
 			sfx->len = f.readUint16LE();
+			sfx->freq = 6000;
 			sfx->data = 0;
 		}
 		for (i = 0; i < _numSfx; ++i) {
@@ -190,6 +191,7 @@ void Resource::load_SPL_demo() {
 				f.read(sfx->data, size);
 				sfx->offset = 0;
 				sfx->len = size;
+				sfx->freq = kPaulaFreq / 650;
 			}
 		}
 	}
@@ -1202,6 +1204,7 @@ void Resource::load_SPL(File *f) {
 		if (i != 64) {
 			_sfxList[i].offset = offset;
 			_sfxList[i].len = size;
+			_sfxList[i].freq = kPaulaFreq / 650;
 			_sfxList[i].data = (uint8_t *)malloc(size);
 			assert(_sfxList[i].data);
 			f->read(_sfxList[i].data, size);
@@ -1646,4 +1649,45 @@ void Resource::MAC_loadCutscene(const char *cutscene) {
 void Resource::MAC_loadCutsceneText() {
 	_cine_txt = decodeResourceMacData("Movie strings", false);
 	_cine_off = 0; // offsets are prepended to _cine_txt
+}
+
+void Resource::MAC_loadSounds() {
+	static const int8_t table[NUM_SFXS] = {
+		0, -1,  1,  2,  3,  4, -1,  5,  6,  7,  8,  9, 10, 11, -1, 12,
+		13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, 26, 27,
+		28, -1, 29, -1, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+		42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, -1, 53, 54, 55, 56,
+		-1, 57
+	};
+	_numSfx = NUM_SFXS;
+	_sfxList = (SoundFx *)calloc(_numSfx, sizeof(SoundFx));
+	if (!_sfxList) {
+		return;
+	}
+	static const int kHeaderSize = 0x24;
+	static const int kSoundType = 4;
+	for (int i = 0; i < NUM_SFXS; ++i) {
+		const int num = table[i];
+		if (num != -1) {
+			assert(num >= 0 && num < _mac->_types[kSoundType].count);
+			const ResourceMacEntry *entry = &_mac->_entries[kSoundType][num];
+			_mac->_f.seek(_mac->_dataOffset + entry->dataOffset);
+			int dataSize = _mac->_f.readUint32BE();
+			assert(dataSize > kHeaderSize);
+			uint8_t buf[kHeaderSize];
+			_mac->_f.read(buf, kHeaderSize);
+			dataSize -= kHeaderSize;
+			uint8_t *p = (uint8_t *)malloc(dataSize);
+			if (p) {
+				_mac->_f.read(p, dataSize);
+				for (int j = 0; j < dataSize; ++j) {
+					p[j] ^= 0x80;
+				}
+				_sfxList[i].len = READ_BE_UINT32(buf + 0x12);
+				_sfxList[i].freq = READ_BE_UINT16(buf + 0x16);
+				_sfxList[i].data = p;
+				debug(DBG_RES, "sfx #%d len %d datasize %d freq %d", i, _sfxList[i].len, dataSize, _sfxList[i].freq);
+			}
+		}
+	}
 }

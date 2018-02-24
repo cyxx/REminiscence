@@ -133,6 +133,15 @@ void Game::pge_process(LivePGE *pge) {
 				return;
 			}
 			uint16_t _ax = pge_execute(pge, init_pge, obj);
+			if (_res.isDOS()) {
+				if (_currentLevel == 6 && (_currentRoom == 50 || _currentRoom == 51)) {
+					if (pge->index == 79 && _ax == 0xFFFF && obj->opcode1 == 0x60 && obj->opcode2 == 0 && obj->opcode3 == 0) {
+						if (col_getGridPos(&_pgeLive[79], 0) == col_getGridPos(&_pgeLive[0], 0)) {
+							pge_updateGroup(79, 0, 4);
+						}
+					}
+				}
+			}
 			if (_ax != 0) {
 				anim_data = _res.getAniData(pge->obj_type);
 				uint8_t snd = anim_data[2];

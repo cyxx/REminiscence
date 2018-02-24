@@ -111,6 +111,7 @@ struct Resource {
 	};
 
 	enum {
+		kPaulaFreq = 3546897,
 		kClutSize = 1024
 	};
 
@@ -238,6 +239,12 @@ struct Resource {
 		return _ani + 2 + offset;
 	}
 	const uint8_t *getTextString(int level, int num) const {
+		if (_type == kResourceTypeMac) {
+			const int count = READ_BE_UINT16(_tbn);
+			assert(num < count);
+			const int offset = READ_BE_UINT16(_tbn + 2 + num * 2);
+			return _tbn + offset;
+		}
 		if (_lang == LANG_JP) {
 			const uint8_t *p = 0;
 			switch (level) {
@@ -267,12 +274,6 @@ struct Resource {
 			}
 			return p + READ_LE_UINT16(p + num * 2);
 		}
-		if (_type == kResourceTypeMac) {
-			const int count = READ_BE_UINT16(_tbn);
-			assert(num < count);
-			const int offset = READ_BE_UINT16(_tbn + 2 + num * 2);
-			return _tbn + offset;
-		}
 		return _tbn + _readUint16(_tbn + num * 2);
 	}
 	const uint8_t *getGameString(int num) const {
@@ -285,15 +286,15 @@ struct Resource {
 		return _stringsTable + READ_LE_UINT16(_stringsTable + num * 2);
 	}
 	const uint8_t *getCineString(int num) const {
-		if (_lang == LANG_JP) {
-			const int offset = READ_BE_UINT16(LocaleData::_cineBinJP + num * 2);
-			return LocaleData::_cineTxtJP + offset;
-		}
 		if (_type == kResourceTypeMac) {
 			const int count = READ_BE_UINT16(_cine_txt);
 			assert(num < count);
 			const int offset = READ_BE_UINT16(_cine_txt + 2 + num * 2);
 			return _cine_txt + offset;
+		}
+		if (_lang == LANG_JP) {
+			const int offset = READ_BE_UINT16(LocaleData::_cineBinJP + num * 2);
+			return LocaleData::_cineTxtJP + offset;
 		}
 		if (_cine_off) {
 			const int offset = READ_BE_UINT16(_cine_off + num * 2);
@@ -329,6 +330,7 @@ struct Resource {
 	void MAC_unloadCutscene();
 	void MAC_loadCutscene(const char *cutscene);
 	void MAC_loadCutsceneText();
+	void MAC_loadSounds();
 
 	int MAC_getPersoFrame(int anim) const {
 		static const int data[] = {

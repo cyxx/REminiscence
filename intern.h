@@ -246,6 +246,7 @@ struct InventoryItem {
 struct SoundFx {
 	uint32_t offset;
 	uint16_t len;
+	uint16_t freq;
 	uint8_t *data;
 };
 
