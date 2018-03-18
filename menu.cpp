@@ -94,6 +94,7 @@ void Menu::loadPicture(const char *prefix) {
 			}
 		}
 	}
+	memcpy(_vid->_backLayer, _vid->_frontLayer, _vid->_layerSize);
 	_res->load_PAL_menu(prefix, _res->_scratchBuffer);
 	_stub->setPalette(_res->_scratchBuffer, 256);
 }
@@ -197,7 +198,7 @@ bool Menu::handlePasswordScreen() {
 		}
 		_vid->PC_drawChar(0x20, 21, len + 15);
 
-		_vid->markBlockAsDirty(15 * 8, 21 * 8, (len + 1) * 8, 8);
+		_vid->markBlockAsDirty(15 * Video::CHAR_W, 21 * Video::CHAR_H, (len + 1) * Video::CHAR_W, Video::CHAR_H);
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
 		_stub->processEvents();
@@ -262,12 +263,12 @@ bool Menu::handleLevelScreen() {
 		for (int i = 0; i < 7; ++i) {
 			drawString(levelTitles[i], 7 + i * 2, 4, (currentLevel == i) ? 2 : 3);
 		}
-		_vid->markBlockAsDirty(4 * 8, 7 * 8, 192, 7 * 8);
+		_vid->markBlockAsDirty(4 * Video::CHAR_W, 7 * Video::CHAR_H, 192, 7 * Video::CHAR_H);
 
                 drawString(_res->getMenuString(LocaleData::LI_13_EASY),   23,  4, (currentSkill == 0) ? 2 : 3);
                 drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 23, 14, (currentSkill == 1) ? 2 : 3);
                 drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 23, 24, (currentSkill == 2) ? 2 : 3);
-		_vid->markBlockAsDirty(4 * 8, 23 * 8, 192, 8);
+		_vid->markBlockAsDirty(4 * Video::CHAR_W, 23 * Video::CHAR_H, 192, Video::CHAR_H);
 
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
@@ -372,7 +373,30 @@ void Menu::handleTitleScreen() {
 	bool quitLoop = false;
 	int currentEntry = 0;
 
+	static const struct {
+		Language lang;
+		const uint8_t *bitmap16x12;
+	} languages[] = {
+		{ LANG_EN, _flagEn16x12 },
+		{ LANG_FR, _flagFr16x12 },
+		{ LANG_DE, _flagDe16x12 },
+		{ LANG_SP, _flagSp16x12 },
+		{ LANG_IT, _flagIt16x12 },
+		{ LANG_JP, _flagJp16x12 },
+	};
+	int currentLanguage = 0;
+	for (int i = 0; i < ARRAYSIZE(languages); ++i) {
+		if (languages[i].lang == _res->_lang) {
+			currentLanguage = i;
+			break;
+		}
+	}
+
 	while (!quitLoop) {
+
+		int selectedItem = -1;
+		int previousLanguage = currentLanguage;
+
 		if (_nextScreen == SCREEN_TITLE) {
 			_vid->fadeOut();
 			loadPicture("menu1");
@@ -383,16 +407,25 @@ void Menu::handleTitleScreen() {
 			_currentScreen = _nextScreen;
 			_nextScreen = -1;
 		}
-		int selectedItem = -1;
-		const int yPos = 26 - menuItemsCount * 2;
-		for (int i = 0; i < menuItemsCount; ++i) {
-			drawString(_res->getMenuString(menuItems[i].str), yPos + i * 2, 20, (i == currentEntry) ? 2 : 3);
+
+		if (g_options.enable_language_selection) {
+			if (_stub->_pi.dirMask & PlayerInput::DIR_LEFT) {
+				_stub->_pi.dirMask &= ~PlayerInput::DIR_LEFT;
+				if (currentLanguage != 0) {
+					--currentLanguage;
+				} else {
+					currentLanguage = ARRAYSIZE(languages) - 1;
+				}
+			}
+			if (_stub->_pi.dirMask & PlayerInput::DIR_RIGHT) {
+				_stub->_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
+				if (currentLanguage != ARRAYSIZE(languages) - 1) {
+					++currentLanguage;
+				} else {
+					currentLanguage = 0;
+				}
+			}
 		}
-
-		_vid->updateScreen();
-		_stub->sleep(EVENTS_DELAY);
-		_stub->processEvents();
-
 		if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
 			if (currentEntry != 0) {
@@ -413,7 +446,6 @@ void Menu::handleTitleScreen() {
 			_stub->_pi.enter = false;
 			selectedItem = currentEntry;
 		}
-
 		if (selectedItem != -1) {
 			_selectedOption = menuItems[selectedItem].opt;
 			switch (_selectedOption) {
@@ -444,7 +476,33 @@ void Menu::handleTitleScreen() {
 				break;
 			}
 			_nextScreen = SCREEN_TITLE;
+			continue;
 		}
+
+		if (previousLanguage != currentLanguage) {
+			_res->setLanguage(languages[currentLanguage].lang);
+			// clear previous language text
+			memcpy(_vid->_frontLayer, _vid->_backLayer, _vid->_layerSize);
+		}
+
+		// draw the options
+		const int yPos = 26 - menuItemsCount * 2;
+		for (int i = 0; i < menuItemsCount; ++i) {
+			drawString(_res->getMenuString(menuItems[i].str), yPos + i * 2, 20, (i == currentEntry) ? 2 : 3);
+		}
+
+		// draw the language flag in the top right corner
+		if (previousLanguage != currentLanguage) {
+			_stub->copyRect(0, 0, Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid->_frontLayer, Video::GAMESCREEN_W);
+			static const int flagW = 16;
+			static const int flagH = 12;
+			static const int flagX = Video::GAMESCREEN_W - flagW - 8;
+			static const int flagY = 8;
+			_stub->copyRectRgb24(flagX, flagY, flagW, flagH, languages[currentLanguage].bitmap16x12);
+		}
+		_vid->updateScreen();
+		_stub->sleep(EVENTS_DELAY);
+		_stub->processEvents();
 		if (_stub->_pi.quit) {
 			break;
 		}

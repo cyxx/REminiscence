@@ -22,6 +22,7 @@ static const char *USAGE =
 	"  --savepath=PATH   Path to save files (default '.')\n"
 	"  --levelnum=NUM    Start to level, bypass introduction\n"
 	"  --fullscreen      Fullscreen display\n"
+	"  --widescreen      16:9 display\n"
 	"  --scaler=NAME@X   Graphics scaler (default 'scale@3')\n"
 	"  --language=LANG   Language (fr,en,de,sp,it,jp)\n"
 ;
@@ -39,6 +40,7 @@ static int detectVersion(FileSystem *fs) {
 		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga" },
 		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)" },
 		{ "FLASHBACK.BIN", kResourceTypeMac, "Macintosh" },
+		{ "FLASHBACK.RSRC", kResourceTypeMac, "Macintosh" },
 		{ 0, -1, 0 }
 	};
 	for (int i = 0; table[i].filename; ++i) {
@@ -82,6 +84,7 @@ static void initOptions() {
 	// defaults
 	g_options.bypass_protection = true;
 	g_options.enable_password_menu = false;
+	g_options.enable_language_selection = false;
 	g_options.fade_out_palette = true;
 	g_options.use_text_cutscenes = false;
 	g_options.use_seq_cutscenes = true;
@@ -96,6 +99,7 @@ static void initOptions() {
 	} opts[] = {
 		{ "bypass_protection", &g_options.bypass_protection },
 		{ "enable_password_menu", &g_options.enable_password_menu },
+		{ "enable_language_selection", &g_options.enable_language_selection },
 		{ "fade_out_palette", &g_options.fade_out_palette },
 		{ "use_tiledata", &g_options.use_tiledata },
 		{ "use_text_cutscenes", &g_options.use_text_cutscenes },
@@ -180,6 +184,7 @@ int main(int argc, char *argv[]) {
 	const char *savePath = ".";
 	int levelNum = 0;
 	bool fullscreen = false;
+	bool widescreen = false;
 	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
 	if (argc == 2) {
@@ -197,6 +202,7 @@ int main(int argc, char *argv[]) {
 			{ "fullscreen", no_argument,       0, 4 },
 			{ "scaler",     required_argument, 0, 5 },
 			{ "language",   required_argument, 0, 6 },
+			{ "widescreen", no_argument,       0, 7 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -241,6 +247,9 @@ int main(int argc, char *argv[]) {
 				}
 			}
 			break;
+		case 7:
+			widescreen = true;
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
@@ -257,7 +266,7 @@ int main(int argc, char *argv[]) {
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language);
-	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, &scalerParameters);
+	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen, &scalerParameters);
 	g->run();
 	delete g;
 	stub->destroy();

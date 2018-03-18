@@ -183,6 +183,8 @@ struct Resource {
 	void init();
 	void fini();
 
+	void setLanguage(Language lang);
+
 	bool isDOS()   const { return _type == kResourceTypeDOS; }
 	bool isAmiga() const { return _type == kResourceTypeAmiga; }
 
@@ -197,6 +199,7 @@ struct Resource {
 	void load_CMP_menu(const char *fileName, uint8_t *dstPtr);
 	void load_SPR_OFF(const char *fileName, uint8_t *sprData);
 	void load_CINE();
+	void free_CINE();
 	void load_TEXT();
 	void free_TEXT();
 	void unload(int objType);

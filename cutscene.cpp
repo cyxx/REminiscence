@@ -1048,7 +1048,9 @@ void Cutscene::unload() {
 void Cutscene::prepare() {
 	_page0 = _vid->_frontLayer;
 	_page1 = _vid->_tempLayer;
+	memset(_page1, 0, _vid->_layerSize);
 	_pageC = _vid->_tempLayer2;
+	memset(_pageC, 0, _vid->_layerSize);
 	_stub->_pi.dirMask = 0;
 	_stub->_pi.enter = false;
 	_stub->_pi.space = false;

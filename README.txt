@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.4.1
+Release version: 0.4.2
 -------------------------------------------------------------------------------
 
 
@@ -12,49 +12,45 @@ made by Delphine Software and released in 1992. More informations about the
 game can be found at [1], [2] and [3].
 
 
-Compiling:
-----------
-
-Update the defines in the Makefile if needed. The SDL, zlib and modplug
-libraries are required.
-
-
 Data Files:
 -----------
 
 You will need the original files of the PC (DOS or CD), Amiga or Macintosh
-release.
+release. Support for Amiga and Macintosh is still experimental.
 
 For the Macintosh release, the resource fork must dumped as a file named
-'FLASHBACK.BIN'. It shall contain 38 distinct data types.
+'FLASHBACK.BIN' (MacBinary) or 'FLASHBACK.RSRC' (AppleDouble).
 
-To have background music during polygonal cutscenes with the PC version,
-you need to copy the music/ directory of the Amiga version or use the .mod
-fileset from unexotica [4].
+To hear music during polygonal cutscenes with the PC version, you need to copy
+the music/ directory of the Amiga version or use the .mod fileset from
+unexotica [4].
 
-To hear voice during in-game dialogues, you'll need to copy the 'VOICE.VCE'
-file from the SegaCD version to the DATA directory.
+For speech with in-game dialogues, you need to copy the 'VOICE.VCE' file from
+the SegaCD version to the DATA directory.
 
 
 Running:
 --------
 
-By default, the engine will try to load the game data files from the 'DATA'
-directory (as the original game did). The savestates are saved in the current
-directory. These paths can be changed using command line switches :
+By default, the engine tries to load the game data files from the 'DATA'
+directory, as the original game executable did. The savestates are saved in the
+current directory.
+
+These paths can be changed using command line switches :
 
     Usage: rs [OPTIONS]...
     --datapath=PATH   Path to data files (default 'DATA')
     --savepath=PATH   Path to save files (default '.')
     --levelnum=NUM    Level to start from (default '0')
     --fullscreen      Fullscreen display
+    --widescreen      16:9 display
     --scaler=NAME@X   Graphics scaler (default 'scale@3')
     --language=LANG   Language (fr,en,de,sp,it,jp)
 
 The scaler option specifies the algorithm used to smoothen the image in
-addition to a scaling factor. External scalers are also supported, the
-suffix shall be used as the name. Eg. If you have scaler_xbrz.dll, you can
-pass '--scaler xbrz@2' to use that algorithm with a window size 512x448.
+addition to a scaling factor. External scalers are also supported, the suffix
+shall be used as the name. Eg. If you have scaler_xbrz.dll, you can pass
+'--scaler xbrz@2' to use that algorithm with a doubled window size (512x448).
 
 In-game hotkeys :
 

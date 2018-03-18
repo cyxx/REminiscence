@@ -157,6 +157,11 @@ void Game::run() {
 			_stub->_pi.enter = false;
 			_stub->_pi.space = false;
 			_stub->_pi.shift = false;
+			// clear widescreen borders
+			if (_stub->hasWidescreen()) {
+				_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+				_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+			}
 		}
 	}
 
@@ -189,13 +194,14 @@ void Game::displayTitleScreenAmiga() {
 	_stub->updateScreen(0);
 	_vid.AMIGA_decodeCmp(_res._scratchBuffer + 6, buf);
 	free(buf);
-	for (int h = 0; h < kH / 2; h += 2) {
-		const int y = kH / 2 - h;
-		_stub->copyRect(0, y, kW, h * 2, buf, kW);
-		_stub->updateScreen(0);
-		_stub->sleep(30);
-	}
+	int h = 0;
 	while (1) {
+		if (h < kH / 2) {
+			const int y = kH / 2 - h;
+			_stub->copyRect(0, y, kW, h * 2, buf, kW);
+			_stub->updateScreen(0);
+			h += 2;
+		}
 		_stub->processEvents();
 		if (_stub->_pi.quit) {
 			break;
@@ -293,7 +299,9 @@ void Game::mainLoop() {
 	drawAnims();
 	drawCurrentInventoryItem();
 	drawLevelTexts();
-	printLevelCode();
+	if (g_options.enable_password_menu) {
+		printLevelCode();
+	}
 	if (_blinkingConradCounter != 0) {
 		--_blinkingConradCounter;
 	}
@@ -393,6 +401,15 @@ void Game::playCutscene(int id) {
 				_cut.play();
 			}
 		}
+		if (_res._type == kResourceTypeMac) {
+			// restore palette entries modified by the cutscene player (0xC and 0xD)
+			Color palette[32];
+			_res.MAC_copyClut16(palette, 0, 0x37);
+			_res.MAC_copyClut16(palette, 1, 0x38);
+			for (int i = 0; i < 32; ++i) {
+				_stub->setPaletteEntry(0xC0 + i, &palette[i]);
+			}
+		}
 		if (id == 0x3D) {
 			_cut.playCredits();
 		}
@@ -442,6 +459,10 @@ void Game::drawCurrentInventoryItem() {
 }
 
 void Game::showFinalScore() {
+	if (_stub->hasWidescreen()) {
+		_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+		_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+	}
 	playCutscene(0x49);
 	char buf[50];
 	snprintf(buf, sizeof(buf), "SCORE %08u", _score);
@@ -534,16 +555,16 @@ bool Game::handleConfigPanel() {
 	_menu._charVar2 = 0xEE;
 
 	_vid.fullRefresh();
-	enum { MENU_ITEM_LOAD = 1, MENU_ITEM_SAVE = 2, MENU_ITEM_ABORT = 3 };
+	enum { MENU_ITEM_ABORT = 1, MENU_ITEM_LOAD = 2, MENU_ITEM_SAVE = 3 };
 	uint8_t colors[] = { 2, 3, 3, 3 };
 	int current = 0;
 	while (!_stub->_pi.quit) {
 		_menu.drawString(_res.getMenuString(LocaleData::LI_18_RESUME_GAME), y + 2, 9, colors[0]);
-		_menu.drawString(_res.getMenuString(LocaleData::LI_20_LOAD_GAME), y + 4, 9, colors[1]);
-		_menu.drawString(_res.getMenuString(LocaleData::LI_21_SAVE_GAME), y + 6, 9, colors[2]);
-		_menu.drawString(_res.getMenuString(LocaleData::LI_19_ABORT_GAME), y + 8, 9, colors[3]);
+		_menu.drawString(_res.getMenuString(LocaleData::LI_19_ABORT_GAME), y + 4, 9, colors[1]);
+		_menu.drawString(_res.getMenuString(LocaleData::LI_20_LOAD_GAME), y + 6, 9, colors[2]);
+		_menu.drawString(_res.getMenuString(LocaleData::LI_21_SAVE_GAME), y + 8, 9, colors[3]);
 		char buf[30];
-		snprintf(buf, sizeof(buf), "%s : %d-%02d", _res.getMenuString(LocaleData::LI_22_SAVE_SLOT), _currentLevel + 1, _stateSlot);
+		snprintf(buf, sizeof(buf), "%s < %02d >", _res.getMenuString(LocaleData::LI_22_SAVE_SLOT), _stateSlot);
 		_menu.drawString(buf, y + 10, 9, 1);
 
 		_vid.updateScreen();
@@ -598,6 +619,10 @@ bool Game::handleConfigPanel() {
 }
 
 bool Game::handleContinueAbort() {
+	if (_stub->hasWidescreen()) {
+		_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+		_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+	}
 	playCutscene(0x48);
 	int timeout = 100;
 	int current_color = 0;
@@ -799,46 +824,77 @@ static int getLineLength(const uint8_t *str) {
 
 void Game::drawStoryTexts() {
 	if (_textToDisplay != 0xFFFF) {
-		if (_res._type == kResourceTypeMac) {
-			warning("Unhandled textToDisplay %d", _textToDisplay);
-			_textToDisplay = 0xFFFF;
-			return;
-		}
 		uint8_t textColor = 0xE8;
 		const uint8_t *str = _res.getGameString(_textToDisplay);
 		memcpy(_vid._tempLayer, _vid._frontLayer, _vid._layerSize);
 		int textSpeechSegment = 0;
+		int textSegmentsCount = 0;
 		while (!_stub->_pi.quit) {
 			drawIcon(_currentInventoryIconNum, 80, 8, 0xA);
-			if (*str == 0xFF) {
-				if (_res._lang == LANG_JP) {
+			int yPos = 26;
+			if (_res._type == kResourceTypeMac) {
+				if (textSegmentsCount == 0) {
+					textSegmentsCount = *str++;
+				}
+				int len = *str++;
+				if (*str == '@') {
 					switch (str[1]) {
-					case 0:
+					case '1':
 						textColor = 0xE9;
 						break;
-					case 1:
+					case '2':
 						textColor = 0xEB;
 						break;
 					default:
-						warning("Unhandled JP color code 0x%x", str[1]);
+						warning("Unhandled MAC text color code 0x%x", str[1]);
 						break;
 					}
 					str += 2;
-				} else {
-					textColor = str[1];
-					// str[2] is an unused color (possibly the shadow)
-					str += 3;
+					len -= 2;
 				}
-			}
-			int yPos = 26;
-			while (1) {
-				const int len = getLineLength(str);
-				str = (const uint8_t *)_vid.drawString((const char *)str, (176 - len * Video::CHAR_W) / 2, yPos, textColor);
-				yPos += 8;
-				if (*str == 0 || *str == 0xB) {
-					break;
+				for (; len > 0; yPos += 8) {
+					const uint8_t *next = (const uint8_t *)memchr(str, 0x7C, len);
+					if (!next) {
+						_vid.drawStringLen((const char *)str, len, (176 - len * Video::CHAR_W) / 2, yPos, textColor);
+						// point 'str' to beginning of next text segment
+						str += len;
+						break;
+					}
+					const int lineLength = next - str;
+					_vid.drawStringLen((const char *)str, lineLength, (176 - lineLength * Video::CHAR_W) / 2, yPos, textColor);
+					str = next + 1;
+					len -= lineLength + 1;
 				}
-				++str;
+			} else {
+				if (*str == 0xFF) {
+					if (_res._lang == LANG_JP) {
+						switch (str[1]) {
+						case 0:
+							textColor = 0xE9;
+							break;
+						case 1:
+							textColor = 0xEB;
+							break;
+						default:
+							warning("Unhandled JP text color code 0x%x", str[1]);
+							break;
+						}
+						str += 2;
+					} else {
+						textColor = str[1];
+						// str[2] is an unused color (possibly the shadow)
+						str += 3;
+					}
+				}
+				while (1) {
+					const int len = getLineLength(str);
+					str = (const uint8_t *)_vid.drawString((const char *)str, (176 - len * Video::CHAR_W) / 2, yPos, textColor);
+					if (*str == 0 || *str == 0xB) {
+						break;
+					}
+					++str;
+					yPos += 8;
+				}
 			}
 			MixerChunk chunk;
 			_res.load_VCE(_textToDisplay, textSpeechSegment++, &chunk.data, &chunk.len);
@@ -858,10 +914,16 @@ void Game::drawStoryTexts() {
 				free(chunk.data);
 			}
 			_stub->_pi.backspace = false;
-			if (*str == 0) {
-				break;
+			if (_res._type == kResourceTypeMac) {
+				if (textSpeechSegment == textSegmentsCount) {
+					break;
+				}
+			} else {
+				if (*str == 0) {
+					break;
+				}
+				++str;
 			}
-			++str;
 			memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
 		}
 		_textToDisplay = 0xFFFF;
@@ -1066,15 +1128,6 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 	}
 }
 
-static void fixOffsetDecodeBuffer(DecodeBuffer *buf, const uint8_t *dataPtr) {
-	if (buf->xflip) {
-		buf->x += (int16_t)READ_BE_UINT16(dataPtr + 4) - READ_BE_UINT16(dataPtr) - 1;
-	} else {
-		buf->x -= (int16_t)READ_BE_UINT16(dataPtr + 4);
-	}
-	buf->y -= (int16_t)READ_BE_UINT16(dataPtr + 6);
-}
-
 void Game::drawPiege(AnimBufferState *state) {
 	LivePGE *pge = state->pge;
 	switch (_res._type) {
@@ -1082,43 +1135,18 @@ void Game::drawPiege(AnimBufferState *state) {
 	case kResourceTypeDOS:
 		drawObject(state->dataPtr, state->x, state->y, pge->flags);
 		break;
-	case kResourceTypeMac: {
-			DecodeBuffer buf;
-			memset(&buf, 0, sizeof(buf));
-			buf.xflip = (pge->flags & 2);
-			buf.ptr = _vid._frontLayer;
-			buf.w = buf.pitch = _vid._w;
-			buf.h = _vid._h;
-			buf.x = state->x * _vid._layerScale;
-			buf.y = state->y * _vid._layerScale;
-			buf.setPixel = _eraseBackground ? Video::MAC_drawBuffer : Video::MAC_drawBufferMask;
-			if (pge->flags & 8) {
-				const uint8_t *dataPtr = _res.MAC_getImageData(_res._spc, pge->anim_number);
-				if (dataPtr) {
-					fixOffsetDecodeBuffer(&buf, dataPtr);
-					_res.MAC_decodeImageData(_res._spc, pge->anim_number, &buf);
-					_vid.MAC_markBlockAsDirty(buf.x, buf.y, READ_BE_UINT16(dataPtr), READ_BE_UINT16(dataPtr + 2));
-				}
-			} else if (pge->index == 0) {
-				if (pge->anim_number == 0x386) {
-					return;
-				}
-				const int frame = _res.MAC_getPersoFrame(pge->anim_number);
-				const uint8_t *dataPtr = _res.MAC_getImageData(_res._perso, frame);
-				if (dataPtr) {
-					fixOffsetDecodeBuffer(&buf, dataPtr);
-					_res.MAC_decodeImageData(_res._perso, frame, &buf);
-					_vid.MAC_markBlockAsDirty(buf.x, buf.y, READ_BE_UINT16(dataPtr), READ_BE_UINT16(dataPtr + 2));
-				}
-			} else {
-				const int frame = _res.MAC_getMonsterFrame(pge->anim_number);
-				const uint8_t *dataPtr = _res.MAC_getImageData(_res._monster, frame);
-				if (dataPtr) {
-					fixOffsetDecodeBuffer(&buf, dataPtr);
-					_res.MAC_decodeImageData(_res._monster, frame, &buf);
-					_vid.MAC_markBlockAsDirty(buf.x, buf.y, READ_BE_UINT16(dataPtr), READ_BE_UINT16(dataPtr + 2));
-				}
+	case kResourceTypeMac:
+		if (pge->flags & 8) {
+			_vid.MAC_drawSprite(state->x, state->y, _res._spc, pge->anim_number, (pge->flags & 2) != 0, _eraseBackground);
+		} else if (pge->index == 0) {
+			if (pge->anim_number == 0x386) {
+				break;
 			}
+			const int frame = _res.MAC_getPersoFrame(pge->anim_number);
+			_vid.MAC_drawSprite(state->x, state->y, _res._perso, frame, (pge->flags & 2) != 0, _eraseBackground);
+		} else {
+			const int frame = _res.MAC_getMonsterFrame(pge->anim_number);
+			_vid.MAC_drawSprite(state->x, state->y, _res._monster, frame, (pge->flags & 2) != 0, _eraseBackground);
 		}
 		break;
 	}
@@ -1495,35 +1523,26 @@ void Game::loadLevelMap() {
 		_vid.AMIGA_decodeLev(_currentLevel, _currentRoom);
 		break;
 	case kResourceTypeDOS:
-		if (_res._map) {
-			_vid.PC_decodeMap(_currentLevel, _currentRoom);
-			_vid.PC_setLevelPalettes();
-		} else if (_res._lev) {
-			_vid.PC_decodeLev(_currentLevel, _currentRoom);
-		}
-		break;
-	case kResourceTypeMac:
-		{
-			DecodeBuffer buf;
-			memset(&buf, 0, sizeof(buf));
-			buf.ptr = _vid._frontLayer;
-			buf.w = buf.pitch = _vid._w;
-			buf.h = _vid._h;
-			buf.setPixel = Video::MAC_drawBuffer;
-			_res.MAC_loadLevelRoom(_currentLevel, _currentRoom, &buf);
-			memcpy(_vid._backLayer, _vid._frontLayer, _vid._layerSize);
-			Color roomPalette[256];
-			_res.MAC_setupRoomClut(_currentLevel, _currentRoom, roomPalette);
-			for (int j = 0; j < 16; ++j) {
-				if (j == 5 || j == 7 || j == 14 || j == 15) {
-					continue;
-				}
-				for (int i = 0; i < 16; ++i) {
-					const int color = j * 16 + i;
-					_stub->setPaletteEntry(color, &roomPalette[color]);
-				}
+		if (_stub->hasWidescreen()) { // draw adjacent rooms
+			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
+			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
+				_vid.PC_decodeMap(_currentLevel, leftRoom);
+				_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+			} else {
+				_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+			}
+			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
+			if (rightRoom > 0 && hasLevelMap(_currentLevel, rightRoom)) {
+				_vid.PC_decodeMap(_currentLevel, rightRoom);
+				_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+			} else {
+				_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
 			}
 		}
+		_vid.PC_decodeMap(_currentLevel, _currentRoom);
+		break;
+	case kResourceTypeMac:
+		_vid.MAC_decodeMap(_currentLevel, _currentRoom);
 		break;
 	}
 }
@@ -1703,19 +1722,7 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 			iconNum = 34;
 			break;
 		}
-		{
-			const uint8_t *dataPtr = _res.MAC_getImageData(_res._icn, iconNum);
-			DecodeBuffer buf;
-			memset(&buf, 0, sizeof(buf));
-			buf.ptr = _vid._frontLayer;
-			buf.w = buf.pitch = _vid._w;
-			buf.h = _vid._h;
-			buf.x = x * _vid._layerScale;
-			buf.y = y * _vid._layerScale;
-			buf.setPixel = Video::MAC_drawBuffer;
-			_res.MAC_decodeImageData(_res._icn, iconNum, &buf);
-			_vid.MAC_markBlockAsDirty(buf.x, buf.y, READ_BE_UINT16(dataPtr), READ_BE_UINT16(dataPtr + 2));
-		}
+		_vid.MAC_drawSprite(x, y, _res._icn, iconNum, false, true);
 		return;
 	}
 	_vid.drawSpriteSub1(buf, _vid._frontLayer + x + y * _vid._w, 16, 16, 16, colMask << 4);

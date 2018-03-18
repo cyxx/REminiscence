@@ -45,6 +45,13 @@ struct Menu {
 	static const char *_passwordsEnAmiga[];
 	static const char *_passwordsMac[];
 
+	static const uint8_t _flagEn16x12[];
+	static const uint8_t _flagFr16x12[];
+	static const uint8_t _flagDe16x12[];
+	static const uint8_t _flagIt16x12[];
+	static const uint8_t _flagJp16x12[];
+	static const uint8_t _flagSp16x12[];
+
 	Resource *_res;
 	SystemStub *_stub;
 	Video *_vid;

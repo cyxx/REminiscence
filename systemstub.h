@@ -55,15 +55,19 @@ struct SystemStub {
 
 	virtual ~SystemStub() {}
 
-	virtual void init(const char *title, int w, int h, bool fullscreen, ScalerParameters *scalerParameters) = 0;
+	virtual void init(const char *title, int w, int h, bool fullscreen, bool widescreen, ScalerParameters *scalerParameters) = 0;
 	virtual void destroy() = 0;
 
+	virtual bool hasWidescreen() const = 0;
 	virtual void setScreenSize(int w, int h) = 0;
 	virtual void setPalette(const uint8_t *pal, int n) = 0;
 	virtual void setPaletteEntry(int i, const Color *c) = 0;
 	virtual void getPaletteEntry(int i, Color *c) = 0;
 	virtual void setOverscanColor(int i) = 0;
 	virtual void copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch) = 0;
+	virtual void copyRectRgb24(int x, int y, int w, int h, const uint8_t *rgb) = 0;
+	virtual void copyRectLeftBorder(int w, int h, const uint8_t *buf) = 0;
+	virtual void copyRectRightBorder(int w, int h, const uint8_t *buf) = 0;
 	virtual void fadeScreen() = 0;
 	virtual void updateScreen(int shakeOffset) = 0;
 

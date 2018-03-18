@@ -71,13 +71,28 @@ void Resource::init() {
 		}
 		break;
 	case kResourceTypeMac:
-		_mac = new ResourceMac(ResourceMac::FILENAME, _fs);
-		_mac->loadMap();
+		if (_fs->exists(ResourceMac::FILENAME1)) {
+			_mac = new ResourceMac(ResourceMac::FILENAME1, _fs);
+		} else if (_fs->exists(ResourceMac::FILENAME2)) {
+			_mac = new ResourceMac(ResourceMac::FILENAME2, _fs);
+		}
+		_mac->load();
 		break;
 	}
 }
 
 void Resource::fini() {
+}
+
+void Resource::setLanguage(Language lang) {
+	if (_lang != lang) {
+		_lang = lang;
+		// reload global language specific data files
+		free_TEXT();
+		load_TEXT();
+		free_CINE();
+		load_CINE();
+	}
 }
 
 bool Resource::fileExists(const char *filename) {
@@ -367,6 +382,9 @@ void Resource::load_CINE() {
 	case kResourceTypeDOS:
 		if (_cine_off == 0) {
 			snprintf(_entryName, sizeof(_entryName), "%sCINE.BIN", prefix);
+			if (!_fs->exists(_entryName)) {
+				strcpy(_entryName, "ENGCINE.BIN");
+			}
 			File f;
 			if (f.open(_entryName, "rb", _fs)) {
 				int len = f.size();
@@ -389,6 +407,9 @@ void Resource::load_CINE() {
 		}
 		if (_cine_txt == 0) {
 			snprintf(_entryName, sizeof(_entryName), "%sCINE.TXT", prefix);
+			if (!_fs->exists(_entryName)) {
+				strcpy(_entryName, "ENGCINE.TXT");
+			}
 			File f;
 			if (f.open(_entryName, "rb", _fs)) {
 				int len = f.size();
@@ -414,6 +435,13 @@ void Resource::load_CINE() {
 		MAC_loadCutsceneText();
 		break;
 	}
+}
+
+void Resource::free_CINE() {
+	free(_cine_off);
+	_cine_off = 0;
+	free(_cine_txt);
+	_cine_txt = 0;
 }
 
 void Resource::load_TEXT() {
@@ -502,7 +530,7 @@ void Resource::unload(int objType) {
 		_pol = 0;
 		break;
 	default:
-		error("Unimplemented Resource::load() type %d", objType);
+		error("Unimplemented Resource::unload() type %d", objType);
 		break;
 	}
 }

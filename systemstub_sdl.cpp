@@ -39,6 +39,7 @@ struct SystemStub_SDL : SystemStub {
 	bool _fullscreen;
 	uint8_t _overscanColor;
 	uint32_t _rgbPalette[256];
+	uint32_t _darkPalette[256];
 	int _screenW, _screenH;
 	SDL_Joystick *_joystick;
 	bool _fadeOnUpdateScreen;
@@ -48,16 +49,23 @@ struct SystemStub_SDL : SystemStub {
 	ScalerType _scalerType;
 	const Scaler *_scaler;
 	int _scaleFactor;
+	bool _widescreen;
+	SDL_Texture *_wideTexture;
+	int _wideMargin;
 
 	virtual ~SystemStub_SDL() {}
-	virtual void init(const char *title, int w, int h, bool fullscreen, ScalerParameters *scalerParameters);
+	virtual void init(const char *title, int w, int h, bool fullscreen, bool widescreen, ScalerParameters *scalerParameters);
 	virtual void destroy();
+	virtual bool hasWidescreen() const;
 	virtual void setScreenSize(int w, int h);
 	virtual void setPalette(const uint8_t *pal, int n);
 	virtual void setPaletteEntry(int i, const Color *c);
 	virtual void getPaletteEntry(int i, Color *c);
 	virtual void setOverscanColor(int i);
 	virtual void copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch);
+	virtual void copyRectRgb24(int x, int y, int w, int h, const uint8_t *rgb);
+	virtual void copyRectLeftBorder(int w, int h, const uint8_t *buf);
+	virtual void copyRectRightBorder(int w, int h, const uint8_t *buf);
 	virtual void fadeScreen();
 	virtual void updateScreen(int shakeOffset);
 	virtual void processEvents();
@@ -69,6 +77,7 @@ struct SystemStub_SDL : SystemStub {
 	virtual void lockAudio();
 	virtual void unlockAudio();
 
+	void setPaletteColor(int color, int r, int g, int b);
 	void processEvent(const SDL_Event &ev, bool &paused);
 	void prepareGraphics();
 	void cleanupGraphics();
@@ -80,7 +89,7 @@ SystemStub *SystemStub_SDL_create() {
 	return new SystemStub_SDL();
 }
 
-void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, ScalerParameters *scalerParameters) {
+void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, bool widescreen, ScalerParameters *scalerParameters) {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 	SDL_ShowCursor(SDL_DISABLE);
 	_caption = title;
@@ -94,9 +103,13 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, Scal
 	_fullscreen = fullscreen;
 	_scalerType = scalerParameters->type;
 	_scaler = scalerParameters->scaler;
-	_scaleFactor = scalerParameters->factor;
+	_scaleFactor = CLIP(scalerParameters->factor, _scaler->factorMin, _scaler->factorMax);
 	memset(_rgbPalette, 0, sizeof(_rgbPalette));
+	memset(_darkPalette, 0, sizeof(_darkPalette));
 	_screenW = _screenH = 0;
+	_widescreen = widescreen;
+	_wideTexture = 0;
+	_wideMargin = 0;
 	setScreenSize(w, h);
 	_joystick = 0;
 	_controller = 0;
@@ -125,6 +138,10 @@ void SystemStub_SDL::destroy() {
 	SDL_Quit();
 }
 
+bool SystemStub_SDL::hasWidescreen() const {
+	return _widescreen;
+}
+
 void SystemStub_SDL::setScreenSize(int w, int h) {
 	if (_screenW == w && _screenH == h) {
 		return;
@@ -140,18 +157,21 @@ void SystemStub_SDL::setScreenSize(int w, int h) {
 	prepareGraphics();
 }
 
+void SystemStub_SDL::setPaletteColor(int color, int r, int g, int b) {
+	_rgbPalette[color] = SDL_MapRGB(_fmt, r, g, b);
+	_darkPalette[color] = SDL_MapRGB(_fmt, r / 4, g / 4, b / 4);
+}
+
 void SystemStub_SDL::setPalette(const uint8_t *pal, int n) {
 	assert(n <= 256);
 	for (int i = 0; i < n; ++i) {
-		uint8_t r = pal[i * 3 + 0];
-		uint8_t g = pal[i * 3 + 1];
-		uint8_t b = pal[i * 3 + 2];
-		_rgbPalette[i] = SDL_MapRGB(_fmt, r, g, b);
+		setPaletteColor(i, pal[0], pal[1], pal[2]);
+		pal += 3;
 	}
 }
 
 void SystemStub_SDL::setPaletteEntry(int i, const Color *c) {
-	_rgbPalette[i] = SDL_MapRGB(_fmt, c->r, c->g, c->b);
+	setPaletteColor(i, c->r, c->g, c->b);
 }
 
 void SystemStub_SDL::getPaletteEntry(int i, Color *c) {
@@ -196,6 +216,66 @@ void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, in
 	}
 }
 
+void SystemStub_SDL::copyRectRgb24(int x, int y, int w, int h, const uint8_t *rgb) {
+	assert(x >= 0 && x + w <= _screenW && y >= 0 && y + h <= _screenH);
+	uint32_t *p = _screenBuffer + y * _screenW + x;
+
+	for (int j = 0; j < h; ++j) {
+		for (int i = 0; i < w; ++i) {
+			p[i] = SDL_MapRGB(_fmt, rgb[0], rgb[1], rgb[2]); rgb += 3;
+		}
+		p += _screenW;
+	}
+
+	if (_pi.dbgMask & PlayerInput::DF_DBLOCKS) {
+		drawRect(x, y, w, h, 0xE7);
+	}
+}
+
+void SystemStub_SDL::copyRectLeftBorder(int w, int h, const uint8_t *buf) {
+	assert(w >= _wideMargin);
+	uint32_t *rgb = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+	if (rgb) {
+		if (buf) {
+			for (int i = 0; i < w * h; ++i) {
+				rgb[i] = _darkPalette[buf[i]];
+			}
+		} else {
+			memset(rgb, 0, w * h * sizeof(uint32_t));
+		}
+		const int xOffset = w - _wideMargin;
+		SDL_Rect r;
+		r.x = 0;
+		r.y = 0;
+		r.w = _wideMargin;
+		r.h = h;
+		SDL_UpdateTexture(_wideTexture, &r, rgb + xOffset, w * sizeof(uint32_t));
+		free(rgb);
+	}
+}
+
+void SystemStub_SDL::copyRectRightBorder(int w, int h, const uint8_t *buf) {
+	assert(w >= _wideMargin);
+	uint32_t *rgb = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+	if (rgb) {
+		if (buf) {
+			for (int i = 0; i < w * h; ++i) {
+				rgb[i] = _darkPalette[buf[i]];
+			}
+		} else {
+			memset(rgb, 0, w * h * sizeof(uint32_t));
+		}
+		const int xOffset = 0;
+		SDL_Rect r;
+		r.x = _wideMargin + _screenW;
+		r.y = 0;
+		r.w = _wideMargin;
+		r.h = h;
+		SDL_UpdateTexture(_wideTexture, &r, rgb + xOffset, w * sizeof(uint32_t));
+		free(rgb);
+	}
+}
+
 void SystemStub_SDL::fadeScreen() {
 	_fadeOnUpdateScreen = true;
 }
@@ -213,30 +293,38 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 		SDL_UpdateTexture(_texture, 0, _screenBuffer, _screenW * sizeof(uint32_t));
 	}
 	SDL_RenderClear(_renderer);
-	if (_fadeOnUpdateScreen) {
-		SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
+	if (_widescreen) {
+		// borders / background screen
+		SDL_RenderCopy(_renderer, _wideTexture, 0, 0);
+		// game screen
 		SDL_Rect r;
-		r.x = r.y = 0;
-		SDL_GetRendererOutputSize(_renderer, &r.w, &r.h);
-		for (int i = 1; i <= 16; ++i) {
-			SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 256 - i * 16);
-			SDL_RenderCopy(_renderer, _texture, 0, 0);
-			SDL_RenderFillRect(_renderer, &r);
-			SDL_RenderPresent(_renderer);
-			SDL_Delay(30);
+		r.y = shakeOffset * _scaleFactor;
+		SDL_RenderGetLogicalSize(_renderer, &r.w, &r.h);
+		r.x = (r.w - _texW) / 2;
+		r.w = _texW;
+		SDL_RenderCopy(_renderer, _texture, 0, &r);
+	} else {
+		if (_fadeOnUpdateScreen) {
+			SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
+			SDL_Rect r;
+			r.x = r.y = 0;
+			SDL_RenderGetLogicalSize(_renderer, &r.w, &r.h);
+			for (int i = 1; i <= 16; ++i) {
+				SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 256 - i * 16);
+				SDL_RenderCopy(_renderer, _texture, 0, 0);
+				SDL_RenderFillRect(_renderer, &r);
+				SDL_RenderPresent(_renderer);
+				SDL_Delay(30);
+			}
+			_fadeOnUpdateScreen = false;
+			SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_NONE);
+			return;
 		}
-		_fadeOnUpdateScreen = false;
-		SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_NONE);
-		return;
-	}
-	if (shakeOffset != 0) {
 		SDL_Rect r;
 		r.x = 0;
 		r.y = shakeOffset * _scaleFactor;
-		SDL_GetRendererOutputSize(_renderer, &r.w, &r.h);
+		SDL_RenderGetLogicalSize(_renderer, &r.w, &r.h);
 		SDL_RenderCopy(_renderer, _texture, 0, &r);
-	} else {
-		SDL_RenderCopy(_renderer, _texture, 0, 0);
 	}
 	SDL_RenderPresent(_renderer);
 }
@@ -600,7 +688,7 @@ void SystemStub_SDL::prepareGraphics() {
 		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); // nearest pixel sampling
 		break;
 	case kScalerTypeLinear:
-		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1"); // linear filtering
 		break;
 	case kScalerTypeInternal:
 	case kScalerTypeExternal:
@@ -609,13 +697,16 @@ void SystemStub_SDL::prepareGraphics() {
 		_texH *= _scaleFactor;
 		break;
 	}
-	const int windowW = _screenW * _scaleFactor;
-	const int windowH = _screenH * _scaleFactor;
+	int windowW = _screenW * _scaleFactor;
+	int windowH = _screenH * _scaleFactor;
 	int flags = 0;
 	if (_fullscreen) {
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	} else {
 		flags |= SDL_WINDOW_RESIZABLE;
+	}
+	if (_widescreen) {
+		windowW = windowH * 16 / 9;
 	}
 	_window = SDL_CreateWindow(_caption, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowW, windowH, flags);
 	SDL_Surface *icon = SDL_LoadBMP(kIconBmp);
@@ -627,12 +718,27 @@ void SystemStub_SDL::prepareGraphics() {
 	SDL_RenderSetLogicalSize(_renderer, windowW, windowH);
 	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _texW, _texH);
 	_fmt = SDL_AllocFormat(kPixelFormat);
+	if (_widescreen) {
+		const int w = _screenH * 16 / 9;
+		const int h = _screenH;
+		_wideTexture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, w, h);
+		// left and right borders
+		_wideMargin = (w - _screenW) / 2;
+	}
 }
 
 void SystemStub_SDL::cleanupGraphics() {
 	if (_screenBuffer) {
 		free(_screenBuffer);
 		_screenBuffer = 0;
+	}
+	if (_texture) {
+		SDL_DestroyTexture(_texture);
+		_texture = 0;
+	}
+	if (_wideTexture) {
+		SDL_DestroyTexture(_wideTexture);
+		_wideTexture = 0;
 	}
 	if (_renderer) {
 		SDL_DestroyRenderer(_renderer);
@@ -649,18 +755,21 @@ void SystemStub_SDL::cleanupGraphics() {
 }
 
 void SystemStub_SDL::changeGraphics(bool fullscreen, int scaleFactor) {
-	int factor = scaleFactor;
-	if (factor < _scaler->factorMin) {
-		factor = _scaler->factorMin;
-	} else if (factor > _scaler->factorMax) {
-		factor = _scaler->factorMax;
-	}
+	int factor = CLIP(scaleFactor, _scaler->factorMin, _scaler->factorMax);
 	if (fullscreen == _fullscreen && factor == _scaleFactor) {
 		// no change
 		return;
 	}
 	_fullscreen = fullscreen;
 	_scaleFactor = factor;
+	if (_texture) {
+		SDL_DestroyTexture(_texture);
+		_texture = 0;
+	}
+	if (_wideTexture) {
+		SDL_DestroyTexture(_wideTexture);
+		_wideTexture = 0;
+	}
 	if (_renderer) {
 		SDL_DestroyRenderer(_renderer);
 		_renderer = 0;

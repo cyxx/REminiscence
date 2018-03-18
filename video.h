@@ -87,11 +87,11 @@ struct Video {
 	void drawStringLen(const char *str, int len, int x, int y, uint8_t color);
 	static Color AMIGA_convertColor(const uint16_t color, bool bgr = false);
 	void MAC_decodeMap(int level, int room);
-	void MAC_markBlockAsDirty(int x, int y, int w, int h);
 	static void MAC_drawBuffer(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
 	static void MAC_drawBufferMask(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
 	static void MAC_drawBufferFont(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
 	void MAC_fillRect(int x, int y, int w, int h, uint8_t color);
+	void MAC_drawSprite(int x, int y, const uint8_t *data, int frame, bool xflip, bool eraseBackground);
 };
 
 #endif // VIDEO_H__
