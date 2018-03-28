@@ -90,7 +90,7 @@ struct Video {
 	static void MAC_drawBuffer(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
 	static void MAC_drawBufferMask(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
 	static void MAC_drawBufferFont(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
-	void MAC_fillRect(int x, int y, int w, int h, uint8_t color);
+	void fillRect(int x, int y, int w, int h, uint8_t color);
 	void MAC_drawSprite(int x, int y, const uint8_t *data, int frame, bool xflip, bool eraseBackground);
 };
 

@@ -100,6 +100,12 @@ enum Skill {
 	kSkillExpert,
 };
 
+enum WidescreenMode {
+	kWidescreenNone,
+	kWidescreenAdjacentRooms,
+	kWidescreenMirrorRoom,
+};
+
 struct Options {
 	bool bypass_protection;
 	bool enable_password_menu;

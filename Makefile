@@ -7,15 +7,17 @@ MODPLUG_LIBS := -lmodplug
 TREMOR_LIBS  := -lvorbisidec -logg
 ZLIB_LIBS    := -lz
 
-CXXFLAGS += -O2 -Wall -MMD $(SDL_CFLAGS) -DUSE_MODPLUG -DUSE_TREMOR -DUSE_ZLIB
+CXXFLAGS += -O2 -Wall -MMD $(SDL_CFLAGS) -DUSE_MODPLUG -DUSE_STATIC_SCALER -DUSE_TREMOR -DUSE_ZLIB
 
 SRCS = collision.cpp cutscene.cpp decode_mac.cpp dynlib.cpp file.cpp fs.cpp game.cpp graphics.cpp main.cpp \
 	menu.cpp mixer.cpp mod_player.cpp ogg_player.cpp piege.cpp resource.cpp resource_aba.cpp \
 	resource_mac.cpp scaler.cpp screenshot.cpp seq_player.cpp \
 	sfx_player.cpp staticres.cpp systemstub_sdl.cpp unpack.cpp util.cpp video.cpp
 
-OBJS = $(SRCS:.cpp=.o)
-DEPS = $(SRCS:.cpp=.d)
+SCALERS := scalers/scaler_nearest.cpp scalers/scaler_tv2x.cpp scalers/scaler_xbrz.cpp scalers/xbrz/xbrz.cpp
+
+OBJS = $(SRCS:.cpp=.o) $(SCALERS:.cpp=.o)
+DEPS = $(SRCS:.cpp=.d) $(SCALERS:.cpp=.d)
 
 LIBS = $(SDL_LIBS) $(DL_LIBS) $(MODPLUG_LIBS) $(TREMOR_LIBS) $(ZLIB_LIBS)
 

@@ -21,7 +21,7 @@ Resource::Resource(FileSystem *fs, ResourceType ver, Language lang) {
 	_mac = 0;
 	_readUint16 = (_type == kResourceTypeDOS) ? READ_LE_UINT16 : READ_BE_UINT16;
 	_readUint32 = (_type == kResourceTypeDOS) ? READ_LE_UINT32 : READ_BE_UINT32;
-	_scratchBuffer = (uint8_t *)malloc(320 * 224 + 1024);
+	_scratchBuffer = (uint8_t *)malloc(kScratchBufferSize);
 	if (!_scratchBuffer) {
 		error("Unable to allocate temporary memory buffer");
 	}
@@ -36,9 +36,9 @@ Resource::Resource(FileSystem *fs, ResourceType ver, Language lang) {
 
 Resource::~Resource() {
 	clearLevelRes();
+	MAC_unloadLevelData();
 	free(_fnt);
-	free(_icn); _icn = 0;
-	_icnLen = 0;
+	free(_icn);
 	free(_tab);
 	free(_spc);
 	free(_spr1);
@@ -268,7 +268,7 @@ void Resource::load_PAL_menu(const char *fileName, uint8_t *dstPtr) {
 	error("Cannot load '%s'", _entryName);
 }
 
-void Resource::load_CMP_menu(const char *fileName, uint8_t *dstPtr) {
+void Resource::load_CMP_menu(const char *fileName) {
 	File f;
 	if (f.open(fileName, "rb", _fs)) {
 		const uint32_t size = f.readUint32BE();
@@ -277,7 +277,7 @@ void Resource::load_CMP_menu(const char *fileName, uint8_t *dstPtr) {
 			error("Failed to allocate CMP temporary buffer");
 		}
 		f.read(tmp, size);
-		if (!delphine_unpack(dstPtr, tmp, size)) {
+		if (!delphine_unpack(_scratchBuffer, kScratchBufferSize, tmp, size)) {
 			error("Bad CRC for %s", fileName);
 		}
                 free(tmp);
@@ -668,7 +668,7 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 					_pal = dat;
 					break;
 				case OT_CT:
-					if (!delphine_unpack((uint8_t *)_ctData, dat, size)) {
+					if (!delphine_unpack((uint8_t *)_ctData, sizeof(_ctData), dat, size)) {
 						error("Bad CRC for '%s'", _entryName);
 					}
 					free(dat);
@@ -736,7 +736,7 @@ void Resource::load_CT(File *pf) {
 		error("Unable to allocate CT buffer");
 	} else {
 		pf->read(tmp, len);
-		if (!delphine_unpack((uint8_t *)_ctData, tmp, len)) {
+		if (!delphine_unpack((uint8_t *)_ctData, sizeof(_ctData), tmp, len)) {
 			error("Bad CRC for collision data");
 		}
 		free(tmp);
@@ -936,7 +936,7 @@ void Resource::load_OBC(File *f) {
 	}
 	f->seek(4);
 	f->read(packedData, packedSize);
-	if (!delphine_unpack(tmp, packedData, packedSize)) {
+	if (!delphine_unpack(tmp, unpackedSize, packedData, packedSize)) {
 		error("Bad CRC for compressed object data");
 	}
 	free(packedData);
@@ -1153,7 +1153,7 @@ void Resource::load_CMP(File *pf) {
 	}
 	if (data[0].packedSize == data[0].size) {
 		memcpy(_pol, tmp + data[0].offset, data[0].packedSize);
-	} else if (!delphine_unpack(_pol, tmp + data[0].offset, data[0].packedSize)) {
+	} else if (!delphine_unpack(_pol, data[0].size, tmp + data[0].offset, data[0].packedSize)) {
 		error("Bad CRC for cutscene polygon data");
 	}
 	_cmd = (uint8_t *)malloc(data[1].size);
@@ -1162,7 +1162,7 @@ void Resource::load_CMP(File *pf) {
 	}
 	if (data[1].packedSize == data[1].size) {
 		memcpy(_cmd, tmp + data[1].offset, data[1].packedSize);
-	} else if (!delphine_unpack(_cmd, tmp + data[1].offset, data[1].packedSize)) {
+	} else if (!delphine_unpack(_cmd, data[1].size, tmp + data[1].offset, data[1].packedSize)) {
 		error("Bad CRC for cutscene command data");
 	}
 	free(tmp);
@@ -1278,7 +1278,7 @@ void Resource::load_SGD(File *f) {
 	if (!_sgd) {
 		error("Unable to allocate SGD buffer");
 	}
-	if (!delphine_unpack(_sgd, tmp, len)) {
+	if (!delphine_unpack(_sgd, size, tmp, len)) {
 		error("Bad CRC for SGD data");
 	}
 	free(tmp);
@@ -1310,12 +1310,12 @@ void Resource::load_SPM(File *f) {
 		if (!_spr1) {
 			error("Unable to allocate SPR1 buffer");
 		}
-		if (!delphine_unpack(_spr1, tmp, len)) {
+		if (!delphine_unpack(_spr1, size, tmp, len)) {
 			error("Bad CRC for SPM data");
 		}
 	} else {
 		assert(size <= sizeof(_sprm));
-		if (!delphine_unpack(_sprm, tmp, len)) {
+		if (!delphine_unpack(_sprm, sizeof(_sprm), tmp, len)) {
 			error("Bad CRC for SPM data");
 		}
 	}
@@ -1391,7 +1391,7 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 	} else {
 		assert(dataOffset > 4);
 		assert(size == (int)READ_BE_UINT32(data - 4));
-		if (!delphine_unpack(_bankDataHead, data, 0)) {
+		if (!delphine_unpack(_bankDataHead, _bankDataTail - _bankDataHead, data, 0)) {
 			error("Bad CRC for bank data %d", num);
 		}
 	}

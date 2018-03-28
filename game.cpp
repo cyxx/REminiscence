@@ -14,7 +14,7 @@
 #include "unpack.h"
 #include "util.h"
 
-Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang)
+Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
 	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub),
 	_stub(stub), _fs(fs), _savePath(savePath) {
@@ -23,6 +23,7 @@ Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, Re
 	_skillLevel = _menu._skill = kSkillNormal;
 	_currentLevel = _menu._level = level;
 	_demoBin = -1;
+	_widescreenMode = widescreenMode;
 }
 
 void Game::run() {
@@ -63,6 +64,12 @@ void Game::run() {
 	_mix.init();
 	_mix._mod._isAmiga = _res.isAmiga();
 
+	if (_res.isMac()) {
+		displayTitleScreenMac(Menu::kMacTitleScreen_MacPlay);
+		if (!_stub->_pi.quit) {
+			displayTitleScreenMac(Menu::kMacTitleScreen_Presage);
+		}
+	}
 	playCutscene(0x40);
 	playCutscene(0x0D);
 
@@ -86,7 +93,7 @@ void Game::run() {
 		break;
 	}
 
-	bool presentMenu = (_res._type == kResourceTypeAmiga) || (_res._type == kResourceTypeDOS && _res.fileExists("MENU1.MAP"));
+	bool presentMenu = ((_res._type != kResourceTypeDOS) || _res.fileExists("MENU1.MAP"));
 	while (!_stub->_pi.quit) {
 		if (presentMenu) {
 			_mix.playMusic(1);
@@ -121,7 +128,7 @@ void Game::run() {
 				_stub->setScreenSize(Video::GAMESCREEN_W, Video::GAMESCREEN_H);
 				break;
 			case kResourceTypeMac:
-				// TODO:
+				displayTitleScreenMac(Menu::kMacTitleScreen_Flashback);
 				break;
 			}
 			if (_stub->_pi.quit) {
@@ -172,10 +179,10 @@ void Game::run() {
 
 void Game::displayTitleScreenAmiga() {
 	static const char *FILENAME = "present.cmp";
-	_res.load_CMP_menu(FILENAME, _res._scratchBuffer);
+	_res.load_CMP_menu(FILENAME);
 	static const int kW = 320;
 	static const int kH = 224;
-	uint8_t *buf = (uint8_t *)calloc(kW * kH, 1);
+	uint8_t *buf = (uint8_t *)calloc(1, kW * kH);
 	if (!buf) {
 		error("Failed to allocate screen buffer w=%d h=%d", kW, kH);
 	}
@@ -190,18 +197,84 @@ void Game::displayTitleScreenAmiga() {
 		_stub->setPaletteEntry(i, &c);
 	}
 	_stub->setScreenSize(kW, kH);
+	// fill with black
 	_stub->copyRect(0, 0, kW, kH, buf, kW);
 	_stub->updateScreen(0);
 	_vid.AMIGA_decodeCmp(_res._scratchBuffer + 6, buf);
-	free(buf);
 	int h = 0;
 	while (1) {
-		if (h < kH / 2) {
+		if (h <= kH / 2) {
 			const int y = kH / 2 - h;
 			_stub->copyRect(0, y, kW, h * 2, buf, kW);
 			_stub->updateScreen(0);
 			h += 2;
 		}
+		_stub->processEvents();
+		if (_stub->_pi.quit) {
+			break;
+		}
+		if (_stub->_pi.enter) {
+			_stub->_pi.enter = false;
+			break;
+		}
+		_stub->sleep(30);
+	}
+	free(buf);
+}
+
+void Game::displayTitleScreenMac(int num) {
+	const int w = 512;
+	int h = 384;
+	int clutBaseColor = 0;
+	switch (num) {
+	case Menu::kMacTitleScreen_MacPlay:
+		break;
+	case Menu::kMacTitleScreen_Presage:
+		clutBaseColor = 12;
+		break;
+	case Menu::kMacTitleScreen_Flashback:
+	case Menu::kMacTitleScreen_LeftEye:
+	case Menu::kMacTitleScreen_RightEye:
+		h = 448;
+		break;
+	case Menu::kMacTitleScreen_Controls:
+		break;
+	}
+	DecodeBuffer buf;
+	memset(&buf, 0, sizeof(buf));
+	buf.ptr = _vid._frontLayer;
+	buf.pitch = buf.w = _vid._w;
+	buf.h = _vid._h;
+	buf.x = (_vid._w - w) / 2;
+	buf.y = (_vid._h - h) / 2;
+	buf.setPixel = Video::MAC_drawBuffer;
+	memset(_vid._frontLayer, 0, _vid._layerSize);
+	_res.MAC_loadTitleImage(num, &buf);
+	for (int i = 0; i < 12; ++i) {
+		Color palette[16];
+		_res.MAC_copyClut16(palette, 0, clutBaseColor + i);
+		const int basePaletteColor = i * 16;
+		for (int j = 0; j < 16; ++j) {
+			_stub->setPaletteEntry(basePaletteColor + j, &palette[j]);
+		}
+	}
+	if (num == Menu::kMacTitleScreen_MacPlay) {
+		Color palette[16];
+		_res.MAC_copyClut16(palette, 0, 56);
+		for (int i = 12; i < 16; ++i) {
+			const int basePaletteColor = i * 16;
+			for (int j = 0; j < 16; ++j) {
+				_stub->setPaletteEntry(basePaletteColor + j, &palette[j]);
+			}
+		}
+	} else if (num == Menu::kMacTitleScreen_Presage) {
+		Color c;
+		c.r = c.g = c.b = 0;
+		_stub->setPaletteEntry(0, &c);
+	}
+	_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._frontLayer, _vid._w);
+	_stub->updateScreen(0);
+	while (1) {
 		_stub->processEvents();
 		if (_stub->_pi.quit) {
 			break;
@@ -496,8 +569,12 @@ bool Game::handleConfigPanel() {
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
-		// TODO
-		return true;
+		for (int i = 0; i < h; ++i) {
+			for (int j = 0; j < w; ++j) {
+				_vid.fillRect(Video::CHAR_W * (x + j), Video::CHAR_H * (y + i), Video::CHAR_W, Video::CHAR_H, 0xE2);
+			}
+		}
+		break;
 	case kResourceTypeDOS:
 		// top-left rounded corner
 		_vid.PC_drawChar(0x81, y, x, kUseDefaultFont);
@@ -543,7 +620,7 @@ bool Game::handleConfigPanel() {
 			_vid.MAC_drawStringChar(_vid._frontLayer, _vid._w, Video::CHAR_W * x,       Video::CHAR_H * (y + i), _res._fnt, _vid._charFrontColor, 0x86);
 			_vid.MAC_drawStringChar(_vid._frontLayer, _vid._w, Video::CHAR_W * (x + w), Video::CHAR_H * (y + i), _res._fnt, _vid._charFrontColor, 0x87);
 			for (int j = 1; j < w; ++j) {
-				_vid.MAC_fillRect(Video::CHAR_W * (x + j), Video::CHAR_H * (y + i), Video::CHAR_W, Video::CHAR_H, 0xE2);
+				_vid.fillRect(Video::CHAR_W * (x + j), Video::CHAR_H * (y + i), Video::CHAR_W, Video::CHAR_H, 0xE2);
 			}
 		}
 		break;
@@ -1523,7 +1600,7 @@ void Game::loadLevelMap() {
 		_vid.AMIGA_decodeLev(_currentLevel, _currentRoom);
 		break;
 	case kResourceTypeDOS:
-		if (_stub->hasWidescreen()) { // draw adjacent rooms
+		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
 			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
 			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
 				_vid.PC_decodeMap(_currentLevel, leftRoom);
@@ -1540,6 +1617,9 @@ void Game::loadLevelMap() {
 			}
 		}
 		_vid.PC_decodeMap(_currentLevel, _currentRoom);
+		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenMirrorRoom) {
+			_stub->copyRectMirrorBorders(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+		}
 		break;
 	case kResourceTypeMac:
 		_vid.MAC_decodeMap(_currentLevel, _currentRoom);

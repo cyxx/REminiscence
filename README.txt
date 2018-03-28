@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.4.2
+Release version: 0.4.3
 -------------------------------------------------------------------------------
 
 
@@ -43,7 +43,7 @@ These paths can be changed using command line switches :
     --savepath=PATH   Path to save files (default '.')
     --levelnum=NUM    Level to start from (default '0')
     --fullscreen      Fullscreen display
-    --widescreen      16:9 display
+    --widescreen=MODE 16:9 display
     --scaler=NAME@X   Graphics scaler (default 'scale@3')
     --language=LANG   Language (fr,en,de,sp,it,jp)
 
@@ -51,6 +51,10 @@ The scaler option specifies the algorithm used to smoothen the image in
 addition to a scaling factor. External scalers are also supported, the suffix
 shall be used as the name. Eg. If you have scaler_xbrz.dll, you can pass
 '--scaler xbrz@2' to use that algorithm with a doubled window size (512x448).
+
+The widescreen option accepts two modes :
+    'adjacent' : left and right rooms bitmaps will be drawn (default)
+    'mirror' : the current room bitmap will be drawn mirrored
 
 In-game hotkeys :
 
@@ -60,11 +64,12 @@ In-game hotkeys :
     Escape          display the options
     Backspace       display the inventory
     Alt Enter       toggle windowed/fullscreen mode
-    Alt + and -     change video scaler
+    Alt + and -     increase or decrease game screen scaler factor
     Alt S           write screenshot as .tga
     Ctrl S          save game state
     Ctrl L          load game state
     Ctrl + and -    change game state slot
+    Function Keys   change game screen scaler
 
 Debug hotkeys :
 

@@ -71,7 +71,7 @@ struct Cutscene {
 	uint8_t _frameDelay;
 	bool _newPal;
 	uint8_t _palBuf[0x20 * 2];
-	uint16_t _startOffset;
+	uint16_t _baseOffset;
 	bool _creditsSequence;
 	uint32_t _rotMat[4];
 	uint8_t _primitiveColor;
@@ -139,7 +139,7 @@ struct Cutscene {
 
 	uint8_t fetchNextCmdByte();
 	uint16_t fetchNextCmdWord();
-	void mainLoop(uint16_t offset);
+	void mainLoop(uint16_t num);
 	bool load(uint16_t cutName);
 	void unload();
 	void prepare();

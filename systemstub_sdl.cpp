@@ -66,6 +66,7 @@ struct SystemStub_SDL : SystemStub {
 	virtual void copyRectRgb24(int x, int y, int w, int h, const uint8_t *rgb);
 	virtual void copyRectLeftBorder(int w, int h, const uint8_t *buf);
 	virtual void copyRectRightBorder(int w, int h, const uint8_t *buf);
+	virtual void copyRectMirrorBorders(int w, int h, const uint8_t *buf);
 	virtual void fadeScreen();
 	virtual void updateScreen(int shakeOffset);
 	virtual void processEvents();
@@ -82,6 +83,7 @@ struct SystemStub_SDL : SystemStub {
 	void prepareGraphics();
 	void cleanupGraphics();
 	void changeGraphics(bool fullscreen, int scaleFactor);
+	void changeScaler(int scaler);
 	void drawRect(int x, int y, int w, int h, uint8_t color);
 };
 
@@ -97,13 +99,13 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, bool
 	_window = 0;
 	_renderer = 0;
 	_texture = 0;
-	_fmt = 0;
+	_fmt = SDL_AllocFormat(kPixelFormat);
 	_screenBuffer = 0;
 	_fadeOnUpdateScreen = false;
 	_fullscreen = fullscreen;
 	_scalerType = scalerParameters->type;
 	_scaler = scalerParameters->scaler;
-	_scaleFactor = CLIP(scalerParameters->factor, _scaler->factorMin, _scaler->factorMax);
+	_scaleFactor = _scaler ? CLIP(scalerParameters->factor, _scaler->factorMin, _scaler->factorMax) : 1;
 	memset(_rgbPalette, 0, sizeof(_rgbPalette));
 	memset(_darkPalette, 0, sizeof(_darkPalette));
 	_screenW = _screenH = 0;
@@ -127,6 +129,14 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, bool
 
 void SystemStub_SDL::destroy() {
 	cleanupGraphics();
+	if (_screenBuffer) {
+		free(_screenBuffer);
+		_screenBuffer = 0;
+	}
+	if (_fmt) {
+		SDL_FreeFormat(_fmt);
+		_fmt = 0;
+	}
 	if (_controller) {
 		SDL_GameControllerClose(_controller);
 		_controller = 0;
@@ -147,6 +157,10 @@ void SystemStub_SDL::setScreenSize(int w, int h) {
 		return;
 	}
 	cleanupGraphics();
+	if (_screenBuffer) {
+		free(_screenBuffer);
+		_screenBuffer = 0;
+	}
 	const int screenBufferSize = w * h * sizeof(uint32_t);
 	_screenBuffer = (uint32_t *)calloc(1, screenBufferSize);
 	if (!_screenBuffer) {
@@ -232,6 +246,19 @@ void SystemStub_SDL::copyRectRgb24(int x, int y, int w, int h, const uint8_t *rg
 	}
 }
 
+static void clearTexture(SDL_Texture *texture, int h, SDL_PixelFormat *fmt) {
+	void *dst = 0;
+	int pitch = 0;
+	if (SDL_LockTexture(texture, 0, &dst, &pitch) == 0) {
+		assert((pitch & 3) == 0);
+		const uint32_t color = SDL_MapRGB(fmt, 0, 0, 0);
+		for (uint32_t i = 0; i < h * pitch / sizeof(uint32_t); ++i) {
+			((uint32_t *)dst)[i] = color;
+		}
+		SDL_UnlockTexture(texture);
+	}
+}
+
 void SystemStub_SDL::copyRectLeftBorder(int w, int h, const uint8_t *buf) {
 	assert(w >= _wideMargin);
 	uint32_t *rgb = (uint32_t *)malloc(w * h * sizeof(uint32_t));
@@ -241,7 +268,10 @@ void SystemStub_SDL::copyRectLeftBorder(int w, int h, const uint8_t *buf) {
 				rgb[i] = _darkPalette[buf[i]];
 			}
 		} else {
-			memset(rgb, 0, w * h * sizeof(uint32_t));
+			const uint32_t color = SDL_MapRGB(_fmt, 0, 0, 0);
+			for (int i = 0; i < w * h; ++i) {
+				rgb[i] = color;
+			}
 		}
 		const int xOffset = w - _wideMargin;
 		SDL_Rect r;
@@ -263,7 +293,10 @@ void SystemStub_SDL::copyRectRightBorder(int w, int h, const uint8_t *buf) {
 				rgb[i] = _darkPalette[buf[i]];
 			}
 		} else {
-			memset(rgb, 0, w * h * sizeof(uint32_t));
+			const uint32_t color = SDL_MapRGB(_fmt, 0, 0, 0);
+			for (int i = 0; i < w * h; ++i) {
+				rgb[i] = color;
+			}
 		}
 		const int xOffset = 0;
 		SDL_Rect r;
@@ -272,6 +305,35 @@ void SystemStub_SDL::copyRectRightBorder(int w, int h, const uint8_t *buf) {
 		r.w = _wideMargin;
 		r.h = h;
 		SDL_UpdateTexture(_wideTexture, &r, rgb + xOffset, w * sizeof(uint32_t));
+		free(rgb);
+	}
+}
+
+void SystemStub_SDL::copyRectMirrorBorders(int w, int h, const uint8_t *buf) {
+	assert(w >= _wideMargin);
+	uint32_t *rgb = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+	if (rgb) {
+		for (int i = 0; i < w * h; ++i) {
+			rgb[i] = _darkPalette[buf[i]];
+		}
+		void *dst = 0;
+		int pitch = 0;
+		if (SDL_LockTexture(_wideTexture, 0, &dst, &pitch) == 0) {
+			assert((pitch & 3) == 0);
+			uint32_t *p = (uint32_t *)dst;
+			for (int y = 0; y < h; ++y) {
+				for (int x = 0; x < _wideMargin; ++x) {
+					// left side
+					const int xLeft = _wideMargin - 1 - x;
+					p[x] = rgb[y * w + xLeft];
+					// right side
+					const int xRight = w - 1 - x;
+					p[_wideMargin + _screenW + x] = rgb[y * w + xRight];
+				}
+				p += pitch / sizeof(uint32_t);
+			}
+			SDL_UnlockTexture(_wideTexture);
+		}
 		free(rgb);
 	}
 }
@@ -511,11 +573,15 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 				break;
 			case SDLK_KP_PLUS:
 			case SDLK_PAGEUP:
-				changeGraphics(_fullscreen, _scaleFactor + 1);
+				if (_scalerType == kScalerTypeInternal || _scalerType == kScalerTypeExternal) {
+					changeGraphics(_fullscreen, _scaleFactor + 1);
+				}
 				break;
 			case SDLK_KP_MINUS:
 			case SDLK_PAGEDOWN:
-				changeGraphics(_fullscreen, _scaleFactor - 1);
+				if (_scalerType == kScalerTypeInternal || _scalerType == kScalerTypeExternal) {
+					changeGraphics(_fullscreen, _scaleFactor - 1);
+				}
 				break;
 			case SDLK_s: {
 					char name[32];
@@ -584,6 +650,16 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 			break;
 		case SDLK_ESCAPE:
 			_pi.escape = false;
+			break;
+		case SDLK_F1:
+		case SDLK_F2:
+		case SDLK_F3:
+		case SDLK_F4:
+		case SDLK_F5:
+		case SDLK_F6:
+		case SDLK_F7:
+		case SDLK_F8:
+			changeScaler(ev.key.keysym.sym - SDLK_F1);
 			break;
 		default:
 			break;
@@ -717,21 +793,18 @@ void SystemStub_SDL::prepareGraphics() {
 	_renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED);
 	SDL_RenderSetLogicalSize(_renderer, windowW, windowH);
 	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _texW, _texH);
-	_fmt = SDL_AllocFormat(kPixelFormat);
 	if (_widescreen) {
 		const int w = _screenH * 16 / 9;
 		const int h = _screenH;
 		_wideTexture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, w, h);
+		clearTexture(_wideTexture, _screenH, _fmt);
+
 		// left and right borders
 		_wideMargin = (w - _screenW) / 2;
 	}
 }
 
 void SystemStub_SDL::cleanupGraphics() {
-	if (_screenBuffer) {
-		free(_screenBuffer);
-		_screenBuffer = 0;
-	}
 	if (_texture) {
 		SDL_DestroyTexture(_texture);
 		_texture = 0;
@@ -747,10 +820,6 @@ void SystemStub_SDL::cleanupGraphics() {
 	if (_window) {
 		SDL_DestroyWindow(_window);
 		_window = 0;
-	}
-	if (_fmt) {
-		SDL_FreeFormat(_fmt);
-		_fmt = 0;
 	}
 }
 
@@ -762,27 +831,51 @@ void SystemStub_SDL::changeGraphics(bool fullscreen, int scaleFactor) {
 	}
 	_fullscreen = fullscreen;
 	_scaleFactor = factor;
-	if (_texture) {
-		SDL_DestroyTexture(_texture);
-		_texture = 0;
-	}
-	if (_wideTexture) {
-		SDL_DestroyTexture(_wideTexture);
-		_wideTexture = 0;
-	}
-	if (_renderer) {
-		SDL_DestroyRenderer(_renderer);
-		_renderer = 0;
-	}
-	if (_window) {
-		SDL_DestroyWindow(_window);
-		_window = 0;
-	}
-	if (_fmt) {
-		SDL_FreeFormat(_fmt);
-		_fmt = 0;
-	}
+	cleanupGraphics();
 	prepareGraphics();
+}
+
+void SystemStub_SDL::changeScaler(int scaler) {
+	ScalerParameters scalerParameters = ScalerParameters::defaults();
+	switch (scaler) {
+	case 0:
+		scalerParameters.type = kScalerTypePoint;
+		break;
+	case 1:
+		scalerParameters.type = kScalerTypeLinear;
+		break;
+	case 2:
+		scalerParameters.type = kScalerTypeInternal;
+		scalerParameters.scaler = &_internalScaler;
+		break;
+#ifdef USE_STATIC_SCALER
+	case 3:
+		scalerParameters.type = kScalerTypeInternal;
+		scalerParameters.scaler = &scaler_nearest;
+		break;
+	case 4:
+		scalerParameters.type = kScalerTypeInternal;
+		scalerParameters.scaler = &scaler_tv2x;
+		break;
+	case 5:
+		scalerParameters.type = kScalerTypeInternal;
+		scalerParameters.scaler = &scaler_xbrz;
+		break;
+#endif
+	default:
+		return;
+	}
+	if (_scalerType != scalerParameters.type || scalerParameters.scaler != _scaler) {
+		_scalerType = scalerParameters.type;
+		_scaler = scalerParameters.scaler;
+		const int scaleFactor = CLIP(_scaleFactor, _scaler->factorMin, _scaler->factorMax);
+		// only recreate the window if dimensions actually changed
+		if (scaleFactor != _scaleFactor) {
+			cleanupGraphics();
+			_scaleFactor = scaleFactor;
+			prepareGraphics();
+		}
+	}
 }
 
 void SystemStub_SDL::drawRect(int x, int y, int w, int h, uint8_t color) {

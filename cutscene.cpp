@@ -938,7 +938,12 @@ void Cutscene::op_handleKeys() {
 		_cmdPtr = getCommandData();
 		n = READ_BE_UINT16(_cmdPtr + n * 2 + 2);
 	}
-	_cmdPtr = _cmdPtrBak = getCommandData() + n + _startOffset;
+	if (_res->isMac()) {
+		_cmdPtr = getCommandData();
+		_baseOffset = READ_BE_UINT16(_cmdPtr + 2 + n * 2);
+		n = 0;
+	}
+	_cmdPtr = _cmdPtrBak = getCommandData() + n + _baseOffset;
 }
 
 uint8_t Cutscene::fetchNextCmdByte() {
@@ -951,7 +956,7 @@ uint16_t Cutscene::fetchNextCmdWord() {
 	return i;
 }
 
-void Cutscene::mainLoop(uint16_t offset) {
+void Cutscene::mainLoop(uint16_t num) {
 	_frameDelay = 5;
 	_tstamp = _stub->getTimeStamp();
 
@@ -963,14 +968,20 @@ void Cutscene::mainLoop(uint16_t offset) {
 	_newPal = false;
 	_hasAlphaColor = false;
 	const uint8_t *p = getCommandData();
-	if (offset != 0) {
-		offset = READ_BE_UINT16(p + (offset + 1) * 2);
+	int offset = 0;
+	if (_res->isMac()) {
+		// const int count = READ_BE_UINT16(p);
+		_baseOffset = READ_BE_UINT16(p + 2 + num * 2);
+	} else {
+		if (num != 0) {
+			offset = READ_BE_UINT16(p + 2 + num * 2);
+		}
+		_baseOffset = (READ_BE_UINT16(p) + 1) * 2;
 	}
-	_startOffset = (READ_BE_UINT16(p) + 1) * 2;
 	_varKey = 0;
-	_cmdPtr = _cmdPtrBak = p + _startOffset + offset;
+	_cmdPtr = _cmdPtrBak = p + _baseOffset + offset;
 	_polPtr = getPolygonData();
-	debug(DBG_CUT, "_startOffset = %d offset = %d", _startOffset, offset);
+	debug(DBG_CUT, "_baseOffset = %d offset = %d", _baseOffset, offset);
 
 	while (!_stub->_pi.quit && !_interrupted && !_stop) {
 		uint8_t op = fetchNextCmdByte();

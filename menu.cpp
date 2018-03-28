@@ -68,6 +68,11 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 	int h = Video::CHAR_H;
 	int len = 0;
 	switch (_res->_type) {
+	case kResourceTypeAmiga:
+		for (; str[len]; ++len) {
+			_vid->AMIGA_drawStringChar(_vid->_frontLayer, _vid->_w, Video::CHAR_W * (x + len), Video::CHAR_H * y, _res->_fnt, _vid->_charFrontColor, (uint8_t)str[len]);
+		}
+		break;
 	case kResourceTypeDOS:
 		for (; str[len]; ++len) {
 			_vid->PC_drawChar((uint8_t)str[len], y, x + len, true);
@@ -77,8 +82,6 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 		for (; str[len]; ++len) {
 			_vid->MAC_drawStringChar(_vid->_frontLayer, _vid->_w, Video::CHAR_W * (x + len), Video::CHAR_H * y, _res->_fnt, _vid->_charFrontColor, (uint8_t)str[len]);
 		}
-		w *= _vid->_layerScale;
-		h *= _vid->_layerScale;
 		break;
 	}
 	_vid->markBlockAsDirty(x * w, y * h, len * w, h);

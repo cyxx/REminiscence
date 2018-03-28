@@ -629,8 +629,9 @@ static void decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10, int 
 void Video::AMIGA_decodeLev(int level, int room) {
 	uint8_t *tmp = _res->_scratchBuffer;
 	const int offset = READ_BE_UINT32(_res->_lev + room * 4);
-	if (!delphine_unpack(tmp, _res->_lev, offset)) {
-		error("Bad CRC for level %d room %d", level, room);
+	if (!delphine_unpack(tmp, Resource::kScratchBufferSize, _res->_lev, offset)) {
+		warning("Bad CRC for level %d room %d", level, room);
+		return;
 	}
 	uint16_t offset10 = READ_BE_UINT16(tmp + 10);
 	const uint16_t offset12 = READ_BE_UINT16(tmp + 12);
@@ -900,6 +901,9 @@ void Video::PC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8
 	}
 }
 
+static uint8_t _MAC_fontFrontColor;
+static uint8_t _MAC_fontShadowColor;
+
 void Video::MAC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8_t *src, uint8_t color, uint8_t chr) {
 	DecodeBuffer buf;
 	memset(&buf, 0, sizeof(buf));
@@ -909,8 +913,8 @@ void Video::MAC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint
 	buf.x = x * _layerScale;
 	buf.y = y * _layerScale;
 	buf.setPixel = Video::MAC_drawBufferFont;
-	_charFrontColor = color;
-	buf.dataPtr = this;
+	_MAC_fontFrontColor = color;
+	_MAC_fontShadowColor = _charShadowColor;
 	assert(chr >= 32);
 	_res->MAC_decodeImageData(_res->_fnt, chr - 32, &buf);
 }
@@ -1004,21 +1008,20 @@ void Video::MAC_drawBufferFont(DecodeBuffer *buf, int src_x, int src_y, int src_
 	if (y >= 0 && y < buf->h) {
 		const int x = buf->x + src_x;
 		if (x >= 0 && x < buf->w) {
-			const Video *vid = (Video *)buf->dataPtr;
 			const int offset = y * buf->pitch + x;
 			switch (color) {
 			case 0xC0:
-				buf->ptr[offset] = vid->_charShadowColor;
+				buf->ptr[offset] = _MAC_fontShadowColor;
 				break;
 			case 0xC1:
-				buf->ptr[offset] = vid->_charFrontColor;
+				buf->ptr[offset] = _MAC_fontFrontColor;
 				break;
 			}
 		}
 	}
 }
 
-void Video::MAC_fillRect(int x, int y, int w, int h, uint8_t color) {
+void Video::fillRect(int x, int y, int w, int h, uint8_t color) {
 	uint8_t *p = _frontLayer + y * _layerScale * _w + x * _layerScale;
 	for (int j = 0; j < h * _layerScale; ++j) {
 		memset(p, color, w * _layerScale);

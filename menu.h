@@ -30,6 +30,14 @@ struct Menu {
 		SCREEN_LEVEL,
 		SCREEN_INFO
 	};
+	enum {
+		kMacTitleScreen_MacPlay = 1,
+		kMacTitleScreen_Presage = 2,
+		kMacTitleScreen_Flashback = 3,
+		kMacTitleScreen_LeftEye = 4,
+		kMacTitleScreen_RightEye = 5,
+		kMacTitleScreen_Controls = 6
+	};
 
 	enum {
 		EVENTS_DELAY = 80
