@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef GAME_H__
@@ -28,7 +28,7 @@ struct Game {
 	enum {
 		kIngameSaveSlot = 0,
 		kAutoSaveSlot = 255,
-		kAutoSaveIntervalMs = 30 * 1000
+		kAutoSaveIntervalMs = 120 * 1000
 	};
 
 	enum {
@@ -54,6 +54,9 @@ struct Game {
 	static const pge_OpcodeProc _pge_opcodeTable[];
 	static const uint8_t _pge_modKeysTable[];
 	static const uint8_t _protectionCodeData[];
+	static const uint8_t _protectionWordData[];
+	static const uint8_t _protectionNumberDataAmiga[];
+	static const uint8_t _protectionCodeDataAmiga[];
 	static const uint8_t _protectionPal[];
 
 	Cutscene _cut;
@@ -115,7 +118,6 @@ struct Game {
 	void showFinalScore();
 	bool handleConfigPanel();
 	bool handleContinueAbort();
-	bool handleProtectionScreen();
 	void printSaveStateCompleted();
 	void drawLevelTexts();
 	void drawStoryTexts();
@@ -127,7 +129,6 @@ struct Game {
 	void drawPiege(AnimBufferState *state);
 	void drawObject(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flags);
 	void drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flags);
-	void decodeCharacterFrame(const uint8_t *dataPtr, uint8_t *dstPtr);
 	void drawCharacter(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t a, uint8_t b, uint8_t flags);
 	int loadMonsterSprites(LivePGE *pge);
 	void playSound(uint8_t sfxId, uint8_t softVol);
@@ -135,6 +136,9 @@ struct Game {
 	void changeLevel();
 	void handleInventory();
 
+	// protection
+	bool handleProtectionScreenShape();
+	bool handleProtectionScreenWords();
 
 	// pieges
 	bool _pge_playAnimSound;

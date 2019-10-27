@@ -1,12 +1,34 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "mixer.h"
 #include "sfx_player.h"
 #include "util.h"
+
+// volume instruments are either equal to 64 or 32 (this corresponds to aud0vol)
+// use one third of the volume for master (for comparison, modplug uses a master volume of 128, max 512)
+static const int kMasterVolume = 64 * 3;
+
+// 12 dB/oct Butterworth low-pass filter at 3.3 kHz
+static const bool kLowPassFilter = true;
+
+#define NZEROS 2
+#define NPOLES 2
+static float bw_xf[NZEROS+1], bw_yf[NPOLES+1];
+static const float GAIN = 7.655158005e+00;
+
+static void butterworth(int16_t *p, int len) {
+	for (int i = 0; i < len; ++i) {
+		bw_xf[0] = bw_xf[1]; bw_xf[1] = bw_xf[2];
+		bw_xf[2] = p[i] / GAIN;
+		bw_yf[0] = bw_yf[1]; bw_yf[1] = bw_yf[2];
+		bw_yf[2] = (bw_xf[0] + bw_xf[2]) + 2 * bw_xf[1] + (-0.2729352339 * bw_yf[0]) + (0.7504117278 * bw_yf[1]);
+		p[i] = (int16_t)CLIP(bw_yf[2], -32768.f, 32767.f);
+        }
+}
 
 SfxPlayer::SfxPlayer(Mixer *mixer)
 	: _mod(0), _playing(false), _mix(mixer) {
@@ -15,20 +37,23 @@ SfxPlayer::SfxPlayer(Mixer *mixer)
 void SfxPlayer::play(uint8_t num) {
 	debug(DBG_SFX, "SfxPlayer::play(%d)", num);
 	if (!_playing) {
-		if (num >= 68 && num <= 75) {
-			static const Module *modTable[] = {
-				&_module68, &_module68, &_module70, &_module70,
-				&_module72, &_module73, &_module74, &_module75
-			};
-			_mod = modTable[num - 68];
-			_curOrder = 0;
-			_numOrders = READ_BE_UINT16(_mod->moduleData);
-			_orderDelay = 0;
-			_modData = _mod->moduleData + 0x22;
-			memset(_samples, 0, sizeof(_samples));
-			_samplesLeft = 0;
-			_mix->setPremixHook(mixCallback, this);
-			_playing = true;
+		assert(num >= 68 && num <= 75);
+		static const Module *modTable[] = {
+			&_module68, &_module68, &_module70, &_module70,
+			&_module72, &_module73, &_module74, &_module75
+		};
+		_mod = modTable[num - 68];
+		_curOrder = 0;
+		_numOrders = READ_BE_UINT16(_mod->moduleData);
+		_orderDelay = 0;
+		_modData = _mod->moduleData + 0x22;
+		memset(_samples, 0, sizeof(_samples));
+		_samplesLeft = 0;
+		_mix->setPremixHook(mixCallback, this);
+		_playing = true;
+		if (kLowPassFilter) {
+			memset(bw_xf, 0, sizeof(bw_xf));
+			memset(bw_yf, 0, sizeof(bw_yf));
 		}
 	}
 }
@@ -126,8 +151,8 @@ void SfxPlayer::mixSamples(int16_t *buf, int samplesLen) {
 					curLen = 0;
 				}
 				while (count--) {
-					const int out = si->getPCM(pos >> FRAC_BITS);
-					*mixbuf = ADDC_S16(*mixbuf, (out * si->vol / 64) << 8);
+					const int out = si->getPCM(pos >> FRAC_BITS) * si->vol / kMasterVolume;
+					*mixbuf = ADDC_S16(*mixbuf, S8_to_S16(out));
 					++mixbuf;
 					pos += deltaPos;
 				}
@@ -153,6 +178,9 @@ bool SfxPlayer::mix(int16_t *buf, int len) {
 			_samplesLeft -= count;
 			len -= count;
 			mixSamples(buf, count);
+			if (kLowPassFilter) {
+				butterworth(buf, count);
+			}
 			buf += count;
 		}
 	}

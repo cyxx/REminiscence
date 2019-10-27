@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef RESOURCE_H__
@@ -119,6 +119,8 @@ struct Resource {
 	static const uint16_t _voicesOffsetsTable[];
 	static const uint32_t _spmOffsetsTable[];
 	static const char *_splNames[];
+	static const uint8_t _gameSavedSoundData[];
+	static const uint16_t _gameSavedSoundLen;
 
 	FileSystem *_fs;
 	ResourceType _type;

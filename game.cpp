@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <time.h>
@@ -16,7 +16,7 @@
 
 Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
-	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub),
+	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub, widescreenMode),
 	_stub(stub), _fs(fs), _savePath(savePath) {
 	_stateSlot = 1;
 	_inp_demPos = 0;
@@ -55,10 +55,11 @@ void Game::run() {
 		break;
 	}
 
-	if (!g_options.bypass_protection) {
-		while (!handleProtectionScreen());
-		if (_stub->_pi.quit) {
-			return;
+	if (!g_options.bypass_protection && !g_options.use_words_protection && !_res.isMac()) {
+		while (!handleProtectionScreenShape()) {
+			if (_stub->_pi.quit) {
+				return;
+			}
 		}
 	}
 
@@ -92,6 +93,14 @@ void Game::run() {
 		_res.MAC_loadPersoData();
 		_res.MAC_loadSounds();
 		break;
+	}
+
+	if (!g_options.bypass_protection && g_options.use_words_protection && _res.isDOS()) {
+		while (!handleProtectionScreenWords()) {
+			if (_stub->_pi.quit) {
+				return;
+			}
+		}
 	}
 
 	bool presentMenu = ((_res._type != kResourceTypeDOS) || _res.fileExists("MENU1.MAP"));
@@ -132,9 +141,12 @@ void Game::run() {
 				displayTitleScreenMac(Menu::kMacTitleScreen_Flashback);
 				break;
 			}
-			if (_stub->_pi.quit) {
-				break;
-			}
+		}
+		if (_stub->_pi.quit) {
+			break;
+		}
+		if (_stub->hasWidescreen()) {
+			_stub->clearWidescreen();
 		}
 		if (_currentLevel == 7) {
 			_vid.fadeOut();
@@ -166,11 +178,6 @@ void Game::run() {
 			_stub->_pi.enter = false;
 			_stub->_pi.space = false;
 			_stub->_pi.shift = false;
-			// clear widescreen borders
-			if (_stub->hasWidescreen()) {
-				_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
-				_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
-			}
 		}
 	}
 
@@ -198,6 +205,7 @@ void Game::displayTitleScreenAmiga() {
 		Color c = Video::AMIGA_convertColor(kAmigaColors[i]);
 		_stub->setPaletteEntry(i, &c);
 	}
+	_vid.setTextPalette();
 	_stub->setScreenSize(kW, kH);
 	// fill with black
 	_stub->copyRect(0, 0, kW, kH, buf, kW);
@@ -210,6 +218,32 @@ void Game::displayTitleScreenAmiga() {
 			_stub->copyRect(0, y, kW, h * 2, buf, kW);
 			_stub->updateScreen(0);
 			h += 2;
+		} else {
+			static const uint8_t selectedColor = 0xE4;
+			static const uint8_t defaultColor = 0xE8;
+			for (int i = 0; i < 7; ++i) {
+				const char *str = Menu::_levelNames[i];
+				const uint8_t color = (_currentLevel == i) ? selectedColor : defaultColor;
+				const int x = 24;
+				const int y = 24 + i * 16;
+				for (int j = 0; str[j]; ++j) {
+					_vid.AMIGA_drawStringChar(buf, kW, x + j * Video::CHAR_W, y, _res._fnt, color, str[j]);
+				}
+			}
+			if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
+				_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
+				if (_currentLevel > 0) {
+					--_currentLevel;
+				}
+			}
+			if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
+				_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+				if (_currentLevel < 6) {
+					++_currentLevel;
+				}
+			}
+			_stub->copyRect(0, 0, kW, kH, buf, kW);
+			_stub->updateScreen(0);
 		}
 		_stub->processEvents();
 		if (_stub->_pi.quit) {
@@ -249,7 +283,7 @@ void Game::displayTitleScreenMac(int num) {
 	buf.h = _vid._h;
 	buf.x = (_vid._w - w) / 2;
 	buf.y = (_vid._h - h) / 2;
-	buf.setPixel = Video::MAC_drawBuffer;
+	buf.setPixel = Video::MAC_setPixel;
 	memset(_vid._frontLayer, 0, _vid._layerSize);
 	_res.MAC_loadTitleImage(num, &buf);
 	for (int i = 0; i < 12; ++i) {
@@ -444,6 +478,9 @@ void Game::playCutscene(int id) {
 		_cut._id = id;
 	}
 	if (_cut._id != 0xFFFF) {
+		if (_stub->hasWidescreen()) {
+			_stub->enableWidescreen(false);
+		}
 		_mix.stopMusic();
 		if (_res._hasSeqData) {
 			int num = 0;
@@ -520,6 +557,9 @@ void Game::playCutscene(int id) {
 			_cut.playCredits();
 		}
 		_mix.stopMusic();
+		if (_stub->hasWidescreen()) {
+			_stub->enableWidescreen(true);
+		}
 	}
 }
 
@@ -566,8 +606,7 @@ void Game::drawCurrentInventoryItem() {
 
 void Game::showFinalScore() {
 	if (_stub->hasWidescreen()) {
-		_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
-		_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
+		_stub->clearWidescreen();
 	}
 	playCutscene(0x49);
 	char buf[50];
@@ -673,7 +712,8 @@ bool Game::handleConfigPanel() {
 		_menu.drawString(_res.getMenuString(LocaleData::LI_19_ABORT_GAME), y + 4, 9, colors[1]);
 		_menu.drawString(_res.getMenuString(LocaleData::LI_20_LOAD_GAME), y + 6, 9, colors[2]);
 		_menu.drawString(_res.getMenuString(LocaleData::LI_21_SAVE_GAME), y + 8, 9, colors[3]);
-		char buf[30];
+		_vid.fillRect(Video::CHAR_W * (x + 1), Video::CHAR_H * (y + 10), Video::CHAR_W * (w - 2), Video::CHAR_H, 0xE2);
+		char buf[32];
 		snprintf(buf, sizeof(buf), "%s < %02d >", _res.getMenuString(LocaleData::LI_22_SAVE_SLOT), _stateSlot);
 		_menu.drawString(buf, y + 10, 9, 1);
 
@@ -730,8 +770,7 @@ bool Game::handleConfigPanel() {
 
 bool Game::handleContinueAbort() {
 	if (_stub->hasWidescreen()) {
-		_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
-		_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
+		_stub->clearWidescreen();
 	}
 	playCutscene(0x48);
 	int timeout = 100;
@@ -797,87 +836,6 @@ bool Game::handleContinueAbort() {
 		memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
 	}
 	return false;
-}
-
-bool Game::handleProtectionScreen() {
-	bool valid = true;
-	_cut.prepare();
-	const int palOffset = _res.isAmiga() ? 32 : 0;
-	_cut.copyPalette(_protectionPal + palOffset, 0);
-
-	_cut.updatePalette();
-	_cut._gfx.setClippingRect(64, 48, 128, 128);
-
-	_menu._charVar1 = 0xE0;
-	_menu._charVar2 = 0xEF;
-	_menu._charVar4 = 0xE5;
-	_menu._charVar5 = 0xE2;
-
-	int shapeNum = getRandomNumber() % 30;
-	for (int16_t zoom = 2000; zoom != 0; zoom -= 100) {
-		_cut.drawProtectionShape(shapeNum, zoom);
-		_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._tempLayer, _vid._w);
-		_stub->updateScreen(0);
-		_stub->sleep(30);
-	}
-	int codeNum = getRandomNumber() % 5;
-	_cut.drawProtectionShape(shapeNum, 1);
-	_vid.setTextPalette();
-	char codeText[7];
-	int len = 0;
-	do {
-		codeText[len] = '\0';
-		memcpy(_vid._frontLayer, _vid._tempLayer, _vid._layerSize);
-		_vid.drawString("PROTECTION", 11 * Video::CHAR_W, 2 * Video::CHAR_H, _menu._charVar2);
-		char buf[20];
-		snprintf(buf, sizeof(buf), "CODE %d :  %s", codeNum + 1, codeText);
-		_vid.drawString(buf, 8 * Video::CHAR_W, 23 * Video::CHAR_H, _menu._charVar2);
-		_vid.updateScreen();
-		_stub->sleep(50);
-		_stub->processEvents();
-		char c = _stub->_pi.lastChar;
-		if (c != 0) {
-			_stub->_pi.lastChar = 0;
-			if (len < 6) {
-				if (c >= 'a' && c <= 'z') {
-					c &= ~0x20;
-				}
-				if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
-					codeText[len] = c;
-					++len;
-				}
-			}
-		}
-		if (_stub->_pi.backspace) {
-			_stub->_pi.backspace = false;
-			if (len > 0) {
-				--len;
-			}
-		}
-		if (_stub->_pi.enter) {
-			_stub->_pi.enter = false;
-			if (len > 0) {
-				const uint8_t *p = _protectionCodeData + shapeNum * 0x1E + codeNum * 6;
-				for (int i = 0; i < len; ++i) {
-					uint8_t r = 0;
-					uint8_t ch = codeText[i];
-					for (int b = 0; b < 8; ++b) {
-						if (ch & (1 << b)) {
-							r |= (1 << (7 - b));
-						}
-					}
-					r ^= 0x55;
-					if (r != *p++) {
-						valid = false;
-						break;
-					}
-				}
-				break;
-			}
-		}
-	} while (!_stub->_pi.quit);
-	_vid.fadeOut();
-	return valid;
 }
 
 void Game::printLevelCode() {
@@ -1006,22 +964,23 @@ void Game::drawStoryTexts() {
 					yPos += 8;
 				}
 			}
-			MixerChunk chunk;
-			_res.load_VCE(_textToDisplay, textSpeechSegment++, &chunk.data, &chunk.len);
-			if (chunk.data) {
-				_mix.play(&chunk, 32000, Mixer::MAX_VOLUME);
+			uint8_t *voiceSegmentData = 0;
+			uint32_t voiceSegmentLen = 0;
+			_res.load_VCE(_textToDisplay, textSpeechSegment++, &voiceSegmentData, &voiceSegmentLen);
+			if (voiceSegmentData) {
+				_mix.play(voiceSegmentData, voiceSegmentLen, 32000, Mixer::MAX_VOLUME);
 			}
 			_vid.updateScreen();
 			while (!_stub->_pi.backspace && !_stub->_pi.quit) {
-				if (chunk.data && !_mix.isPlaying(&chunk)) {
+				if (voiceSegmentData && !_mix.isPlaying(voiceSegmentData)) {
 					break;
 				}
 				inp_update();
 				_stub->sleep(80);
 			}
-			if (chunk.data) {
+			if (voiceSegmentData) {
 				_mix.stopAll();
-				free(chunk.data);
+				free(voiceSegmentData);
 			}
 			_stub->_pi.backspace = false;
 			if (_res._type == kResourceTypeMac) {
@@ -1220,7 +1179,7 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 					break;
 				case kResourceTypeDOS:
 					if (!(state->dataPtr[-2] & 0x80)) {
-						decodeCharacterFrame(state->dataPtr, _res._scratchBuffer);
+						_vid.PC_decodeSpm(state->dataPtr, _res._scratchBuffer);
 						drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
 					} else {
 						drawCharacter(state->dataPtr, state->x, state->y, state->h, state->w, pge->flags);
@@ -1398,39 +1357,6 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 	_vid.markBlockAsDirty(sprite_x, sprite_y, sprite_clipped_w, sprite_clipped_h, _vid._layerScale);
 }
 
-void Game::decodeCharacterFrame(const uint8_t *dataPtr, uint8_t *dstPtr) {
-	int n = READ_BE_UINT16(dataPtr); dataPtr += 2;
-	uint16_t len = n * 2;
-	uint8_t *dst = dstPtr + 0x400;
-	while (n--) {
-		uint8_t c = *dataPtr++;
-		dst[0] = (c & 0xF0) >> 4;
-		dst[1] = (c & 0x0F) >> 0;
-		dst += 2;
-	}
-	dst = dstPtr;
-	const uint8_t *src = dstPtr + 0x400;
-	do {
-		uint8_t c1 = *src++;
-		if (c1 == 0xF) {
-			uint8_t c2 = *src++;
-			uint16_t c3 = *src++;
-			if (c2 == 0xF) {
-				c1 = *src++;
-				c2 = *src++;
-				c3 = (c3 << 4) | c1;
-				len -= 2;
-			}
-			memset(dst, c2, c3 + 4);
-			dst += c3 + 4;
-			len -= 3;
-		} else {
-			*dst++ = c1;
-			--len;
-		}
-	} while (len != 0);
-}
-
 void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, uint8_t a, uint8_t b, uint8_t flags) {
 	debug(DBG_GAME, "Game::drawCharacter(%p, %d, %d, 0x%X, 0x%X, 0x%X)", dataPtr, pos_x, pos_y, a, b, flags);
 	bool var16 = false; // sprite_mirror_y
@@ -1604,6 +1530,7 @@ bool Game::hasLevelMap(int level, int room) const {
 
 void Game::loadLevelMap() {
 	debug(DBG_GAME, "Game::loadLevelMap() room=%d", _currentRoom);
+	bool widescreenUpdated = false;
 	_currentIcon = 0xFF;
 	switch (_res._type) {
 	case kResourceTypeAmiga:
@@ -1637,17 +1564,18 @@ void Game::loadLevelMap() {
 			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
 			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
 				_vid.PC_decodeMap(_currentLevel, leftRoom);
-				_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
 			} else {
-				_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
 			}
 			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
 			if (rightRoom > 0 && hasLevelMap(_currentLevel, rightRoom)) {
 				_vid.PC_decodeMap(_currentLevel, rightRoom);
-				_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
 			} else {
-				_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
 			}
+			widescreenUpdated = true;
 		}
 		_vid.PC_decodeMap(_currentLevel, _currentRoom);
 		break;
@@ -1656,23 +1584,24 @@ void Game::loadLevelMap() {
 			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
 			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
 				_vid.MAC_decodeMap(_currentLevel, leftRoom);
-				_stub->copyRectLeftBorder(_vid._w, _vid._h, _vid._backLayer);
+				_stub->copyWidescreenLeft(_vid._w, _vid._h, _vid._backLayer);
 			} else {
-				_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
+				_stub->copyWidescreenLeft(_vid._w, _vid._h, 0);
 			}
 			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
 			if (rightRoom > 0 && hasLevelMap(_currentLevel, rightRoom)) {
 				_vid.MAC_decodeMap(_currentLevel, rightRoom);
-				_stub->copyRectRightBorder(_vid._w, _vid._h, _vid._backLayer);
+				_stub->copyWidescreenRight(_vid._w, _vid._h, _vid._backLayer);
 			} else {
-				_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
+				_stub->copyWidescreenRight(_vid._w, _vid._h, 0);
 			}
+			widescreenUpdated = true;
 		}
 		_vid.MAC_decodeMap(_currentLevel, _currentRoom);
 		break;
 	}
-	if (_stub->hasWidescreen() && _widescreenMode == kWidescreenMirrorRoom) {
-		_stub->copyRectMirrorBorders(_vid._w, _vid._h, _vid._backLayer);
+	if (!widescreenUpdated) {
+		_vid.updateWidescreen();
 	}
 }
 
@@ -1737,7 +1666,7 @@ void Game::loadLevelData() {
 		_res.load(lvl->name, Resource::OT_CT);
 		_res.load(lvl->name, Resource::OT_PAL);
 		_res.load(lvl->name, Resource::OT_RP);
-		if (_res._isDemo || g_options.use_tiledata) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
+		if (_res._isDemo || g_options.use_tile_data) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
 			if (_currentLevel == 0) {
 				_res.load(lvl->name, Resource::OT_SGD);
 			}
@@ -1858,18 +1787,22 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 	_vid.markBlockAsDirty(x, y, 16, 16, _vid._layerScale);
 }
 
-void Game::playSound(uint8_t sfxId, uint8_t softVol) {
-	if (sfxId < _res._numSfx) {
-		SoundFx *sfx = &_res._sfxList[sfxId];
+void Game::playSound(uint8_t num, uint8_t softVol) {
+	if (num < _res._numSfx) {
+		SoundFx *sfx = &_res._sfxList[num];
 		if (sfx->data) {
-			MixerChunk mc;
-			mc.data = sfx->data;
-			mc.len = sfx->len;
-			_mix.play(&mc, sfx->freq, Mixer::MAX_VOLUME >> softVol);
+			const int volume = Mixer::MAX_VOLUME >> (2 * softVol);
+			_mix.play(sfx->data, sfx->len, sfx->freq, volume);
 		}
-	} else {
+	} else if (num == 66) {
+		// open/close inventory (DOS)
+	} else if (num >= 68 && num <= 75) {
 		// in-game music
-		_mix.playMusic(sfxId);
+		_mix.playMusic(num);
+	} else if (num == 77) {
+		// triggered when Conrad reaches a platform
+	} else {
+		warning("Unknown sound num %d", num);
 	}
 }
 
@@ -1918,19 +1851,13 @@ void Game::handleInventory() {
 			case kResourceTypeAmiga:
 			case kResourceTypeDOS: {
 					// draw inventory background
-					int icon_h = 5;
-					int icon_y = 140;
 					int icon_num = 31;
-					do {
-						int icon_x = 56;
-						int icon_w = 9;
-						do {
-							drawIcon(icon_num, icon_x, icon_y, 0xF);
+					for (int y = 140; y < 140 + 5 * icon_spr_h; y += icon_spr_h) {
+						for (int x = 56; x < 56 + 9 * icon_spr_w; x += icon_spr_w) {
+							drawIcon(icon_num, x, y, 0xF);
 							++icon_num;
-							icon_x += icon_spr_w;
-						} while (--icon_w);
-						icon_y += icon_spr_h;
-					} while (--icon_h);
+						}
+					}
 				}
 				if (_res._type == kResourceTypeAmiga) {
 					// draw outline rectangle

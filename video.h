@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef VIDEO_H__
@@ -32,6 +32,7 @@ struct Video {
 
 	Resource *_res;
 	SystemStub *_stub;
+	WidescreenMode _widescreenMode;
 
 	int _w, _h;
 	int _layerSize;
@@ -50,11 +51,12 @@ struct Video {
 	uint8_t _shakeOffset;
 	drawCharFunc _drawChar;
 
-	Video(Resource *res, SystemStub *stub);
+	Video(Resource *res, SystemStub *stub, WidescreenMode widescreenMode);
 	~Video();
 
 	void markBlockAsDirty(int16_t x, int16_t y, uint16_t w, uint16_t h, int scale);
 	void updateScreen();
+	void updateWidescreen();
 	void fullRefresh();
 	void fadeOut();
 	void fadeOutPalette();
@@ -68,6 +70,7 @@ struct Video {
 	void PC_setLevelPalettes();
 	void PC_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
 	void PC_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst);
+	void PC_decodeSpm(const uint8_t *dataPtr, uint8_t *dstPtr);
 	void AMIGA_decodeLev(int level, int room);
 	void AMIGA_decodeSpm(const uint8_t *src, uint8_t *dst);
 	void AMIGA_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
@@ -87,9 +90,9 @@ struct Video {
 	void drawStringLen(const char *str, int len, int x, int y, uint8_t color);
 	static Color AMIGA_convertColor(const uint16_t color, bool bgr = false);
 	void MAC_decodeMap(int level, int room);
-	static void MAC_drawBuffer(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
-	static void MAC_drawBufferMask(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
-	static void MAC_drawBufferFont(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
+	static void MAC_setPixel(DecodeBuffer *buf, int x, int y, uint8_t color);
+	static void MAC_setPixelMask(DecodeBuffer *buf, int x, int y, uint8_t color);
+	static void MAC_setPixelFont(DecodeBuffer *buf, int x, int y, uint8_t color);
 	void fillRect(int x, int y, int w, int h, uint8_t color);
 	void MAC_drawSprite(int x, int y, const uint8_t *data, int frame, bool xflip, bool eraseBackground);
 };

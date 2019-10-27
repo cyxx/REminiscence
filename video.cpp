@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "decode_mac.h"
@@ -11,8 +11,8 @@
 #include "util.h"
 #include "video.h"
 
-Video::Video(Resource *res, SystemStub *stub)
-	: _res(res), _stub(stub) {
+Video::Video(Resource *res, SystemStub *stub, WidescreenMode widescreenMode)
+	: _res(res), _stub(stub), _widescreenMode(widescreenMode) {
 	_layerScale = (_res->_type == kResourceTypeMac) ? 2 : 1; // Macintosh version is 512x448
 	_w = GAMESCREEN_W * _layerScale;
 	_h = GAMESCREEN_H * _layerScale;
@@ -115,6 +115,18 @@ void Video::updateScreen() {
 	}
 }
 
+void Video::updateWidescreen() {
+	if (_stub->hasWidescreen()) {
+		if (_widescreenMode == kWidescreenMirrorRoom) {
+			_stub->copyWidescreenMirror(_w, _h, _backLayer);
+		} else if (_widescreenMode == kWidescreenBlur) {
+			_stub->copyWidescreenBlur(_w, _h, _backLayer);
+		} else {
+			_stub->clearWidescreen();
+		}
+	}
+}
+
 void Video::fullRefresh() {
 	debug(DBG_VIDEO, "Video::fullRefresh()");
 	_fullRefresh = true;
@@ -154,20 +166,26 @@ void Video::setPaletteColorBE(int num, int offset) {
 
 void Video::setPaletteSlotBE(int palSlot, int palNum) {
 	debug(DBG_VIDEO, "Video::setPaletteSlotBE()");
-	const uint8_t *p = _res->_pal + palNum * 0x20;
+	const uint8_t *p = _res->_pal + palNum * 32;
 	for (int i = 0; i < 16; ++i) {
 		const int color = READ_BE_UINT16(p); p += 2;
 		Color c = AMIGA_convertColor(color, true);
-		_stub->setPaletteEntry(palSlot * 0x10 + i, &c);
+		_stub->setPaletteEntry(palSlot * 16 + i, &c);
 	}
 }
 
 void Video::setPaletteSlotLE(int palSlot, const uint8_t *palData) {
 	debug(DBG_VIDEO, "Video::setPaletteSlotLE()");
 	for (int i = 0; i < 16; ++i) {
-		uint16_t color = READ_LE_UINT16(palData); palData += 2;
+		const uint16_t color = READ_LE_UINT16(palData + i * 2);
 		Color c = AMIGA_convertColor(color);
-		_stub->setPaletteEntry(palSlot * 0x10 + i, &c);
+		_stub->setPaletteEntry(palSlot * 16 + i, &c);
+	}
+	if (palSlot == 4 && g_options.use_white_tshirt) {
+		const Color color12 = AMIGA_convertColor(0x888);
+		const Color color13 = AMIGA_convertColor((palData == _conradPal2) ? 0x888 : 0xCCC);
+		_stub->setPaletteEntry(palSlot * 16 + 12, &color12);
+		_stub->setPaletteEntry(palSlot * 16 + 13, &color13);
 	}
 }
 
@@ -313,6 +331,33 @@ void Video::PC_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst) {
 		*dst++ = src[i] >> 4;
 		*dst++ = src[i] & 15;
 	}
+}
+
+void Video::PC_decodeSpm(const uint8_t *dataPtr, uint8_t *dst) {
+	const int len = 2 * READ_BE_UINT16(dataPtr); dataPtr += 2;
+	uint8_t *dst2 = dst + 1024;
+	for (int i = 0; i < len; ++i) {
+		*dst2++ = dataPtr[i] >> 4;
+		*dst2++ = dataPtr[i] & 15;
+	}
+	const uint8_t *src = dst + 1024;
+	const uint8_t *end = src + len;
+	do {
+		const uint8_t code = *src++;
+		if (code == 0xF) {
+			uint8_t color = *src++;
+			int count = *src++;
+			if (color == 0xF) {
+				count = (count << 4) | *src++;
+				color = *src++;
+			}
+			count += 4;
+			memset(dst, color, count);
+			dst += count;
+		} else {
+			*dst++ = code;
+		}
+	} while (src < end);
 }
 
 static void AMIGA_planar16(uint8_t *dst, int w, int h, int depth, const uint8_t *src) {
@@ -629,7 +674,7 @@ static void decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10, int 
 void Video::AMIGA_decodeLev(int level, int room) {
 	uint8_t *tmp = _res->_scratchBuffer;
 	const int offset = READ_BE_UINT32(_res->_lev + room * 4);
-	if (!delphine_unpack(tmp, Resource::kScratchBufferSize, _res->_lev, offset)) {
+	if (!bytekiller_unpack(tmp, Resource::kScratchBufferSize, _res->_lev, offset)) {
 		warning("Bad CRC for level %d room %d", level, room);
 		return;
 	}
@@ -912,7 +957,7 @@ void Video::MAC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint
 	buf.h = _h;
 	buf.x = x * _layerScale;
 	buf.y = y * _layerScale;
-	buf.setPixel = Video::MAC_drawBufferFont;
+	buf.setPixel = Video::MAC_setPixelFont;
 	_MAC_fontFrontColor = color;
 	_MAC_fontShadowColor = _charShadowColor;
 	assert(chr >= 32);
@@ -963,7 +1008,7 @@ void Video::MAC_decodeMap(int level, int room) {
 	buf.ptr = _frontLayer;
 	buf.w = buf.pitch = _w;
 	buf.h = _h;
-	buf.setPixel = Video::MAC_drawBuffer;
+	buf.setPixel = Video::MAC_setPixel;
 	_res->MAC_loadLevelRoom(level, room, &buf);
 	memcpy(_backLayer, _frontLayer, _layerSize);
 	Color roomPalette[256];
@@ -979,45 +1024,27 @@ void Video::MAC_decodeMap(int level, int room) {
 	}
 }
 
-void Video::MAC_drawBuffer(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color) {
-	const int y = buf->y + src_y;
-	if (y >= 0 && y < buf->h) {
-		const int x = buf->xflip ? (buf->x + (src_w - 1 - src_x)) : (buf->x + src_x);
-		if (x >= 0 && x < buf->w) {
-			const int offset = y * buf->pitch + x;
-			buf->ptr[offset] = color;
-		}
+void Video::MAC_setPixel(DecodeBuffer *buf, int x, int y, uint8_t color) {
+	const int offset = y * buf->pitch + x;
+	buf->ptr[offset] = color;
+}
+
+void Video::MAC_setPixelMask(DecodeBuffer *buf, int x, int y, uint8_t color) {
+	const int offset = y * buf->pitch + x;
+	if ((buf->ptr[offset] & 0x80) == 0) {
+		buf->ptr[offset] = color;
 	}
 }
 
-void Video::MAC_drawBufferMask(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color) {
-	const int y = buf->y + src_y;
-	if (y >= 0 && y < buf->h) {
-		const int x = buf->xflip ? (buf->x + (src_w - 1 - src_x)) : (buf->x + src_x);
-		if (x >= 0 && x < buf->w) {
-			const int offset = y * buf->pitch + x;
-			if ((buf->ptr[offset] & 0x80) == 0) {
-				buf->ptr[offset] = color;
-			}
-		}
-	}
-}
-
-void Video::MAC_drawBufferFont(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color) {
-	const int y = buf->y + src_y;
-	if (y >= 0 && y < buf->h) {
-		const int x = buf->x + src_x;
-		if (x >= 0 && x < buf->w) {
-			const int offset = y * buf->pitch + x;
-			switch (color) {
-			case 0xC0:
-				buf->ptr[offset] = _MAC_fontShadowColor;
-				break;
-			case 0xC1:
-				buf->ptr[offset] = _MAC_fontFrontColor;
-				break;
-			}
-		}
+void Video::MAC_setPixelFont(DecodeBuffer *buf, int x, int y, uint8_t color) {
+	const int offset = y * buf->pitch + x;
+	switch (color) {
+	case 0xC0:
+		buf->ptr[offset] = _MAC_fontShadowColor;
+		break;
+	case 0xC1:
+		buf->ptr[offset] = _MAC_fontFrontColor;
+		break;
 	}
 }
 
@@ -1049,7 +1076,7 @@ void Video::MAC_drawSprite(int x, int y, const uint8_t *data, int frame, bool xf
 		buf.h = _h;
 		buf.x = x * _layerScale;
 		buf.y = y * _layerScale;
-		buf.setPixel = eraseBackground ? MAC_drawBuffer : MAC_drawBufferMask;
+		buf.setPixel = eraseBackground ? MAC_setPixel : MAC_setPixelMask;
 		fixOffsetDecodeBuffer(&buf, dataPtr);
 		_res->MAC_decodeImageData(data, frame, &buf);
 		markBlockAsDirty(buf.x, buf.y, READ_BE_UINT16(dataPtr), READ_BE_UINT16(dataPtr + 2), 1);

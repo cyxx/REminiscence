@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <sys/param.h>
@@ -324,6 +324,16 @@ void File::writeByte(uint8_t b) {
 	write(&b, 1);
 }
 
+void File::writeUint16LE(uint16_t n) {
+	writeByte(n & 0xFF);
+	writeByte(n >> 8);
+}
+
+void File::writeUint32LE(uint32_t n) {
+	writeUint16LE(n & 0xFFFF);
+	writeUint16LE(n >> 16);
+}
+
 void File::writeUint16BE(uint16_t n) {
 	writeByte(n >> 8);
 	writeByte(n & 0xFF);
@@ -332,4 +342,17 @@ void File::writeUint16BE(uint16_t n) {
 void File::writeUint32BE(uint32_t n) {
 	writeUint16BE(n >> 16);
 	writeUint16BE(n & 0xFFFF);
+}
+
+void dumpFile(const char *filename, const uint8_t *p, int size) {
+	char path[MAXPATHLEN];
+	snprintf(path, sizeof(path), "DUMP/%s", filename);
+	FILE *fp = fopen(filename, "wb");
+	if (fp) {
+		const int count = fwrite(p, 1, size, fp);
+		if (count != size) {
+			warning("Failed to write %d bytes (expected %d)", count, size);
+		}
+		fclose(fp);
+	}
 }

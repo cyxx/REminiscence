@@ -74,7 +74,7 @@ uint8_t *ResourceAba::loadEntry(const char *name, uint32_t *size) {
 				free(tmp);
 				return 0;
 			}
-			const bool ret = delphine_unpack(dst, e->size, tmp, e->compressedSize);
+			const bool ret = bytekiller_unpack(dst, e->size, tmp, e->compressedSize);
 			if (!ret) {
 				error("Bad CRC for '%s'", name);
 			}

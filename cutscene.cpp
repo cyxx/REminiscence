@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <math.h>
@@ -94,6 +94,15 @@ void Cutscene::setPalette() {
   sin(330) table: 221, math:-127
 */
 
+/*
+  a = rotation angle
+  b = scale/distort vertically (180)
+  c = scale/distort horizontally (90)
+
+  | x | cos_a    sin_a | cos_b | cos_c * sin_b |
+  | y | sin_a   -cos_a | sin_c |             1 |
+*/
+
 void Cutscene::setRotationTransform(uint16_t a, uint16_t b, uint16_t c) { // identity a:0 b:180 c:90
 	const int16_t sin_a = SIN(a);
 	const int16_t cos_a = COS(a);
@@ -101,10 +110,10 @@ void Cutscene::setRotationTransform(uint16_t a, uint16_t b, uint16_t c) { // ide
 	const int16_t cos_c = COS(c);
 	const int16_t sin_b = SIN(b);
 	const int16_t cos_b = COS(b);
-	_rotMat[0] /* .x1 */ = ((cos_a * cos_b) >> 8) - ((((cos_c * sin_a) >> 8) * sin_b) >> 8);
-	_rotMat[1] /* .y1 */ = ((sin_a * cos_b) >> 8) + ((((cos_c * cos_a) >> 8) * sin_b) >> 8);
-	_rotMat[2] /* .x2 */ = ( sin_c * sin_a) >> 8;
-	_rotMat[3] /* .y2 */ = (-sin_c * cos_a) >> 8;
+	_rotMat[0] = ((cos_a * cos_b) >> 8) - ((((cos_c * sin_a) >> 8) * sin_b) >> 8);
+	_rotMat[1] = ((sin_a * cos_b) >> 8) + ((((cos_c * cos_a) >> 8) * sin_b) >> 8);
+	_rotMat[2] = ( sin_c * sin_a) >> 8;
+	_rotMat[3] = (-sin_c * cos_a) >> 8;
 }
 
 static bool isNewLineChar(uint8_t chr, Resource *res) {
@@ -188,21 +197,20 @@ void Cutscene::swapLayers() {
 
 void Cutscene::drawCreditsText() {
 	if (_creditsSequence) {
-		if (_textUnk2 != 0) {
-			if (_varText == 0) {
-				_textUnk2 = 0;
+		if (_creditsKeepText != 0) {
+			if (_creditsSlowText == 0) {
+				_creditsKeepText = 0;
 			} else {
 				return;
 			}
 		}
 		if (_creditsTextCounter <= 0) {
-			uint8_t code = *_textCurPtr;
+			const uint8_t code = *_textCurPtr;
 			if (code == 0xFF) {
 				_textBuf[0] = 0xA;
 			} else if (code == 0xFE) {
 				++_textCurPtr;
-				code = *_textCurPtr++;
-				_creditsTextCounter = code;
+				_creditsTextCounter = *_textCurPtr++;
 			} else if (code == 1) {
 				++_textCurPtr;
 				_creditsTextPosX = *_textCurPtr++;
@@ -211,8 +219,8 @@ void Cutscene::drawCreditsText() {
 				_textCurBuf = _textBuf;
 				_textBuf[0] = 0xA;
 				++_textCurPtr;
-				if (_varText != 0) {
-					_textUnk2 = 0xFF;
+				if (_creditsSlowText != 0) {
+					_creditsKeepText = 0xFF;
 				}
 			} else {
 				*_textCurBuf++ = code;
@@ -235,7 +243,6 @@ void Cutscene::drawProtectionShape(uint8_t shapeNum, int16_t zoom) {
 	int16_t x = 0;
 	int16_t y = 0;
 	zoom += 512;
-	setRotationTransform(0, 180, 90);
 
 	const uint8_t *shapeOffsetTable    = _protectionShapeData + READ_BE_UINT16(_protectionShapeData + 0x02);
 	const uint8_t *shapeDataTable      = _protectionShapeData + READ_BE_UINT16(_protectionShapeData + 0x0E);
@@ -257,7 +264,7 @@ void Cutscene::drawProtectionShape(uint8_t shapeNum, int16_t zoom) {
 		}
 		_hasAlphaColor = (verticesOffset & 0x4000) != 0;
 		_primitiveColor = 0xC0 + *shapeData++;
-		drawShapeScaleRotate(p, zoom, dx, dy, x, y, 0, 0);
+		drawShapeScale(p, zoom, dx, dy, x, y, 0, 0);
 		++_shape_count;
 	}
 }
@@ -269,7 +276,7 @@ void Cutscene::op_markCurPos() {
 	_frameDelay = 5;
 	setPalette();
 	swapLayers();
-	_varText = 0;
+	_creditsSlowText = 0;
 }
 
 void Cutscene::op_refreshScreen() {
@@ -277,7 +284,7 @@ void Cutscene::op_refreshScreen() {
 	_clearScreen = fetchNextCmdByte();
 	if (_clearScreen != 0) {
 		swapLayers();
-		_varText = 0;
+		_creditsSlowText = 0;
 	}
 }
 
@@ -286,7 +293,7 @@ void Cutscene::op_waitForSync() {
 	if (_creditsSequence) {
 		uint16_t n = fetchNextCmdByte() * 2;
 		do {
-			_varText = 0xFF;
+			_creditsSlowText = 0xFF;
 			_frameDelay = 3;
 			if (_textBuf == _textCurBuf) {
 				_creditsTextCounter = _res->isAmiga() ? 60 : 20;
@@ -296,7 +303,7 @@ void Cutscene::op_waitForSync() {
 			setPalette();
 		} while (--n);
 		swapLayers();
-		_varText = 0;
+		_creditsSlowText = 0;
 	} else {
 		_frameDelay = fetchNextCmdByte() * 4;
 		sync(); // XXX handle input
@@ -447,7 +454,7 @@ void Cutscene::op_refreshAll() {
 	_frameDelay = 5;
 	setPalette();
 	swapLayers();
-	_varText = 0xFF;
+	_creditsSlowText = 0xFF;
 	op_handleKeys();
 }
 
@@ -859,7 +866,7 @@ void Cutscene::op_drawShapeScaleRotate() {
 
 void Cutscene::op_drawCreditsText() {
 	debug(DBG_CUT, "Cutscene::op_drawCreditsText()");
-	_varText = 0xFF;
+	_creditsSlowText = 0xFF;
 	if (_textCurBuf == _textBuf) {
 		++_creditsTextCounter;
 	}
@@ -1009,11 +1016,13 @@ void Cutscene::mainLoop(uint16_t num) {
 
 bool Cutscene::load(uint16_t cutName) {
 	assert(cutName != 0xFFFF);
-	const char *name = _namesTable[cutName & 0xFF];
+	const char *name = _namesTableDOS[cutName & 0xFF];
 	switch (_res->_type) {
 	case kResourceTypeAmiga:
-		if (strncmp(name, "INTRO", 5) == 0) {
+		if (cutName == 7) {
 			name = "INTRO";
+		} else if (cutName == 10) {
+			name = "SERRURE";
 		}
 		_res->load(name, Resource::OT_CMP);
 		if (_id == 0x39 && _res->_lang != LANG_FR) {
@@ -1091,8 +1100,8 @@ void Cutscene::playCredits() {
 	_textBuf[0] = 0xA;
 	_textCurBuf = _textBuf;
 	_creditsSequence = true;
-	_varText = 0;
-	_textUnk2 = 0;
+	_creditsSlowText = 0;
+	_creditsKeepText = 0;
 	_creditsTextCounter = 0;
 	_interrupted = false;
 	const uint16_t *cut_seq = _creditsCutSeq;
@@ -1102,8 +1111,9 @@ void Cutscene::playCredits() {
 			break;
 		}
 		prepare();
-		uint16_t cutName = _offsetsTable[cut_id * 2 + 0];
-		uint16_t cutOff  = _offsetsTable[cut_id * 2 + 1];
+		const uint16_t *offsets = _res->isAmiga() ? _offsetsTableAmiga : _offsetsTableDOS;
+		uint16_t cutName = offsets[cut_id * 2 + 0];
+		uint16_t cutOff  = offsets[cut_id * 2 + 1];
 		if (load(cutName)) {
 			mainLoop(cutOff);
 			unload();
@@ -1149,18 +1159,26 @@ void Cutscene::play() {
 		debug(DBG_CUT, "Cutscene::play() _id=0x%X", _id);
 		_creditsSequence = false;
 		prepare();
-		uint16_t cutName = _offsetsTable[_id * 2 + 0];
-		uint16_t cutOff  = _offsetsTable[_id * 2 + 1];
+		const uint16_t *offsets = _res->isAmiga() ? _offsetsTableAmiga : _offsetsTableDOS;
+		uint16_t cutName = offsets[_id * 2 + 0];
+		uint16_t cutOff  = offsets[_id * 2 + 1];
 		if (cutName == 0xFFFF) {
 			switch (_id) {
+			case 3: // keys
+				if (g_options.play_carte_cutscene) {
+					cutName = 2; // CARTE
+				}
+				break;
+			case 8: // save checkpoints
+				break;
 			case 19:
 				if (g_options.play_serrure_cutscene) {
 					cutName = 31; // SERRURE
 				}
 				break;
-			case 22:
-			case 23:
-			case 24:
+			case 22: // Level 2 fuse repaired
+			case 23: // switches
+			case 24: // Level 2 fuse is blown
 				if (g_options.play_asc_cutscene) {
 					cutName = 12; // ASC
 				}
@@ -1170,6 +1188,11 @@ void Cutscene::play() {
 				if (g_options.play_metro_cutscene) {
 					cutName = 14; // METRO
 				}
+				break;
+			case 46: // Level 2 terminal card mission
+				break;
+			default:
+				warning("Unknown cutscene %d", _id);
 				break;
 			}
 		}
@@ -1284,7 +1307,7 @@ void Cutscene::playSet(const uint8_t *p, int offset) {
 
 	offset = 10;
 	const int frames = READ_BE_UINT16(p + offset); offset += 2;
-	for (int i = 0; i < frames && !_stub->_pi.quit; ++i) {
+	for (int i = 0; i < frames && !_stub->_pi.quit && !_interrupted; ++i) {
 		const uint32_t timestamp = _stub->getTimeStamp();
 
 		memset(_page1, 0xC0, _vid->_layerSize);
@@ -1339,5 +1362,9 @@ void Cutscene::playSet(const uint8_t *p, int offset) {
 		const int diff = 6 * TIMER_SLICE - (_stub->getTimeStamp() - timestamp);
 		_stub->sleep((diff < 16) ? 16 : diff);
 		_stub->processEvents();
+		if (_stub->_pi.backspace) {
+			_stub->_pi.backspace = false;
+			_interrupted = true;
+		}
 	}
 }

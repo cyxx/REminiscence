@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef INTERN_H__
@@ -44,6 +44,17 @@ inline int16_t ADDC_S16(int a, int b) {
 		a = 32767;
 	}
 	return a;
+}
+
+inline int16_t S8_to_S16(int a) {
+	if (a < -128) {
+		return -32768;
+	} else if (a > 127) {
+		return 32767;
+	} else {
+		const uint8_t u8 = (a ^ 0x80);
+		return ((u8 << 8) | u8) - 32768;
+	}
 }
 
 template<typename T>
@@ -106,6 +117,7 @@ enum WidescreenMode {
 	kWidescreenNone,
 	kWidescreenAdjacentRooms,
 	kWidescreenMirrorRoom,
+	kWidescreenBlur,
 };
 
 struct Options {
@@ -113,13 +125,17 @@ struct Options {
 	bool enable_password_menu;
 	bool enable_language_selection;
 	bool fade_out_palette;
-	bool use_tiledata;
+	bool use_tile_data;
 	bool use_text_cutscenes;
 	bool use_seq_cutscenes;
+	bool use_words_protection;
+	bool use_white_tshirt;
 	bool play_asc_cutscene;
 	bool play_caillou_cutscene;
 	bool play_metro_cutscene;
 	bool play_serrure_cutscene;
+	bool play_carte_cutscene;
+	bool play_gamesaved_sound;
 };
 
 struct Color {
@@ -155,7 +171,7 @@ struct InitPGE {
 	int16_t pos_y;
 	uint16_t obj_node_number;
 	uint16_t life;
-	int16_t counter_values[4];
+	int16_t counter_values[4]; // messages
 	uint8_t object_type;
 	uint8_t init_room;
 	uint8_t room_location;
@@ -177,7 +193,7 @@ struct LivePGE {
 	uint8_t anim_seq;
 	uint8_t room_location;
 	int16_t life;
-	int16_t counter_value;
+	int16_t counter_value; // msg
 	uint8_t collision_slot;
 	uint8_t next_inventory_PGE;
 	uint8_t current_inventory_PGE;
@@ -267,6 +283,7 @@ struct SoundFx {
 	uint16_t len;
 	uint16_t freq;
 	uint8_t *data;
+	int8_t peak;
 };
 
 extern Options g_options;

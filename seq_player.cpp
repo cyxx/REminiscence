@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "file.h"
@@ -226,10 +226,8 @@ SeqPlayer::~SeqPlayer() {
 
 void SeqPlayer::play(File *f) {
 	if (_demux.open(f)) {
-		Color pal[256];
-		for (int i = 0; i < 256; ++i) {
-			_stub->getPaletteEntry(i, &pal[i]);
-		}
+		uint8_t palette[256 * 3];
+		_stub->getPalette(palette, 256);
 		_mix->setPremixHook(mixCallback, this);
 		memset(_buf, 0, 256 * 224);
 		bool clearScreen = true;
@@ -315,9 +313,8 @@ void SeqPlayer::play(File *f) {
 				_stub->sleep(diff);
 			}
 		}
-		for (int i = 0; i < 256; ++i) {
-			_stub->setPaletteEntry(i, &pal[i]);
-		}
+		// restore level palette
+		_stub->setPalette(palette, 256);
 		_mix->setPremixHook(0, 0);
 		_demux.close();
 		// flush sound queue

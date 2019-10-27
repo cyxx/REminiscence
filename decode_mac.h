@@ -13,7 +13,7 @@ struct DecodeBuffer {
 	int x, y;
 	bool xflip;
 
-	void (*setPixel)(DecodeBuffer *buf, int src_x, int src_y, int src_w, int src_h, uint8_t color);
+	void (*setPixel)(DecodeBuffer *buf, int x, int y, uint8_t color);
 	void *dataPtr;
 };
 

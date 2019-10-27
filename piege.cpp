@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "cutscene.h"
@@ -1429,6 +1429,9 @@ int Game::pge_op_setCollisionState2(ObjectOpcodeArgs *args) {
 int Game::pge_op_saveState(ObjectOpcodeArgs *args) {
 	_saveStateCompleted = true;
 	_validSaveState = saveGameState(kIngameSaveSlot);
+	if (_validSaveState and g_options.play_gamesaved_sound) {
+		_mix.play(Resource::_gameSavedSoundData, Resource::_gameSavedSoundLen, 8000, Mixer::MAX_VOLUME);
+	}
 	return 0xFFFF;
 }
 
@@ -1877,8 +1880,11 @@ int Game::pge_op_setPiegePosModX(ObjectOpcodeArgs *args) {
 int Game::pge_op_changeRoom(ObjectOpcodeArgs *args) {
 	InitPGE *init_pge_1 = args->pge->init_PGE;
 	assert(args->a >= 0 && args->a < 3);
-	int16_t _ax = init_pge_1->counter_values[args->a];
-	int16_t _bx = init_pge_1->counter_values[args->a + 1];
+	const int16_t _ax = init_pge_1->counter_values[args->a];
+	if (_ax == 0 && !g_options.bypass_protection) {
+		warning("pge_op_changeRoom(): protection check");
+	}
+	const int16_t _bx = init_pge_1->counter_values[args->a + 1];
 	LivePGE *live_pge_1 = &_pgeLive[_bx];
 	LivePGE *live_pge_2 = &_pgeLive[_ax];
 	int8_t pge_room = live_pge_1->room_location;

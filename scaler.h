@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef SCALER_H__
@@ -34,7 +34,7 @@ const Scaler *findScaler(const char *name);
 #ifdef USE_STATIC_SCALER
 extern const Scaler scaler_nearest;
 extern const Scaler scaler_tv2x;
-extern const Scaler scaler_xbrz;
+extern const Scaler scaler_xbr;
 #endif
 
 #endif // SCALER_H__

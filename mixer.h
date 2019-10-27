@@ -1,19 +1,20 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef MIXER_H__
 #define MIXER_H__
 
 #include "intern.h"
+#include "cpc_player.h"
 #include "mod_player.h"
 #include "ogg_player.h"
 #include "sfx_player.h"
 
 struct MixerChunk {
-	uint8_t *data;
+	const uint8_t *data;
 	uint32_t len;
 
 	MixerChunk()
@@ -49,6 +50,7 @@ struct Mixer {
 		MT_MOD,
 		MT_OGG,
 		MT_SFX,
+		MT_CPC,
 	};
 
 	enum {
@@ -63,7 +65,9 @@ struct Mixer {
 	MixerChannel _channels[NUM_CHANNELS];
 	PremixHook _premixHook;
 	void *_premixHookData;
+	MusicType _backgroundMusicType;
 	MusicType _musicType;
+	CpcPlayer _cpc;
 	ModPlayer _mod;
 	OggPlayer _ogg;
 	SfxPlayer _sfx;
@@ -73,8 +77,8 @@ struct Mixer {
 	void init();
 	void free();
 	void setPremixHook(PremixHook premixHook, void *userData);
-	void play(const MixerChunk *mc, uint16_t freq, uint8_t volume);
-	bool isPlaying(const MixerChunk *mc) const;
+	void play(const uint8_t *data, uint32_t len, uint16_t freq, uint8_t volume);
+	bool isPlaying(const uint8_t *data) const;
 	uint32_t getSampleRate() const;
 	void stopAll();
 	void playMusic(int num);

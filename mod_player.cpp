@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "file.h"
@@ -203,17 +203,20 @@ bool ModPlayer_impl::load(File *f) {
 	f->read(_modInfo.patternOrderTable, NUM_PATTERNS);
 	f->readUint32BE(); // 'M.K.', Protracker, 4 channels
 
-	uint16_t n = 0;
+	uint8_t n = 0;
 	for (int i = 0; i < NUM_PATTERNS; ++i) {
 		if (_modInfo.patternOrderTable[i] != 0) {
 			n = MAX(n, _modInfo.patternOrderTable[i]);
 		}
 	}
 	debug(DBG_MOD, "numPatterns=%d",n + 1);
-	n = (n + 1) * 64 * 4 * 4; // 64 lines of 4 notes per channel
-	_modInfo.patternsTable = (uint8_t *)malloc(n);
-	assert(_modInfo.patternsTable);
-	f->read(_modInfo.patternsTable, n);
+	const int patternsSize = (n + 1) * 64 * 4 * 4; // 64 lines of 4 notes per channel
+	_modInfo.patternsTable = (uint8_t *)malloc(patternsSize);
+	if (!_modInfo.patternsTable) {
+		warning("Unable to allocate %d bytes for .MOD patterns table", patternsSize);
+		return false;
+	}
+	f->read(_modInfo.patternsTable, patternsSize);
 
 	for (int s = 0; s < NUM_SAMPLES; ++s) {
 		SampleInfo *si = &_modInfo.samples[s];
@@ -612,8 +615,8 @@ void ModPlayer_impl::mixSamples(int16_t *buf, int samplesLen) {
 					curLen = 0;
 				}
 				while (count--) {
-					const int out = si->getPCM(pos >> FRAC_BITS);
-					*mixbuf = ADDC_S16(*mixbuf, (out * tk->volume / 64) << 8);
+					const int out = si->getPCM(pos >> FRAC_BITS) * tk->volume / 64;
+					*mixbuf = ADDC_S16(*mixbuf, S8_to_S16(out));
 					++mixbuf;
 					pos += deltaPos;
 				}
@@ -676,7 +679,7 @@ void ModPlayer::stop() {
 	if (_playing) {
 		_mix->setPremixHook(0, 0);
 		_impl->unload();
-		_playing = true;
+		_playing = false;
 	}
 }
 

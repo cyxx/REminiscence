@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #ifndef CUTSCENE_H__
@@ -39,8 +39,9 @@ struct Cutscene {
 	};
 
 	static const OpcodeStub _opcodeTable[];
-	static const char *_namesTable[];
-	static const uint16_t _offsetsTable[];
+	static const char *_namesTableDOS[];
+	static const uint16_t _offsetsTableDOS[];
+	static const uint16_t _offsetsTableAmiga[];
 	static const uint8_t _amigaDemoOffsetsTable[];
 	static const uint8_t _ssiOffsetsTable[];
 	static const uint16_t _cosTable[];
@@ -70,7 +71,7 @@ struct Cutscene {
 	uint32_t _tstamp;
 	uint8_t _frameDelay;
 	bool _newPal;
-	uint8_t _palBuf[0x20 * 2];
+	uint8_t _palBuf[16 * sizeof(uint16_t) * 2];
 	uint16_t _baseOffset;
 	bool _creditsSequence;
 	uint32_t _rotMat[4];
@@ -78,7 +79,6 @@ struct Cutscene {
 	uint8_t _clearScreen;
 	Point _vertices[0x80];
 	bool _hasAlphaColor;
-	uint8_t _varText;
 	uint8_t _varKey;
 	int16_t _shape_ix;
 	int16_t _shape_iy;
@@ -97,7 +97,8 @@ struct Cutscene {
 	uint8_t _textBuf[500];
 	const uint8_t *_textCurPtr;
 	uint8_t *_textCurBuf;
-	uint8_t _textUnk2;
+	uint8_t _creditsSlowText;
+	uint8_t _creditsKeepText;
 	uint8_t _creditsTextPosX;
 	uint8_t _creditsTextPosY;
 	int16_t _creditsTextCounter;

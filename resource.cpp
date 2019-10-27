@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "decode_mac.h"
@@ -53,6 +53,7 @@ Resource::~Resource() {
 	free(_sfxList);
 	free(_bankData);
 	delete _aba;
+	delete _mac;
 }
 
 void Resource::init() {
@@ -138,10 +139,6 @@ void Resource::load_DEM(const char *filename) {
 
 void Resource::load_FIB(const char *fileName) {
 	debug(DBG_RES, "Resource::load_FIB('%s')", fileName);
-	static const uint8_t fibonacciTable[] = {
-		0xDE, 0xEB, 0xF3, 0xF8, 0xFB, 0xFD, 0xFE, 0xFF,
-		0x00, 0x01, 0x02, 0x03, 0x05, 0x08, 0x0D, 0x15
-	};
 	snprintf(_entryName, sizeof(_entryName), "%s.FIB", fileName);
 	File f;
 	if (f.open(_entryName, "rb", _fs)) {
@@ -150,43 +147,67 @@ void Resource::load_FIB(const char *fileName) {
 		if (!_sfxList) {
 			error("Unable to allocate SoundFx table");
 		}
-		int i;
-		for (i = 0; i < _numSfx; ++i) {
+		for (int i = 0; i < _numSfx; ++i) {
 			SoundFx *sfx = &_sfxList[i];
 			sfx->offset = f.readUint32LE();
 			sfx->len = f.readUint16LE();
 			sfx->freq = 6000;
 			sfx->data = 0;
 		}
-		for (i = 0; i < _numSfx; ++i) {
+		for (int i = 0; i < _numSfx; ++i) {
 			SoundFx *sfx = &_sfxList[i];
 			if (sfx->len == 0) {
 				continue;
 			}
 			f.seek(sfx->offset);
-			uint8_t *data = (uint8_t *)malloc(sfx->len * 2);
+			const int len = (sfx->len * 2) - 1;
+			uint8_t *data = (uint8_t *)malloc(len);
 			if (!data) {
 				error("Unable to allocate SoundFx data buffer");
 			}
 			sfx->data = data;
-			uint8_t c = f.readByte();
+
+			// Fibonacci-delta decoding
+			static const int8_t codeToDelta[16] = { -34, -21, -13, -8, -5, -3, -2, -1, 0, 1, 2, 3, 5, 8, 13, 21 };
+			int c = (int8_t)f.readByte();
 			*data++ = c;
-			*data++ = c;
-			uint16_t sz = sfx->len - 1;
-			while (sz--) {
-				uint8_t d = f.readByte();
-				c += fibonacciTable[d >> 4];
-				*data++ = c;
-				c += fibonacciTable[d & 15];
-				*data++ = c;
+			sfx->peak = ABS(c);
+
+			for (int j = 1; j < sfx->len; ++j) {
+				const uint8_t d = f.readByte();
+
+				c += codeToDelta[d >> 4];
+				*data++ = CLIP(c, -128, 127);
+				if (ABS(c) > sfx->peak) {
+					sfx->peak = ABS(c);
+				}
+
+				c += codeToDelta[d & 15];
+				*data++ = CLIP(c, -128, 127);
+				if (ABS(c) > sfx->peak) {
+					sfx->peak = ABS(c);
+				}
 			}
-			sfx->len *= 2;
+			sfx->len = len;
 		}
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
 		}
 	} else {
 		error("Cannot open '%s'", _entryName);
+	}
+}
+
+static void normalizeSPL(SoundFx *sfx) {
+	static const int kGain = 2;
+
+	sfx->peak = ABS(sfx->data[0]);
+	for (int i = 1; i < sfx->len; ++i) {
+		const int8_t sample = sfx->data[i];
+		if (ABS(sample) > sfx->peak) {
+			sfx->peak = ABS(sample);
+		}
+		sfx->data[i] = sample / kGain;
 	}
 }
 
@@ -207,6 +228,7 @@ void Resource::load_SPL_demo() {
 				sfx->offset = 0;
 				sfx->len = size;
 				sfx->freq = kPaulaFreq / 650;
+				normalizeSPL(sfx);
 			}
 		}
 	}
@@ -277,7 +299,7 @@ void Resource::load_CMP_menu(const char *fileName) {
 			error("Failed to allocate CMP temporary buffer");
 		}
 		f.read(tmp, size);
-		if (!delphine_unpack(_scratchBuffer, kScratchBufferSize, tmp, size)) {
+		if (!bytekiller_unpack(_scratchBuffer, kScratchBufferSize, tmp, size)) {
 			error("Bad CRC for %s", fileName);
 		}
                 free(tmp);
@@ -668,7 +690,7 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 					_pal = dat;
 					break;
 				case OT_CT:
-					if (!delphine_unpack((uint8_t *)_ctData, sizeof(_ctData), dat, size)) {
+					if (!bytekiller_unpack((uint8_t *)_ctData, sizeof(_ctData), dat, size)) {
 						error("Bad CRC for '%s'", _entryName);
 					}
 					free(dat);
@@ -736,7 +758,7 @@ void Resource::load_CT(File *pf) {
 		error("Unable to allocate CT buffer");
 	} else {
 		pf->read(tmp, len);
-		if (!delphine_unpack((uint8_t *)_ctData, sizeof(_ctData), tmp, len)) {
+		if (!bytekiller_unpack((uint8_t *)_ctData, sizeof(_ctData), tmp, len)) {
 			error("Bad CRC for collision data");
 		}
 		free(tmp);
@@ -936,7 +958,7 @@ void Resource::load_OBC(File *f) {
 	}
 	f->seek(4);
 	f->read(packedData, packedSize);
-	if (!delphine_unpack(tmp, unpackedSize, packedData, packedSize)) {
+	if (!bytekiller_unpack(tmp, unpackedSize, packedData, packedSize)) {
 		error("Bad CRC for compressed object data");
 	}
 	free(packedData);
@@ -1153,7 +1175,7 @@ void Resource::load_CMP(File *pf) {
 	}
 	if (data[0].packedSize == data[0].size) {
 		memcpy(_pol, tmp + data[0].offset, data[0].packedSize);
-	} else if (!delphine_unpack(_pol, data[0].size, tmp + data[0].offset, data[0].packedSize)) {
+	} else if (!bytekiller_unpack(_pol, data[0].size, tmp + data[0].offset, data[0].packedSize)) {
 		error("Bad CRC for cutscene polygon data");
 	}
 	_cmd = (uint8_t *)malloc(data[1].size);
@@ -1162,7 +1184,7 @@ void Resource::load_CMP(File *pf) {
 	}
 	if (data[1].packedSize == data[1].size) {
 		memcpy(_cmd, tmp + data[1].offset, data[1].packedSize);
-	} else if (!delphine_unpack(_cmd, data[1].size, tmp + data[1].offset, data[1].packedSize)) {
+	} else if (!bytekiller_unpack(_cmd, data[1].size, tmp + data[1].offset, data[1].packedSize)) {
 		error("Bad CRC for cutscene command data");
 	}
 	free(tmp);
@@ -1229,15 +1251,18 @@ void Resource::load_SPL(File *f) {
 		}
 		debug(DBG_RES, "sfx=%d size=%d", i, size);
 		assert(size != 0 && (size & 1) == 0);
-		if (i != 64) {
+		if (i == 64) {
+			warning("Skipping sound #%d (%s) size %d", i, _splNames[i], size);
+			f->seek(offset + size);
+		}  else {
 			_sfxList[i].offset = offset;
-			_sfxList[i].len = size;
 			_sfxList[i].freq = kPaulaFreq / 650;
 			_sfxList[i].data = (uint8_t *)malloc(size);
-			assert(_sfxList[i].data);
-			f->read(_sfxList[i].data, size);
-		} else {
-			f->seek(offset + size);
+			if (_sfxList[i].data) {
+				f->read(_sfxList[i].data, size);
+				_sfxList[i].len = size;
+				normalizeSPL(&_sfxList[i]);
+			}
 		}
 		offset += size;
 	}
@@ -1278,7 +1303,7 @@ void Resource::load_SGD(File *f) {
 	if (!_sgd) {
 		error("Unable to allocate SGD buffer");
 	}
-	if (!delphine_unpack(_sgd, size, tmp, len)) {
+	if (!bytekiller_unpack(_sgd, size, tmp, len)) {
 		error("Bad CRC for SGD data");
 	}
 	free(tmp);
@@ -1310,12 +1335,12 @@ void Resource::load_SPM(File *f) {
 		if (!_spr1) {
 			error("Unable to allocate SPR1 buffer");
 		}
-		if (!delphine_unpack(_spr1, size, tmp, len)) {
+		if (!bytekiller_unpack(_spr1, size, tmp, len)) {
 			error("Bad CRC for SPM data");
 		}
 	} else {
 		assert(size <= sizeof(_sprm));
-		if (!delphine_unpack(_sprm, sizeof(_sprm), tmp, len)) {
+		if (!bytekiller_unpack(_sprm, sizeof(_sprm), tmp, len)) {
 			error("Bad CRC for SPM data");
 		}
 	}
@@ -1391,7 +1416,7 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 	} else {
 		assert(dataOffset > 4);
 		assert(size == (int)READ_BE_UINT32(data - 4));
-		if (!delphine_unpack(_bankDataHead, _bankDataTail - _bankDataHead, data, 0)) {
+		if (!bytekiller_unpack(_bankDataHead, _bankDataTail - _bankDataHead, data, 0)) {
 			error("Bad CRC for bank data %d", num);
 		}
 	}

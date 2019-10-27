@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include "mixer.h"
@@ -9,8 +9,9 @@
 #include "util.h"
 
 Mixer::Mixer(FileSystem *fs, SystemStub *stub)
-	: _stub(stub), _musicType(MT_NONE), _mod(this, fs), _ogg(this, fs), _sfx(this) {
+	: _stub(stub), _musicType(MT_NONE), _cpc(this, fs), _mod(this, fs), _ogg(this, fs), _sfx(this) {
 	_musicTrack = -1;
+	_backgroundMusicType = MT_NONE;
 }
 
 void Mixer::init() {
@@ -32,14 +33,14 @@ void Mixer::setPremixHook(PremixHook premixHook, void *userData) {
 	_premixHookData = userData;
 }
 
-void Mixer::play(const MixerChunk *mc, uint16_t freq, uint8_t volume) {
+void Mixer::play(const uint8_t *data, uint32_t len, uint16_t freq, uint8_t volume) {
 	debug(DBG_SND, "Mixer::play(%d, %d)", freq, volume);
 	LockAudioStack las(_stub);
 	MixerChannel *ch = 0;
 	for (int i = 0; i < NUM_CHANNELS; ++i) {
 		MixerChannel *cur = &_channels[i];
 		if (cur->active) {
-			if (cur->chunk.data == mc->data) {
+			if (cur->chunk.data == data) {
 				cur->chunkPos = 0;
 				return;
 			}
@@ -51,18 +52,19 @@ void Mixer::play(const MixerChunk *mc, uint16_t freq, uint8_t volume) {
 	if (ch) {
 		ch->active = true;
 		ch->volume = volume;
-		ch->chunk = *mc;
+		ch->chunk.data = data;
+		ch->chunk.len = len;
 		ch->chunkPos = 0;
 		ch->chunkInc = (freq << FRAC_BITS) / _stub->getOutputSampleRate();
 	}
 }
 
-bool Mixer::isPlaying(const MixerChunk *mc) const {
+bool Mixer::isPlaying(const uint8_t *data) const {
 	debug(DBG_SND, "Mixer::isPlaying");
 	LockAudioStack las(_stub);
 	for (int i = 0; i < NUM_CHANNELS; ++i) {
 		const MixerChannel *ch = &_channels[i];
-		if (ch->active && ch->chunk.data == mc->data) {
+		if (ch->active && ch->chunk.data == data) {
 			return true;
 		}
 	}
@@ -93,15 +95,20 @@ void Mixer::playMusic(int num) {
 			_musicTrack = num;
 			return;
 		}
+		if (_cpc.playTrack(num - MUSIC_TRACK)) {
+			_backgroundMusicType = _musicType = MT_CPC;
+			_musicTrack = num;
+			return;
+		}
 	}
 	if (num == 1) { // menu screen
-		if (_ogg.playTrack(2)) {
-			_musicType = MT_OGG;
+		if (_cpc.playTrack(2) || _ogg.playTrack(2)) {
+			_backgroundMusicType = _musicType = MT_OGG;
 			_musicTrack = 2;
 			return;
 		}
 	}
-	if (_musicType == MT_OGG && isMusicSfx(num)) { // do not play level action music with background music
+	if ((_musicType == MT_OGG || _musicType == MT_CPC) && isMusicSfx(num)) { // do not play level action music with background music
 		return;
 	}
 	if (isMusicSfx(num)) { // level action sequence
@@ -131,13 +138,28 @@ void Mixer::stopMusic() {
 	case MT_SFX:
 		_sfx.stop();
 		break;
+	case MT_CPC:
+		_cpc.pauseTrack();
+		break;
 	}
 	_musicType = MT_NONE;
 	if (_musicTrack != -1) {
-		_ogg.resumeTrack();
-		_musicType = MT_OGG;
+		switch (_backgroundMusicType) {
+		case MT_OGG:
+			_ogg.resumeTrack();
+			_musicType = MT_OGG;
+			break;
+		case MT_CPC:
+			_cpc.resumeTrack();
+			_musicType = MT_CPC;
+			break;
+		default:
+			break;
+		}
 	}
 }
+
+static const bool kUseNr = false;
 
 static void nr(int16_t *buf, int len) {
 	static int prev = 0;
@@ -163,13 +185,15 @@ void Mixer::mix(int16_t *out, int len) {
 					ch->active = false;
 					break;
 				}
-				const int sample = ch->chunk.getPCM(ch->chunkPos >> FRAC_BITS);
-				out[pos] = ADDC_S16(out[pos], (sample * ch->volume / Mixer::MAX_VOLUME) << 8);
+				const int sample = ch->chunk.getPCM(ch->chunkPos >> FRAC_BITS) * ch->volume / Mixer::MAX_VOLUME;
+				out[pos] = ADDC_S16(out[pos], S8_to_S16(sample));
 				ch->chunkPos += ch->chunkInc;
 			}
 		}
 	}
-	nr(out, len);
+	if (kUseNr) {
+		nr(out, len);
+	}
 }
 
 void Mixer::mixCallback(void *param, int16_t *buf, int len) {

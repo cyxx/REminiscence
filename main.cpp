@@ -1,7 +1,7 @@
 
 /*
  * REminiscence - Flashback interpreter
- * Copyright (C) 2005-2018 Gregory Montoir (cyx@users.sourceforge.net)
+ * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
 #include <SDL.h>
@@ -22,7 +22,7 @@ static const char *USAGE =
 	"  --savepath=PATH   Path to save files (default '.')\n"
 	"  --levelnum=NUM    Start to level, bypass introduction\n"
 	"  --fullscreen      Fullscreen display\n"
-	"  --widescreen=MODE 16:9 display\n"
+	"  --widescreen=MODE 16:9 display (adjacent,mirror,blur,none)\n"
 	"  --scaler=NAME@X   Graphics scaler (default 'scale@3')\n"
 	"  --language=LANG   Language (fr,en,de,sp,it,jp)\n"
 	"  --autosave        Save game state automatically\n"
@@ -36,6 +36,7 @@ static int detectVersion(FileSystem *fs) {
 	} table[] = {
 		{ "DEMO_UK.ABA", kResourceTypeDOS, "DOS (Demo)" },
 		{ "INTRO.SEQ", kResourceTypeDOS, "DOS CD" },
+		{ "MENU1SSI.MAP", kResourceTypeDOS, "DOS SSI" },
 		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS" },
 		{ "LEVEL1.BNQ", kResourceTypeDOS, "DOS (Demo)" },
 		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga" },
@@ -90,10 +91,14 @@ static void initOptions() {
 	g_options.fade_out_palette = true;
 	g_options.use_text_cutscenes = false;
 	g_options.use_seq_cutscenes = true;
+	g_options.use_words_protection = false;
+	g_options.use_white_tshirt = false;
 	g_options.play_asc_cutscene = false;
 	g_options.play_caillou_cutscene = false;
 	g_options.play_metro_cutscene = false;
 	g_options.play_serrure_cutscene = false;
+	g_options.play_carte_cutscene = false;
+	g_options.play_gamesaved_sound = false;
 	// read configuration file
 	struct {
 		const char *name;
@@ -103,13 +108,17 @@ static void initOptions() {
 		{ "enable_password_menu", &g_options.enable_password_menu },
 		{ "enable_language_selection", &g_options.enable_language_selection },
 		{ "fade_out_palette", &g_options.fade_out_palette },
-		{ "use_tiledata", &g_options.use_tiledata },
+		{ "use_tile_data", &g_options.use_tile_data },
 		{ "use_text_cutscenes", &g_options.use_text_cutscenes },
 		{ "use_seq_cutscenes", &g_options.use_seq_cutscenes },
+		{ "use_words_protection", &g_options.use_words_protection },
+		{ "use_white_tshirt", &g_options.use_white_tshirt },
 		{ "play_asc_cutscene", &g_options.play_asc_cutscene },
 		{ "play_caillou_cutscene", &g_options.play_caillou_cutscene },
 		{ "play_metro_cutscene", &g_options.play_metro_cutscene },
 		{ "play_serrure_cutscene", &g_options.play_serrure_cutscene },
+		{ "play_carte_cutscene", &g_options.play_carte_cutscene },
+		{ "play_gamesaved_sound", &g_options.play_gamesaved_sound },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";
@@ -147,7 +156,7 @@ static void initOptions() {
 }
 
 static void parseScaler(char *name, ScalerParameters *scalerParameters) {
-	struct {
+	static const struct {
 		const char *name;
 		int type;
 		const Scaler *scaler;
@@ -158,7 +167,7 @@ static void parseScaler(char *name, ScalerParameters *scalerParameters) {
 #ifdef USE_STATIC_SCALER
 		{ "nearest", kScalerTypeInternal, &scaler_nearest },
 		{ "tv2x", kScalerTypeInternal, &scaler_tv2x },
-		{ "xbrz", kScalerTypeInternal, &scaler_xbrz },
+		{ "xbr", kScalerTypeInternal, &scaler_xbr },
 #endif
 		{ 0, -1 }
 	};
@@ -200,6 +209,7 @@ static WidescreenMode parseWidescreen(const char *mode) {
 	} modes[] = {
 		{ "adjacent", kWidescreenAdjacentRooms },
 		{ "mirror", kWidescreenMirrorRoom },
+		{ "blur", kWidescreenBlur },
 		{ 0, kWidescreenNone },
 	};
 	for (int i = 0; modes[i].name; ++i) {
@@ -207,8 +217,8 @@ static WidescreenMode parseWidescreen(const char *mode) {
 			return modes[i].mode;
 		}
 	}
-	warning("Unhandled widecreen mode '%s', defaults to adjacent rooms", mode);
-	return kWidescreenAdjacentRooms; // default value
+	warning("Unhandled widecreen mode '%s', defaults to 16:9 blur", mode);
+	return kWidescreenBlur;
 }
 
 int main(int argc, char *argv[]) {
@@ -303,7 +313,7 @@ int main(int argc, char *argv[]) {
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave);
-	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen != kWidescreenNone, &scalerParameters);
+	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen, &scalerParameters);
 	g->run();
 	delete g;
 	stub->destroy();
