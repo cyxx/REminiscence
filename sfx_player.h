@@ -81,9 +81,9 @@ struct SfxPlayer {
 	void stop();
 	void playSample(int channel, const uint8_t *sampleData, uint16_t period);
 	void handleTick();
-	void mixSamples(int8_t *samples, int samplesLen);
+	void mixSamples(int16_t *samples, int samplesLen);
 
-	bool mix(int8_t *buf, int len);
+	bool mix(int16_t *buf, int len);
 	static bool mixCallback(void *param, int16_t *buf, int len);
 };
 

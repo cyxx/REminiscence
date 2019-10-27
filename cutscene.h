@@ -113,7 +113,7 @@ struct Cutscene {
 	void updatePalette();
 	void setPalette();
 	void setRotationTransform(uint16_t a, uint16_t b, uint16_t c);
-	uint16_t findTextSeparators(const uint8_t *p);
+	uint16_t findTextSeparators(const uint8_t *p, int len);
 	void drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify);
 	void swapLayers();
 	void drawCreditsText();

@@ -139,6 +139,15 @@ void Mixer::stopMusic() {
 	}
 }
 
+static void nr(int16_t *buf, int len) {
+	static int prev = 0;
+	for (int i = 0; i < len; ++i) {
+		const int vnr = buf[i] >> 1;
+		buf[i] = vnr + prev;
+		prev = vnr;
+	}
+}
+
 void Mixer::mix(int16_t *out, int len) {
 	if (_premixHook) {
 		if (!_premixHook(_premixHookData, out, len)) {
@@ -160,6 +169,7 @@ void Mixer::mix(int16_t *out, int len) {
 			}
 		}
 	}
+	nr(out, len);
 }
 
 void Mixer::mixCallback(void *param, int16_t *buf, int len) {

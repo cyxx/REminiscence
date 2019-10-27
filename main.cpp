@@ -25,6 +25,7 @@ static const char *USAGE =
 	"  --widescreen=MODE 16:9 display\n"
 	"  --scaler=NAME@X   Graphics scaler (default 'scale@3')\n"
 	"  --language=LANG   Language (fr,en,de,sp,it,jp)\n"
+	"  --autosave        Save game state automatically\n"
 ;
 
 static int detectVersion(FileSystem *fs) {
@@ -215,6 +216,7 @@ int main(int argc, char *argv[]) {
 	const char *savePath = ".";
 	int levelNum = 0;
 	bool fullscreen = false;
+	bool autoSave = false;
 	WidescreenMode widescreen = kWidescreenNone;
 	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
@@ -234,6 +236,7 @@ int main(int argc, char *argv[]) {
 			{ "scaler",     required_argument, 0, 5 },
 			{ "language",   required_argument, 0, 6 },
 			{ "widescreen", required_argument, 0, 7 },
+			{ "autosave",   no_argument,       0, 8 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -281,6 +284,9 @@ int main(int argc, char *argv[]) {
 		case 7:
 			widescreen = parseWidescreen(optarg);
 			break;
+		case 8:
+			autoSave = true;
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
@@ -296,7 +302,7 @@ int main(int argc, char *argv[]) {
 	}
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
-	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen);
+	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave);
 	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen != kWidescreenNone, &scalerParameters);
 	g->run();
 	delete g;

@@ -13,12 +13,6 @@
 #include <assert.h>
 #include <stdint.h>
 
-#undef ABS
-#define ABS(x) ((x)<0?-(x):(x))
-#undef MAX
-#define MAX(x,y) ((x)>(y)?(x):(y))
-#undef MIN
-#define MIN(x,y) ((x)<(y)?(x):(y))
 #undef ARRAYSIZE
 #define ARRAYSIZE(a) (int)(sizeof(a)/sizeof(a[0]))
 
@@ -40,16 +34,6 @@ inline uint16_t READ_LE_UINT16(const void *ptr) {
 inline uint32_t READ_LE_UINT32(const void *ptr) {
 	const uint8_t *b = (const uint8_t *)ptr;
 	return (b[3] << 24) | (b[2] << 16) | (b[1] << 8) | b[0];
-}
-
-inline int8_t ADDC_S8(int a, int b) {
-	a += b;
-	if (a < -128) {
-		a = -128;
-	} else if (a > 127) {
-		a = 127;
-	}
-	return a;
 }
 
 inline int16_t ADDC_S16(int a, int b) {
@@ -77,6 +61,24 @@ inline T CLIP(const T& val, const T& a, const T& b) {
 		return b;
 	}
 	return val;
+}
+
+#undef MIN
+template<typename T>
+inline T MIN(T v1, T v2) {
+	return (v1 < v2) ? v1 : v2;
+}
+
+#undef MAX
+template<typename T>
+inline T MAX(T v1, T v2) {
+	return (v1 > v2) ? v1 : v2;
+}
+
+#undef ABS
+template<typename T>
+inline T ABS(T t) {
+	return (t < 0) ? -t : t;
 }
 
 enum Language {

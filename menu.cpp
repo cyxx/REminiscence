@@ -84,7 +84,7 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 		}
 		break;
 	}
-	_vid->markBlockAsDirty(x * w, y * h, len * w, h);
+	_vid->markBlockAsDirty(x * w, y * h, len * w, h, _vid->_layerScale);
 }
 
 void Menu::loadPicture(const char *prefix) {
@@ -201,7 +201,7 @@ bool Menu::handlePasswordScreen() {
 		}
 		_vid->PC_drawChar(0x20, 21, len + 15);
 
-		_vid->markBlockAsDirty(15 * Video::CHAR_W, 21 * Video::CHAR_H, (len + 1) * Video::CHAR_W, Video::CHAR_H);
+		_vid->markBlockAsDirty(15 * Video::CHAR_W, 21 * Video::CHAR_H, (len + 1) * Video::CHAR_W, Video::CHAR_H, _vid->_layerScale);
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
 		_stub->processEvents();
@@ -254,24 +254,15 @@ bool Menu::handleLevelScreen() {
 	int currentSkill = _skill;
 	int currentLevel = _level;
 	do {
-		static const char *levelTitles[] = {
-			"Titan / The Jungle",
-			"Titan / New Washington",
-			"Titan / Death Tower Show",
-			"Earth / Surface",
-			"Earth / Paradise Club",
-			"Planet Morphs / Surface",
-			"Planet Morphs / Inner Core"
-		};
 		for (int i = 0; i < 7; ++i) {
-			drawString(levelTitles[i], 7 + i * 2, 4, (currentLevel == i) ? 2 : 3);
+			drawString(_levelNames[i], 7 + i * 2, 4, (currentLevel == i) ? 2 : 3);
 		}
-		_vid->markBlockAsDirty(4 * Video::CHAR_W, 7 * Video::CHAR_H, 192, 7 * Video::CHAR_H);
+		_vid->markBlockAsDirty(4 * Video::CHAR_W, 7 * Video::CHAR_H, 192, 7 * Video::CHAR_H, _vid->_layerScale);
 
                 drawString(_res->getMenuString(LocaleData::LI_13_EASY),   23,  4, (currentSkill == 0) ? 2 : 3);
                 drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 23, 14, (currentSkill == 1) ? 2 : 3);
                 drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 23, 24, (currentSkill == 2) ? 2 : 3);
-		_vid->markBlockAsDirty(4 * Video::CHAR_W, 23 * Video::CHAR_H, 192, Video::CHAR_H);
+		_vid->markBlockAsDirty(4 * Video::CHAR_W, 23 * Video::CHAR_H, 192, Video::CHAR_H, _vid->_layerScale);
 
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);

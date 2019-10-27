@@ -49,12 +49,12 @@ Video::~Video() {
 	free(_screenBlocks);
 }
 
-void Video::markBlockAsDirty(int16_t x, int16_t y, uint16_t w, uint16_t h) {
+void Video::markBlockAsDirty(int16_t x, int16_t y, uint16_t w, uint16_t h, int scale) {
 	debug(DBG_VIDEO, "Video::markBlockAsDirty(%d, %d, %d, %d)", x, y, w, h);
-	int bx1 = _layerScale * x / SCREENBLOCK_W;
-	int by1 = _layerScale * y / SCREENBLOCK_H;
-	int bx2 = _layerScale * (x + w - 1) / SCREENBLOCK_W;
-	int by2 = _layerScale * (y + h - 1) / SCREENBLOCK_H;
+	int bx1 = scale * x / SCREENBLOCK_W;
+	int by1 = scale * y / SCREENBLOCK_H;
+	int bx2 = scale * (x + w - 1) / SCREENBLOCK_W;
+	int by2 = scale * (y + h - 1) / SCREENBLOCK_H;
 	if (bx1 < 0) {
 		bx1 = 0;
 	}
@@ -907,7 +907,7 @@ static uint8_t _MAC_fontShadowColor;
 void Video::MAC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8_t *src, uint8_t color, uint8_t chr) {
 	DecodeBuffer buf;
 	memset(&buf, 0, sizeof(buf));
-	buf.ptr = _frontLayer;
+	buf.ptr = dst;
 	buf.w = buf.pitch = _w;
 	buf.h = _h;
 	buf.x = x * _layerScale;
@@ -931,7 +931,7 @@ const char *Video::drawString(const char *str, int16_t x, int16_t y, uint8_t col
 		(this->*_drawChar)(_frontLayer, _w, x + len * CHAR_W, y, fnt, col, c);
 		++len;
 	}
-	markBlockAsDirty(x, y, len * CHAR_W, CHAR_H);
+	markBlockAsDirty(x, y, len * CHAR_W, CHAR_H, _layerScale);
 	return str - 1;
 }
 
@@ -940,7 +940,7 @@ void Video::drawStringLen(const char *str, int len, int x, int y, uint8_t color)
 	for (int i = 0; i < len; ++i) {
 		(this->*_drawChar)(_frontLayer, _w, x + i * CHAR_W, y, fnt, color, str[i]);
 	}
-	markBlockAsDirty(x, y, len * CHAR_W, CHAR_H);
+	markBlockAsDirty(x, y, len * CHAR_W, CHAR_H, _layerScale);
 }
 
 Color Video::AMIGA_convertColor(const uint16_t color, bool bgr) { // 4bits to 8bits
@@ -1052,7 +1052,6 @@ void Video::MAC_drawSprite(int x, int y, const uint8_t *data, int frame, bool xf
 		buf.setPixel = eraseBackground ? MAC_drawBuffer : MAC_drawBufferMask;
 		fixOffsetDecodeBuffer(&buf, dataPtr);
 		_res->MAC_decodeImageData(data, frame, &buf);
-		// divide by screen scale as the dirty blocks range is 256,224
-		markBlockAsDirty(buf.x / _layerScale, buf.y / _layerScale, READ_BE_UINT16(dataPtr) / _layerScale, READ_BE_UINT16(dataPtr + 2) / _layerScale);
+		markBlockAsDirty(buf.x, buf.y, READ_BE_UINT16(dataPtr), READ_BE_UINT16(dataPtr + 2), 1);
 	}
 }

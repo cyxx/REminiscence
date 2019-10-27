@@ -177,6 +177,7 @@ struct Resource {
 	uint8_t *_perso;
 	uint8_t *_monster;
 	uint8_t *_str;
+	uint8_t *_credits;
 
 	Resource(FileSystem *fs, ResourceType type, Language lang);
 	~Resource();
@@ -335,6 +336,7 @@ struct Resource {
 	void MAC_unloadCutscene();
 	void MAC_loadCutscene(const char *cutscene);
 	void MAC_loadCutsceneText();
+	void MAC_loadCreditsText();
 	void MAC_loadSounds();
 
 	int MAC_getPersoFrame(int anim) const {

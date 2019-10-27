@@ -325,7 +325,7 @@ int Game::pge_execute(LivePGE *live_pge, InitPGE *init_pge, const Object *obj) {
 		++live_pge->life;
 	}
 	if (obj->flags & 8) {
-		live_pge->life = 0xFFFF;
+		live_pge->life = -1;
 	}
 
 	if (live_pge->flags & 1) {
@@ -1428,7 +1428,7 @@ int Game::pge_op_setCollisionState2(ObjectOpcodeArgs *args) {
 
 int Game::pge_op_saveState(ObjectOpcodeArgs *args) {
 	_saveStateCompleted = true;
-	_validSaveState = saveGameState(0);
+	_validSaveState = saveGameState(kIngameSaveSlot);
 	return 0xFFFF;
 }
 

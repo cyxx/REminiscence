@@ -112,12 +112,12 @@ static bool isNewLineChar(uint8_t chr, Resource *res) {
 	return chr == nl;
 }
 
-uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
+uint16_t Cutscene::findTextSeparators(const uint8_t *p, int len) {
 	uint8_t *q = _textSep;
 	uint16_t ret = 0;
 	uint16_t pos = 0;
-	for (; *p != 0xA && *p; ++p) {
-		if (isNewLineChar(*p, _res)) {
+	for (int i = 0; i < len && p[i] != 0xA; ++i) {
+		if (isNewLineChar(p[i], _res)) {
 			*q++ = pos;
 			if (pos > ret) {
 				ret = pos;
@@ -137,41 +137,43 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p) {
 
 void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify) {
 	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d, justify=%d)", x, y, color, textJustify);
+	int len = 0;
 	if (_res->_type == kResourceTypeMac) {
-		warning("Unhandled Cutscene::drawText"); // TODO
-		return;
+		len = *p++;
+	} else {
+		len = strlen((const char *)p);
 	}
 	Video::drawCharFunc dcf = _vid->_drawChar;
 	const uint8_t *fnt = (_res->_lang == LANG_JP) ? Video::_font8Jp : _res->_fnt;
-	uint16_t last_sep = 0;
+	uint16_t lastSep = 0;
 	if (textJustify != kTextJustifyLeft) {
-		last_sep = findTextSeparators(p);
+		lastSep = findTextSeparators(p, len);
 		if (textJustify != kTextJustifyCenter) {
-			last_sep = (_res->_lang == LANG_JP) ? 20 : 30;
+			lastSep = (_res->_lang == LANG_JP) ? 20 : 30;
 		}
 	}
 	const uint8_t *sep = _textSep;
 	y += 50;
 	x += (_res->_lang == LANG_JP) ? 0 : 8;
-	int16_t yy = y;
-	int16_t xx = x;
+	int16_t yPos = y;
+	int16_t xPos = x;
 	if (textJustify != kTextJustifyLeft) {
-		xx += ((last_sep - *sep++) / 2) * Video::CHAR_W;
+		xPos += ((lastSep - *sep++) / 2) * Video::CHAR_W;
 	}
-	for (; *p != 0xA && *p; ++p) {
-		if (isNewLineChar(*p, _res)) {
-			yy += Video::CHAR_H;
-			xx = x;
+	for (int i = 0; i < len && p[i] != 0xA; ++i) {
+		if (isNewLineChar(p[i], _res)) {
+			yPos += Video::CHAR_H;
+			xPos = x;
 			if (textJustify != kTextJustifyLeft) {
-				xx += ((last_sep - *sep++) / 2) * Video::CHAR_W;
+				xPos += ((lastSep - *sep++) / 2) * Video::CHAR_W;
 			}
-		} else if (*p == 0x20) {
-			xx += Video::CHAR_W;
-		} else if (*p == 0x9) {
+		} else if (p[i] == 0x20) {
+			xPos += Video::CHAR_W;
+		} else if (p[i] == 0x9) {
 			// ignore tab
 		} else {
-			(_vid->*dcf)(page, _vid->_w, xx, yy, fnt, color, *p);
-			xx += Video::CHAR_W;
+			(_vid->*dcf)(page, _vid->_w, xPos, yPos, fnt, color, p[i]);
+			xPos += Video::CHAR_W;
 		}
 	}
 }
@@ -415,9 +417,12 @@ void Cutscene::op_drawStringAtBottom() {
 			}
 		}
 
-		memset(_pageC + 179 * _vid->_w, 0xC0, 45 * _vid->_w);
-		memset(_page1 + 179 * _vid->_w, 0xC0, 45 * _vid->_w);
-		memset(_page0 + 179 * _vid->_w, 0xC0, 45 * _vid->_w);
+		const int h = 45 * _vid->_layerScale;
+		const int y = Video::GAMESCREEN_H * _vid->_layerScale - h;
+
+		memset(_pageC + y * _vid->_w, 0xC0, h * _vid->_w);
+		memset(_page1 + y * _vid->_w, 0xC0, h * _vid->_w);
+		memset(_page0 + y * _vid->_w, 0xC0, h * _vid->_w);
 		if (strId != 0xFFFF) {
 			const uint8_t *str = _res->getCineString(strId);
 			if (str) {
@@ -878,7 +883,7 @@ void Cutscene::op_drawStringAtPos() {
 			// 'voyage' - cutscene script redraws the string to refresh the screen
 			if (_id == 0x34 && (strId & 0xFFF) == 0x45) {
 				if ((_cmdPtr - _cmdPtrBak) == 0xA) {
-					_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, 256);
+					_stub->copyRect(0, 0, _vid->_w, _vid->_h, _page1, _vid->_w);
 					_stub->updateScreen(0);
 				} else {
 					_stub->sleep(15);
@@ -1059,9 +1064,7 @@ void Cutscene::unload() {
 void Cutscene::prepare() {
 	_page0 = _vid->_frontLayer;
 	_page1 = _vid->_tempLayer;
-	memset(_page1, 0, _vid->_layerSize);
 	_pageC = _vid->_tempLayer2;
-	memset(_pageC, 0, _vid->_layerSize);
 	_stub->_pi.dirMask = 0;
 	_stub->_pi.enter = false;
 	_stub->_pi.space = false;
@@ -1080,6 +1083,10 @@ void Cutscene::prepare() {
 }
 
 void Cutscene::playCredits() {
+	if (_res->isMac()) {
+		warning("Cutscene::playCredits() unimplemented");
+		return;
+	}
 	_textCurPtr = _res->isAmiga() ? _creditsDataAmiga : _creditsDataDOS;
 	_textBuf[0] = 0xA;
 	_textCurBuf = _textBuf;

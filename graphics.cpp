@@ -211,21 +211,18 @@ void Graphics::fillArea(uint8_t color, bool hasAlpha) {
 	if (x1 >= 0) {
 		if (hasAlpha && color > 0xC7) {
 			do {
-				int16_t x2 = *pts++;
-				if (x2 < _crw && x2 >= x1) {
-					int len = x2 - x1 + 1;
-					for (int i = 0; i < len; ++i) {
-						*(dst + x1 + i) |= color & 8; // XXX 0x88
-					}
+				const int16_t x2 = MIN<int16_t>(_crw - 1, *pts++);
+				for (; x1 <= x2; ++x1) {
+					*(dst + x1) |= color & 8;
 				}
 				dst += _layerPitch;
 				x1 = *pts++;
 			} while (x1 >= 0);
 		} else {
 			do {
-				int16_t x2 = *pts++;
-				if (x2 < _crw && x2 >= x1) {
-					int len = x2 - x1 + 1;
+				const int16_t x2 = MIN<int16_t>(_crw - 1, *pts++);
+				if (x1 <= x2) {
+					const int len = x2 - x1 + 1;
 					memset(dst + x1, color, len);
 				}
 				dst += _layerPitch;

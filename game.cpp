@@ -14,7 +14,7 @@
 #include "unpack.h"
 #include "util.h"
 
-Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode)
+Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
 	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub),
 	_stub(stub), _fs(fs), _savePath(savePath) {
@@ -24,6 +24,7 @@ Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, Re
 	_currentLevel = _menu._level = level;
 	_demoBin = -1;
 	_widescreenMode = widescreenMode;
+	_autoSave = autoSave;
 }
 
 void Game::run() {
@@ -150,6 +151,7 @@ void Game::run() {
 			resetGameState();
 			_endLoop = false;
 			_frameTimestamp = _stub->getTimeStamp();
+			_saveTimestamp = _frameTimestamp;
 			while (!_stub->_pi.quit && !_endLoop) {
 				mainLoop();
 				if (_demoBin != -1 && _inp_demPos >= _res._demLen) {
@@ -166,8 +168,8 @@ void Game::run() {
 			_stub->_pi.shift = false;
 			// clear widescreen borders
 			if (_stub->hasWidescreen()) {
-				_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
-				_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+				_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
+				_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
 			}
 		}
 	}
@@ -271,10 +273,34 @@ void Game::displayTitleScreenMac(int num) {
 		Color c;
 		c.r = c.g = c.b = 0;
 		_stub->setPaletteEntry(0, &c);
+	} else if (num == Menu::kMacTitleScreen_Flashback) {
+		_vid.setTextPalette();
+		_vid._charShadowColor = 0xE0;
 	}
 	_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._frontLayer, _vid._w);
 	_stub->updateScreen(0);
 	while (1) {
+		if (num == Menu::kMacTitleScreen_Flashback) {
+			static const uint8_t selectedColor = 0xE4;
+			static const uint8_t defaultColor = 0xE8;
+			for (int i = 0; i < 7; ++i) {
+				const char *str = Menu::_levelNames[i];
+				_vid.drawString(str, 24, 24 + i * 16, (_currentLevel == i) ? selectedColor : defaultColor);
+			}
+			if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
+				_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
+				if (_currentLevel > 0) {
+					--_currentLevel;
+				}
+			}
+			if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
+				_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+				if (_currentLevel < 6) {
+					++_currentLevel;
+				}
+			}
+			_vid.updateScreen();
+		}
 		_stub->processEvents();
 		if (_stub->_pi.quit) {
 			break;
@@ -324,10 +350,10 @@ void Game::mainLoop() {
 				playCutscene(0x41);
 				_endLoop = true;
 			} else {
-				if (_validSaveState) {
-					if (!loadGameState(0)) {
-						_endLoop = true;
-					}
+				if (_autoSave && loadGameState(kAutoSaveSlot)) {
+					// autosave
+				} else if (_validSaveState && loadGameState(kIngameSaveSlot)) {
+					// ingame save
 				} else {
 					loadLevelData();
 					resetGameState();
@@ -393,6 +419,13 @@ void Game::mainLoop() {
 		}
 	}
 	inp_handleSpecialKeys();
+	if (_stub->getTimeStamp() - _saveTimestamp >= kAutoSaveIntervalMs) {
+		// do not save if we just died
+		if (_pgeLive[0].life > 0) {
+			saveGameState(kAutoSaveSlot);
+			_saveTimestamp = _stub->getTimeStamp();
+		}
+	}
 }
 
 void Game::updateTiming() {
@@ -474,7 +507,7 @@ void Game::playCutscene(int id) {
 				_cut.play();
 			}
 		}
-		if (_res._type == kResourceTypeMac) {
+		if (_res._type == kResourceTypeMac && !(id == 0x48 || id == 0x49)) { // continue or score screens
 			// restore palette entries modified by the cutscene player (0xC and 0xD)
 			Color palette[32];
 			_res.MAC_copyClut16(palette, 0, 0x37);
@@ -533,8 +566,8 @@ void Game::drawCurrentInventoryItem() {
 
 void Game::showFinalScore() {
 	if (_stub->hasWidescreen()) {
-		_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
-		_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+		_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
+		_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
 	}
 	playCutscene(0x49);
 	char buf[50];
@@ -697,8 +730,8 @@ bool Game::handleConfigPanel() {
 
 bool Game::handleContinueAbort() {
 	if (_stub->hasWidescreen()) {
-		_stub->copyRectLeftBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
-		_stub->copyRectRightBorder(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+		_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
+		_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
 	}
 	playCutscene(0x48);
 	int timeout = 100;
@@ -1362,7 +1395,7 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 			_vid.drawSpriteSub4(src, _vid._frontLayer + dst_offset, sprite_w, sprite_clipped_h, sprite_clipped_w, sprite_col_mask);
 		}
 	}
-	_vid.markBlockAsDirty(sprite_x, sprite_y, sprite_clipped_w, sprite_clipped_h);
+	_vid.markBlockAsDirty(sprite_x, sprite_y, sprite_clipped_w, sprite_clipped_h, _vid._layerScale);
 }
 
 void Game::decodeCharacterFrame(const uint8_t *dataPtr, uint8_t *dstPtr) {
@@ -1499,7 +1532,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 			_vid.drawSpriteSub4(src, _vid._frontLayer + dst_offset, sprite_w, sprite_clipped_h, sprite_clipped_w, sprite_col_mask);
 		}
 	}
-	_vid.markBlockAsDirty(pos_x, pos_y, sprite_clipped_w, sprite_clipped_h);
+	_vid.markBlockAsDirty(pos_x, pos_y, sprite_clipped_w, sprite_clipped_h, _vid._layerScale);
 }
 
 int Game::loadMonsterSprites(LivePGE *pge) {
@@ -1617,13 +1650,29 @@ void Game::loadLevelMap() {
 			}
 		}
 		_vid.PC_decodeMap(_currentLevel, _currentRoom);
-		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenMirrorRoom) {
-			_stub->copyRectMirrorBorders(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
-		}
 		break;
 	case kResourceTypeMac:
+		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
+			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
+			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
+				_vid.MAC_decodeMap(_currentLevel, leftRoom);
+				_stub->copyRectLeftBorder(_vid._w, _vid._h, _vid._backLayer);
+			} else {
+				_stub->copyRectLeftBorder(_vid._w, _vid._h, 0);
+			}
+			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
+			if (rightRoom > 0 && hasLevelMap(_currentLevel, rightRoom)) {
+				_vid.MAC_decodeMap(_currentLevel, rightRoom);
+				_stub->copyRectRightBorder(_vid._w, _vid._h, _vid._backLayer);
+			} else {
+				_stub->copyRectRightBorder(_vid._w, _vid._h, 0);
+			}
+		}
 		_vid.MAC_decodeMap(_currentLevel, _currentRoom);
 		break;
+	}
+	if (_stub->hasWidescreen() && _widescreenMode == kWidescreenMirrorRoom) {
+		_stub->copyRectMirrorBorders(_vid._w, _vid._h, _vid._backLayer);
 	}
 }
 
@@ -1806,7 +1855,7 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 		return;
 	}
 	_vid.drawSpriteSub1(buf, _vid._frontLayer + x + y * _vid._w, 16, 16, 16, colMask << 4);
-	_vid.markBlockAsDirty(x, y, 16, 16);
+	_vid.markBlockAsDirty(x, y, 16, 16, _vid._layerScale);
 }
 
 void Game::playSound(uint8_t sfxId, uint8_t softVol) {
@@ -2006,7 +2055,7 @@ static const uint32_t TAG_FBSV = 0x46425356;
 
 bool Game::saveGameState(uint8_t slot) {
 	bool success = false;
-	char stateFile[20];
+	char stateFile[32];
 	makeGameStateName(slot, stateFile);
 	File f;
 	if (!f.open(stateFile, "zwb", _savePath)) {
@@ -2033,7 +2082,7 @@ bool Game::saveGameState(uint8_t slot) {
 
 bool Game::loadGameState(uint8_t slot) {
 	bool success = false;
-	char stateFile[20];
+	char stateFile[32];
 	makeGameStateName(slot, stateFile);
 	File f;
 	if (!f.open(stateFile, "zrb", _savePath)) {

@@ -53,7 +53,7 @@ struct Video {
 	Video(Resource *res, SystemStub *stub);
 	~Video();
 
-	void markBlockAsDirty(int16_t x, int16_t y, uint16_t w, uint16_t h);
+	void markBlockAsDirty(int16_t x, int16_t y, uint16_t w, uint16_t h, int scale);
 	void updateScreen();
 	void fullRefresh();
 	void fadeOut();

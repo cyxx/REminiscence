@@ -156,8 +156,7 @@ struct ModPlayer_impl {
 	void applyVibrato(int trackNum);
 	void applyPortamento(int trackNum);
 	void handleEffect(int trackNum, bool tick);
-	void mixSamples(int8_t *buf, int len);
-	bool mixS8(int8_t *buf, int len);
+	void mixSamples(int16_t *buf, int len);
 	bool mix(int16_t *buf, int len);
 };
 
@@ -584,11 +583,11 @@ void ModPlayer_impl::handleTick() {
 	}
 }
 
-void ModPlayer_impl::mixSamples(int8_t *buf, int samplesLen) {
+void ModPlayer_impl::mixSamples(int16_t *buf, int samplesLen) {
 	for (int i = 0; i < NUM_TRACKS; ++i) {
 		Track *tk = &_tracks[i];
 		if (tk->sample != 0 && tk->delayCounter == 0) {
-			int8_t *mixbuf = buf;
+			int16_t *mixbuf = buf;
 			SampleInfo *si = tk->sample;
 			int len = si->len << FRAC_BITS;
 			int loopLen = si->repeatLen << FRAC_BITS;
@@ -614,7 +613,7 @@ void ModPlayer_impl::mixSamples(int8_t *buf, int samplesLen) {
 				}
 				while (count--) {
 					const int out = si->getPCM(pos >> FRAC_BITS);
-					*mixbuf = ADDC_S8(*mixbuf, out * tk->volume / 64);
+					*mixbuf = ADDC_S16(*mixbuf, (out * tk->volume / 64) << 8);
 					++mixbuf;
 					pos += deltaPos;
 				}
@@ -624,7 +623,8 @@ void ModPlayer_impl::mixSamples(int8_t *buf, int samplesLen) {
 	}
 }
 
-bool ModPlayer_impl::mixS8(int8_t *buf, int len) {
+bool ModPlayer_impl::mix(int16_t *buf, int len) {
+	memset(buf, 0, sizeof(int16_t) * len);
 	if (_playing) {
 		const int samplesPerTick = _mixingRate / (50 * _songTempo / 125);
 		while (len != 0) {
@@ -643,16 +643,6 @@ bool ModPlayer_impl::mixS8(int8_t *buf, int len) {
 		}
 	}
 	return _playing;
-}
-
-bool ModPlayer_impl::mix(int16_t *samples, int len) {
-	int8_t buf[len];
-	memset(buf, 0, sizeof(buf));
-	const bool ret = mixS8(buf, len);
-	for (int i = 0; i < len; ++i) {
-		samples[i] = buf[i] << 8;
-	}
-	return ret;
 }
 #endif
 

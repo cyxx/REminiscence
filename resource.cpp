@@ -1679,6 +1679,10 @@ void Resource::MAC_loadCutsceneText() {
 	_cine_off = 0; // offsets are prepended to _cine_txt
 }
 
+void Resource::MAC_loadCreditsText() {
+	_credits = decodeResourceMacData("Credit strings", false);
+}
+
 void Resource::MAC_loadSounds() {
 	static const int8_t table[NUM_SFXS] = {
 		0, -1,  1,  2,  3,  4, -1,  5,  6,  7,  8,  9, 10, 11, -1, 12,

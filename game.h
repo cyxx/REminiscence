@@ -26,6 +26,12 @@ struct Game {
 	typedef int (Game::*col_Callback2)(LivePGE *, int16_t, int16_t, int16_t);
 
 	enum {
+		kIngameSaveSlot = 0,
+		kAutoSaveSlot = 255,
+		kAutoSaveIntervalMs = 30 * 1000
+	};
+
+	enum {
 		CT_UP_ROOM    = 0x00,
 		CT_DOWN_ROOM  = 0x40,
 		CT_RIGHT_ROOM = 0x80,
@@ -87,8 +93,10 @@ struct Game {
 	bool _endLoop;
 	uint32_t _frameTimestamp;
 	WidescreenMode _widescreenMode;
+	bool _autoSave;
+	uint32_t _saveTimestamp;
 
-	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode);
+	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave);
 
 	void run();
 	void displayTitleScreenAmiga();

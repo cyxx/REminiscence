@@ -48,6 +48,7 @@ struct Menu {
 		int opt;
 	};
 
+	static const char *_levelNames[];
 	static const char *_passwordsDOS[];
 	static const char *_passwordsFrAmiga[];
 	static const char *_passwordsEnAmiga[];

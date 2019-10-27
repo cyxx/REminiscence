@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.4.3
+Release version: 0.4.4
 -------------------------------------------------------------------------------
 
 
@@ -46,6 +46,7 @@ These paths can be changed using command line switches :
     --widescreen=MODE 16:9 display
     --scaler=NAME@X   Graphics scaler (default 'scale@3')
     --language=LANG   Language (fr,en,de,sp,it,jp)
+    --autosave        Save game state automatically
 
 The scaler option specifies the algorithm used to smoothen the image in
 addition to a scaling factor. External scalers are also supported, the suffix
@@ -53,7 +54,7 @@ shall be used as the name. Eg. If you have scaler_xbrz.dll, you can pass
 '--scaler xbrz@2' to use that algorithm with a doubled window size (512x448).
 
 The widescreen option accepts two modes :
-    'adjacent' : left and right rooms bitmaps will be drawn (default)
+    'adjacent' : left and right rooms bitmaps will be drawn
     'mirror' : the current room bitmap will be drawn mirrored
 
 In-game hotkeys :
@@ -83,7 +84,6 @@ Credits:
 
 Delphine Software, obviously, for making another great game.
 Yaz0r, Pixel and gawd for sharing information they gathered on the game.
-Nicolas Bondoux for sound fixes.
 
 
 Contact:

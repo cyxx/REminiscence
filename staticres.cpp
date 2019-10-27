@@ -3223,6 +3223,16 @@ const uint8_t Game::_protectionPal[] = {
 	0x08, 0x88, 0x09, 0x99, 0x0A, 0xAA, 0x0B, 0xBB, 0x0C, 0xCC, 0x0D, 0xDD, 0x0E, 0xEE, 0x0F, 0xFF
 };
 
+const char *Menu::_levelNames[] {
+	"Titan / The Jungle",
+	"Titan / New Washington",
+	"Titan / Death Tower Show",
+	"Earth / Surface",
+	"Earth / Paradise Club",
+	"Planet Morphs / Surface",
+	"Planet Morphs / Inner Core"
+};
+
 const char *Menu::_passwordsDOS[] = {
 	"JAGUAR", "COMBEL", "ANTIC",  "NOLAN",  "ARTHUR", "SHIRYU", "RENDER", "BELUGA", // easy
 	"BANTHA", "SHIVA",  "KASYYK", "SARLAC", "MAENOC", "SULUST", "NEPTUN", "BELUGA", // normal
