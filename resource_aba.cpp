@@ -15,6 +15,10 @@ ResourceAba::~ResourceAba() {
 	free(_entries);
 }
 
+static int compareAbaEntry(const void *a, const void *b) {
+	return strcasecmp(((ResourceAbaEntry *)a)->name, ((ResourceAbaEntry *)b)->name);
+}
+
 void ResourceAba::readEntries() {
 	if (_f.open(FILENAME, "rb", _fs)) {
 		_entriesCount = _f.readUint16BE();
@@ -39,16 +43,14 @@ void ResourceAba::readEntries() {
 			}
 			nextOffset = _entries[i].offset + _entries[i].compressedSize;
 		}
+		qsort(_entries, _entriesCount, sizeof(ResourceAbaEntry), compareAbaEntry);
 	}
 }
 
 const ResourceAbaEntry *ResourceAba::findEntry(const char *name) const {
-	for (int i = 0; i < _entriesCount; ++i) {
-		if (strcasecmp(_entries[i].name, name) == 0) {
-			return &_entries[i];
-		}
-	}
-	return 0;
+	ResourceAbaEntry tmp;
+	strcpy(tmp.name, name);
+	return (const ResourceAbaEntry *)bsearch(&tmp, _entries, _entriesCount, sizeof(ResourceAbaEntry), compareAbaEntry);
 }
 
 uint8_t *ResourceAba::loadEntry(const char *name, uint32_t *size) {

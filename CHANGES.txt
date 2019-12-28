@@ -1,3 +1,7 @@
+* release 0.4.6
+	- added rewind to automatic saves
+	- fixed passwords and protection codes input
+
 * release 0.4.5
 	- added low-pass filtering for in-game music
 	- added support for 3DO background music (tunes/*.Cpc)
@@ -72,7 +76,7 @@
 
 * release 0.2.2
 	- added support for level background music
-	- added italian texts
+	- added Italian texts
 	- fixed PC-CD SEQ cutscenes numbering
 	- fixed several issues with Amiga data files
 
@@ -111,7 +115,7 @@
 	- added input keys recording
 	- reduced memory usage
 
-* release 0.2.0 (2005/04/02)
+* release 0.1.4 (2005/04/02)
 	- added screen shaking (level 2)
 	- added support for Amiga music (experimental)
 	- fixed screen refresh after teleportation
@@ -127,7 +131,7 @@
 	- added sound effects playback
 	- added support for polygonal cutscenes
 	- added support for final credits sequence
-	- fixed instructions screen display in english version
+	- fixed instructions screen display in English version
 
 * release 0.1.1 (2005/01/29)
 	- added missing opcodes, game should now be completable

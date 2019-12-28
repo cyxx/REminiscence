@@ -197,6 +197,58 @@ struct AssetFile: File_impl {
 };
 #endif
 
+struct MemoryBufferFile: File_impl {
+	uint8_t *_ptr;
+	uint32_t _capacity, _offset, _len;
+	MemoryBufferFile(int initialCapacity) {
+		_capacity = initialCapacity;
+		_ptr = (uint8_t *)malloc(_capacity);
+		_offset = _len = 0;
+	}
+	~MemoryBufferFile() {
+		free(_ptr);
+	}
+	bool open(const char *path, const char *mode) {
+		return false;
+	}
+	void close() {
+	}
+	uint32_t size() {
+		return _len;
+	}
+	uint32_t tell() {
+		return _offset;
+	}
+	void seek(int offs) {
+		_offset = offs;
+	}
+	uint32_t read(void *ptr, uint32_t len) {
+		int count = len;
+		if (_offset + count > _len) {
+			count = _len - _offset;
+			_ioErr = true;
+		}
+		if (count != 0) {
+			memcpy(ptr, _ptr + _offset, count);
+			_offset += count;
+		}
+		return count;
+	}
+        uint32_t write(const void *ptr, uint32_t len) {
+		int count = len;
+		while (_offset + count > _capacity) {
+			_capacity *= 2;
+			_ptr = (uint8_t *)realloc(_ptr, _capacity);
+		}
+		if (count != 0) {
+			memcpy(_ptr + _offset, ptr, count);
+			_offset += count;
+		}
+		_len = _offset;
+		return count;
+	}
+};
+
 File::File()
 	: _impl(0) {
 }
@@ -262,6 +314,15 @@ bool File::open(const char *filename, const char *mode, const char *directory) {
 	snprintf(path, sizeof(path), "%s/%s", directory, filename);
 	debug(DBG_FILE, "Open file name '%s' mode '%s' path '%s'", filename, mode, path);
 	return _impl->open(path, mode);
+}
+
+void File::openMemoryBuffer(int initialCapacity) {
+	if (_impl) {
+		_impl->close();
+		delete _impl;
+		_impl = 0;
+	}
+	_impl = new MemoryBufferFile(initialCapacity);
 }
 
 void File::close() {

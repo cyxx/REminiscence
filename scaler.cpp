@@ -5,7 +5,6 @@
  */
 
 #include "scaler.h"
-#include "dynlib.h"
 #include "util.h"
 
 static void scanline2x(uint32_t *dst0, uint32_t *dst1, const uint32_t *src0, const uint32_t *src1, const uint32_t *src2, int w) {
@@ -282,17 +281,3 @@ const Scaler _internalScaler = {
 	2, 4,
 	scaleNx,
 };
-
-static DynLib *dynLib;
-
-static const char *kSoSym = "getScaler";
-
-const Scaler *findScaler(const char *name) {
-	dynLib = new DynLib(name);
-	void *symbol = dynLib->getSymbol(kSoSym);
-	if (symbol) {
-		typedef const Scaler *(*GetScalerProc)();
-		return ((GetScalerProc)symbol)();
-	}
-	return 0;
-}

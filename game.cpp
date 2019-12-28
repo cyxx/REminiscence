@@ -25,6 +25,8 @@ Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, Re
 	_demoBin = -1;
 	_widescreenMode = widescreenMode;
 	_autoSave = autoSave;
+	_rewindPtr = -1;
+	_rewindLen = 0;
 }
 
 void Game::run() {
@@ -159,6 +161,7 @@ void Game::run() {
 			_vid._unkPalSlot1 = 0;
 			_vid._unkPalSlot2 = 0;
 			_score = 0;
+			clearStateRewind();
 			loadLevelData();
 			resetGameState();
 			_endLoop = false;
@@ -195,7 +198,7 @@ void Game::displayTitleScreenAmiga() {
 	if (!buf) {
 		error("Failed to allocate screen buffer w=%d h=%d", kW, kH);
 	}
-	static const int kAmigaColors[] = {
+	static const uint16_t kAmigaColors[] = {
 		0x000, 0x123, 0x012, 0x134, 0x433, 0x453, 0x046, 0x245,
 		0x751, 0x455, 0x665, 0x268, 0x961, 0x478, 0x677, 0x786,
 		0x17B, 0x788, 0xB84, 0xC92, 0x49C, 0xF00, 0x9A8, 0x9AA,
@@ -384,11 +387,12 @@ void Game::mainLoop() {
 				playCutscene(0x41);
 				_endLoop = true;
 			} else {
-				if (_autoSave && loadGameState(kAutoSaveSlot)) {
+				if (_autoSave && _rewindLen != 0 && loadGameState(kAutoSaveSlot)) {
 					// autosave
 				} else if (_validSaveState && loadGameState(kIngameSaveSlot)) {
 					// ingame save
 				} else {
+					clearStateRewind();
 					loadLevelData();
 					resetGameState();
 				}
@@ -453,9 +457,9 @@ void Game::mainLoop() {
 		}
 	}
 	inp_handleSpecialKeys();
-	if (_stub->getTimeStamp() - _saveTimestamp >= kAutoSaveIntervalMs) {
-		// do not save if we just died
-		if (_pgeLive[0].life > 0) {
+	if (_autoSave && _stub->getTimeStamp() - _saveTimestamp >= kAutoSaveIntervalMs) {
+		// do not save if we died or about to
+		if (_pgeLive[0].life > 0 && _deathCutsceneCounter == 0) {
 			saveGameState(kAutoSaveSlot);
 			_saveTimestamp = _stub->getTimeStamp();
 		}
@@ -593,6 +597,14 @@ void Game::inp_handleSpecialKeys() {
 			debug(DBG_INFO, "Current game state slot is %d", _stateSlot);
 		}
 		_stub->_pi.stateSlot = 0;
+	}
+	if (_stub->_pi.rewind) {
+		if (_rewindLen != 0) {
+			loadStateRewind();
+		} else {
+			debug(DBG_INFO, "Rewind buffer is empty");
+		}
+		_stub->_pi.rewind = false;
 	}
 }
 
@@ -1817,6 +1829,7 @@ uint16_t Game::getRandomNumber() {
 
 void Game::changeLevel() {
 	_vid.fadeOut();
+	clearStateRewind();
 	loadLevelData();
 	loadLevelMap();
 	_vid.setPalette0xF();
@@ -1981,6 +1994,9 @@ void Game::makeGameStateName(uint8_t slot, char *buf) {
 static const uint32_t TAG_FBSV = 0x46425356;
 
 bool Game::saveGameState(uint8_t slot) {
+	if (slot == kAutoSaveSlot) {
+		return saveStateRewind();
+	}
 	bool success = false;
 	char stateFile[32];
 	makeGameStateName(slot, stateFile);
@@ -2008,6 +2024,9 @@ bool Game::saveGameState(uint8_t slot) {
 }
 
 bool Game::loadGameState(uint8_t slot) {
+	if (slot == kAutoSaveSlot) {
+		return loadStateRewind();
+	}
 	bool success = false;
 	char stateFile[32];
 	makeGameStateName(slot, stateFile);
@@ -2175,6 +2194,53 @@ void Game::loadState(File *f) {
 		}
 	}
 	resetGameState();
+}
+
+void Game::clearStateRewind() {
+	// debug(DBG_INFO, "Clear rewind state (count %d)", _rewindLen);
+	for (int i = 0; i < _rewindLen; ++i) {
+		int ptr = _rewindPtr - i;
+		if (ptr < 0) {
+			ptr += kRewindSize;
+		}
+		_rewindBuffer[ptr].close();
+	}
+	_rewindPtr = -1;
+	_rewindLen = 0;
+}
+
+bool Game::saveStateRewind() {
+	if (_rewindPtr == kRewindSize - 1) {
+		_rewindPtr = 0;
+	} else {
+		++_rewindPtr;
+	}
+	static const int kGameStateSize = 16384;
+	File &f = _rewindBuffer[_rewindPtr];
+	f.openMemoryBuffer(kGameStateSize);
+	saveState(&f);
+	if (_rewindLen < kRewindSize) {
+		++_rewindLen;
+	}
+	// debug(DBG_INFO, "Save state for rewind (index %d, count %d, size %d)", _rewindPtr, _rewindLen, f.size());
+	return !f.ioErr();
+}
+
+bool Game::loadStateRewind() {
+	const int ptr = _rewindPtr;
+	if (_rewindPtr == 0) {
+		_rewindPtr = kRewindSize - 1;
+	} else {
+		--_rewindPtr;
+	}
+	File &f = _rewindBuffer[ptr];
+	f.seek(0);
+	loadState(&f);
+	if (_rewindLen > 0) {
+		--_rewindLen;
+	}
+	// debug(DBG_INFO, "Rewind state (index %d, count %d, size %d)", ptr, _rewindLen, f.size());
+	return !f.ioErr();
 }
 
 void AnimBuffers::addState(uint8_t stateNum, int16_t x, int16_t y, const uint8_t *dataPtr, LivePGE *pge, uint8_t w, uint8_t h) {

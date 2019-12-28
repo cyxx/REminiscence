@@ -17,7 +17,7 @@ const Cutscene::OpcodeStub Cutscene::_opcodeTable[] = {
 	/* 0x04 */
 	&Cutscene::op_setPalette,
 	&Cutscene::op_markCurPos,
-	&Cutscene::op_drawStringAtBottom,
+	&Cutscene::op_drawCaptionText,
 	&Cutscene::op_nop,
 	/* 0x08 */
 	&Cutscene::op_skip3,

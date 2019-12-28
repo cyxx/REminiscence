@@ -20,6 +20,7 @@ struct File {
 
 	bool open(const char *filename, const char *mode, FileSystem *fs);
 	bool open(const char *filename, const char *mode, const char *directory);
+	void openMemoryBuffer(int initialCapacity);
 	void close();
 	bool ioErr() const;
 	uint32_t size();

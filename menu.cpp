@@ -212,9 +212,6 @@ bool Menu::handlePasswordScreen() {
 		if (c != 0) {
 			_stub->_pi.lastChar = 0;
 			if (len < 6) {
-				if (c >= 'a' && c <= 'z') {
-					c &= ~0x20;
-				}
 				if ((c >= 'A' && c <= 'Z') || (c == 0x20)) {
 					password[len] = c;
 					++len;

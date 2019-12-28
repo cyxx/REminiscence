@@ -24,6 +24,7 @@ void SeqDemuxer::close() {
 	for (int i = 0; i < kBuffersCount; ++i) {
 		free(_buffers[i].data);
 	}
+	memset(_buffers, 0, sizeof(_buffers));
 }
 
 bool SeqDemuxer::readHeader() {

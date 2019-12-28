@@ -128,7 +128,7 @@ struct Cutscene {
 	void op_waitForSync();
 	void op_drawShape();
 	void op_setPalette();
-	void op_drawStringAtBottom();
+	void op_drawCaptionText();
 	void op_nop();
 	void op_skip3();
 	void op_refreshAll();

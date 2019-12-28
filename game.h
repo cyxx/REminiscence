@@ -27,8 +27,9 @@ struct Game {
 
 	enum {
 		kIngameSaveSlot = 0,
+		kRewindSize = 120, // 10mins (~2MB)
 		kAutoSaveSlot = 255,
-		kAutoSaveIntervalMs = 120 * 1000
+		kAutoSaveIntervalMs = 5 * 1000
 	};
 
 	enum {
@@ -68,6 +69,8 @@ struct Game {
 	SystemStub *_stub;
 	FileSystem *_fs;
 	const char *_savePath;
+	File _rewindBuffer[kRewindSize];
+	int _rewindPtr, _rewindLen;
 
 	const uint8_t *_stringsTable;
 	const char **_textsTable;
@@ -384,6 +387,9 @@ struct Game {
 	bool loadGameState(uint8_t slot);
 	void saveState(File *f);
 	void loadState(File *f);
+	void clearStateRewind();
+	bool saveStateRewind();
+	bool loadStateRewind();
 };
 
 #endif // GAME_H__

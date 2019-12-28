@@ -16,52 +16,48 @@ struct UnpackCtx {
 };
 
 static bool nextBit(UnpackCtx *uc) {
-	bool carry = (uc->bits & 1) != 0;
+	bool bit = (uc->bits & 1) != 0;
 	uc->bits >>= 1;
 	if (uc->bits == 0) { // getnextlwd
-		uc->bits = READ_BE_UINT32(uc->src); uc->src -= 4;
-		uc->crc ^= uc->bits;
-		carry = (uc->bits & 1) != 0;
-		uc->bits = (1 << 31) | (uc->bits >> 1);
+		const uint32_t bits = READ_BE_UINT32(uc->src); uc->src -= 4;
+		uc->crc ^= bits;
+		bit = (bits & 1) != 0;
+		uc->bits = (1 << 31) | (bits >> 1);
 	}
-	return carry;
+	return bit;
 }
 
-static int getBits(UnpackCtx *uc, int count) { // rdd1bits
-	int bits = 0;
+template<int count>
+static uint32_t getBits(UnpackCtx *uc) { // rdd1bits
+	uint32_t bits = 0;
 	for (int i = 0; i < count; ++i) {
-		bits <<= 1;
-		if (nextBit(uc)) {
-			bits |= 1;
-		}
+		bits |= (nextBit(uc) ? 1 : 0) << (count - 1 - i);
 	}
 	return bits;
 }
 
-static void copyLiteral(UnpackCtx *uc, int bitsCount, int len) { // getd3chr
-	int count = getBits(uc, bitsCount) + len + 1;
-	uc->size -= count;
+static void copyLiteral(UnpackCtx *uc, int len) { // getd3chr
+	uc->size -= len;
 	if (uc->size < 0) {
-		count += uc->size;
+		len += uc->size;
 		uc->size = 0;
 	}
-	for (int i = 0; i < count; ++i) {
-		*(uc->dst - i) = (uint8_t)getBits(uc, 8);
+	for (int i = 0; i < len; ++i) {
+		*(uc->dst - i) = (uint8_t)getBits<8>(uc);
 	}
-	uc->dst -= count;
+	uc->dst -= len;
 }
 
-static void copyReference(UnpackCtx *uc, int bitsCount, int count) { // copyd3bytes
-	uc->size -= count;
+static void copyReference(UnpackCtx *uc, int len, int offset) { // copyd3bytes
+	uc->size -= len;
 	if (uc->size < 0) {
-		count += uc->size;
+		len += uc->size;
 		uc->size = 0;
 	}
-	const int offset = getBits(uc, bitsCount);
-	for (int i = 0; i < count; ++i) {
+	for (int i = 0; i < len; ++i) {
 		*(uc->dst - i) = *(uc->dst - i + offset);
 	}
-	uc->dst -= count;
+	uc->dst -= len;
 }
 
 bool bytekiller_unpack(uint8_t *dst, int dstSize, const uint8_t *src, int srcSize) {
@@ -79,24 +75,26 @@ bool bytekiller_unpack(uint8_t *dst, int dstSize, const uint8_t *src, int srcSiz
 	do {
 		if (!nextBit(&uc)) {
 			if (!nextBit(&uc)) {
-				copyLiteral(&uc, 3, 0);
+				copyLiteral(&uc, getBits<3>(&uc) + 1);
 			} else {
-				copyReference(&uc, 8, 2);
+				copyReference(&uc, 2, getBits<8>(&uc));
 			}
 		} else {
-			const int code = getBits(&uc, 2);
+			const int code = getBits<2>(&uc);
 			switch (code) {
 			case 3:
-				copyLiteral(&uc, 8, 8);
+				copyLiteral(&uc, getBits<8>(&uc) + 9);
 				break;
-			case 2:
-				copyReference(&uc, 12, getBits(&uc, 8) + 1);
+			case 2: {
+					const int len = getBits<8>(&uc) + 1;
+					copyReference(&uc, len, getBits<12>(&uc));
+				}
 				break;
 			case 1:
-				copyReference(&uc, 10, 4);
+				copyReference(&uc, 4, getBits<10>(&uc));
 				break;
 			case 0:
-				copyReference(&uc, 9, 3);
+				copyReference(&uc, 3, getBits<9>(&uc));
 				break;
 			}
 		}

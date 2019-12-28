@@ -1,4 +1,3 @@
-
 /*
  * REminiscence - Flashback interpreter
  * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
@@ -22,7 +21,7 @@ static const uint32_t kPixelFormat = SDL_PIXELFORMAT_RGB888;
 ScalerParameters ScalerParameters::defaults() {
 	ScalerParameters params;
 	params.type = kScalerTypeInternal;
-	params.scaler = &_internalScaler;
+	params.name[0] = 0;
 	params.factor = _internalScaler.factorMin + (_internalScaler.factorMax - _internalScaler.factorMin) / 2;
 	return params;
 }
@@ -47,15 +46,16 @@ struct SystemStub_SDL : SystemStub {
 	void *_audioCbData;
 	int _screenshot;
 	ScalerType _scalerType;
-	const Scaler *_scaler;
 	int _scaleFactor;
+	const Scaler *_scaler;
+	void *_scalerSo;
 	int _widescreenMode;
 	SDL_Texture *_widescreenTexture;
 	int _wideMargin;
 	bool _enableWidescreen;
 
 	virtual ~SystemStub_SDL() {}
-	virtual void init(const char *title, int w, int h, bool fullscreen, int widescreenMode, ScalerParameters *scalerParameters);
+	virtual void init(const char *title, int w, int h, bool fullscreen, int widescreenMode, const ScalerParameters *scalerParameters);
 	virtual void destroy();
 	virtual bool hasWidescreen() const;
 	virtual void setScreenSize(int w, int h);
@@ -88,7 +88,8 @@ struct SystemStub_SDL : SystemStub {
 	void prepareGraphics();
 	void cleanupGraphics();
 	void changeGraphics(bool fullscreen, int scaleFactor);
-	void changeScaler(int scaler);
+	void setScaler(const ScalerParameters *parameters);
+	void changeScaler(int scalerNum);
 	void drawRect(int x, int y, int w, int h, uint8_t color);
 };
 
@@ -96,7 +97,7 @@ SystemStub *SystemStub_SDL_create() {
 	return new SystemStub_SDL();
 }
 
-void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int widescreenMode, ScalerParameters *scalerParameters) {
+void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int widescreenMode, const ScalerParameters *scalerParameters) {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 	SDL_ShowCursor(SDL_DISABLE);
 	_caption = title;
@@ -108,9 +109,13 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int 
 	_screenBuffer = 0;
 	_fadeOnUpdateScreen = false;
 	_fullscreen = fullscreen;
-	_scalerType = scalerParameters->type;
-	_scaler = scalerParameters->scaler;
-	_scaleFactor = _scaler ? CLIP(scalerParameters->factor, _scaler->factorMin, _scaler->factorMax) : 1;
+	_scalerType = kScalerTypeInternal;
+	_scaleFactor = 1;
+	_scaler = 0;
+	_scalerSo = 0;
+	if (scalerParameters->name[0]) {
+		setScaler(scalerParameters);
+	}
 	memset(_rgbPalette, 0, sizeof(_rgbPalette));
 	memset(_darkPalette, 0, sizeof(_darkPalette));
 	_screenW = _screenH = 0;
@@ -142,6 +147,10 @@ void SystemStub_SDL::destroy() {
 	if (_fmt) {
 		SDL_FreeFormat(_fmt);
 		_fmt = 0;
+	}
+	if (_scalerSo) {
+		SDL_UnloadObject(_scalerSo);
+		_scalerSo = 0;
 	}
 	if (_controller) {
 		SDL_GameControllerClose(_controller);
@@ -352,46 +361,107 @@ void SystemStub_SDL::copyWidescreenMirror(int w, int h, const uint8_t *buf) {
 	}
 }
 
-static uint32_t blurPixel(int x, int y, const uint8_t *src, const uint32_t *pal, int pitch, int w, int h, const SDL_PixelFormat *fmt) {
-	static const uint8_t blurMat[3 * 3] = {
-		2, 4, 2,
-		4, 8, 4,
-		2, 4, 2
-	};
-	static const int blurMatSigma = 32 * 2;
+static void blur_h(int radius, const uint32_t *src, int srcPitch, int w, int h, const SDL_PixelFormat *fmt, uint32_t *dst, int dstPitch) {
 
-	const uint32_t redBlueMask = fmt->Rmask | fmt->Bmask;
-	const uint32_t greenMask = fmt->Gmask;
+	const int count = 2 * radius + 1;
 
-	uint32_t redBlueBlurSum = 0;
-	uint32_t greenBlurSum = 0;
+	for (int y = 0; y < h; ++y) {
 
-	for (int v = 0; v < 3; ++v) {
-		const int ym = CLIP(y + v - 1, 0, h - 1);
-		for (int u = 0; u < 3; ++u) {
-			const int xm = CLIP(x + u - 1, 0, w - 1);
-			const uint32_t color = pal[src[ym * pitch + xm]];
-			const int mul = blurMat[v * 3 + u];
-			redBlueBlurSum += (color & redBlueMask) * mul;
-			greenBlurSum += (color & greenMask) * mul;
+		uint32_t r = 0;
+		uint32_t g = 0;
+		uint32_t b = 0;
+
+		uint32_t color;
+
+		for (int x = -radius; x <= radius; ++x) {
+			color = src[MAX(x, 0)];
+			r += (color & fmt->Rmask) >> fmt->Rshift;
+			g += (color & fmt->Gmask) >> fmt->Gshift;
+			b += (color & fmt->Bmask) >> fmt->Bshift;
 		}
+		dst[0] = ((r / count) << fmt->Rshift) | ((g / count) << fmt->Gshift) | ((b / count) << fmt->Bshift);
+
+		for (int x = 1; x < w; ++x) {
+			color = src[MIN(x + radius, w - 1)];
+			r += (color & fmt->Rmask) >> fmt->Rshift;
+			g += (color & fmt->Gmask) >> fmt->Gshift;
+			b += (color & fmt->Bmask) >> fmt->Bshift;
+
+			color = src[MAX(x - radius - 1, 0)];
+			r -= (color & fmt->Rmask) >> fmt->Rshift;
+			g -= (color & fmt->Gmask) >> fmt->Gshift;
+			b -= (color & fmt->Bmask) >> fmt->Bshift;
+
+			dst[x] = ((r / count) << fmt->Rshift) | ((g / count) << fmt->Gshift) | ((b / count) << fmt->Bshift);
+		}
+
+		src += srcPitch;
+		dst += dstPitch;
 	}
-	return ((redBlueBlurSum / blurMatSigma) & redBlueMask) | ((greenBlurSum / blurMatSigma) & greenMask);
+}
+
+static void blur_v(int radius, const uint32_t *src, int srcPitch, int w, int h, const SDL_PixelFormat *fmt, uint32_t *dst, int dstPitch) {
+
+	const int count = 2 * radius + 1;
+
+	for (int x = 0; x < w; ++x) {
+
+		uint32_t r = 0;
+		uint32_t g = 0;
+		uint32_t b = 0;
+
+		uint32_t color;
+
+		for (int y = -radius; y <= radius; ++y) {
+			color = src[MAX(y, 0) * srcPitch];
+			r += (color & fmt->Rmask) >> fmt->Rshift;
+			g += (color & fmt->Gmask) >> fmt->Gshift;
+			b += (color & fmt->Bmask) >> fmt->Bshift;
+		}
+		dst[0] = ((r / count) << fmt->Rshift) | ((g / count) << fmt->Gshift) | ((b / count) << fmt->Bshift);
+
+		for (int y = 1; y < h; ++y) {
+			color = src[MIN(y + radius, h - 1) * srcPitch];
+			r += (color & fmt->Rmask) >> fmt->Rshift;
+			g += (color & fmt->Gmask) >> fmt->Gshift;
+			b += (color & fmt->Bmask) >> fmt->Bshift;
+
+			color = src[MAX(y - radius - 1, 0) * srcPitch];
+			r -= (color & fmt->Rmask) >> fmt->Rshift;
+			g -= (color & fmt->Gmask) >> fmt->Gshift;
+			b -= (color & fmt->Bmask) >> fmt->Bshift;
+
+			dst[y * dstPitch] = ((r / count) << fmt->Rshift) | ((g / count) << fmt->Gshift) | ((b / count) << fmt->Bshift);
+		}
+
+		++src;
+		++dst;
+	}
 }
 
 void SystemStub_SDL::copyWidescreenBlur(int w, int h, const uint8_t *buf) {
 	assert(w == _screenW && h == _screenH);
-	void *dst = 0;
+	void *ptr = 0;
 	int pitch = 0;
-	if (SDL_LockTexture(_widescreenTexture, 0, &dst, &pitch) == 0) {
+	if (SDL_LockTexture(_widescreenTexture, 0, &ptr, &pitch) == 0) {
 		assert((pitch & 3) == 0);
-		uint32_t *p = (uint32_t *)dst;
-		for (int y = 0; y < h; ++y) {
-			for (int x = 0; x < w; ++x) {
-				p[x] = blurPixel(x, y, buf, _rgbPalette, w, w, h, _fmt);
+
+		uint32_t *src = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+		uint32_t *tmp = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+		uint32_t *dst = (uint32_t *)ptr;
+
+		if (src && tmp) {
+			for (int i = 0; i < w * h; ++i) {
+				src[i] = _rgbPalette[buf[i]];
 			}
-			p += pitch / sizeof(uint32_t);
+			static const int radius = 8;
+			blur_h(radius, src, w, w, h, _fmt, tmp, w);
+			blur_v(radius, tmp, w, w, h, _fmt, dst, pitch / sizeof(uint32_t));
 		}
+
+		free(src);
+		free(tmp);
+
 		SDL_UnlockTexture(_widescreenTexture);
 	}
 }
@@ -473,6 +543,23 @@ void SystemStub_SDL::processEvents() {
 			break;
 		}
 		SDL_Delay(100);
+	}
+}
+
+// only used for the protection codes and level passwords
+static void setAsciiChar(PlayerInput &pi, const SDL_Keysym *key) {
+	if (key->sym >= SDLK_0 && key->sym <= SDLK_9) {
+		pi.lastChar = '0' + key->sym - SDLK_0;
+	} else if (key->sym >= SDLK_a && key->sym <= SDLK_z) {
+		pi.lastChar = 'A' + key->sym - SDLK_a;
+	} else if (key->scancode == SDL_SCANCODE_0) {
+		pi.lastChar = '0';
+	} else if (key->scancode >= SDL_SCANCODE_1 && key->scancode <= SDL_SCANCODE_9) {
+		pi.lastChar = '1' + key->scancode - SDL_SCANCODE_1;
+	} else if (key->sym == SDLK_SPACE || key->sym == SDLK_KP_SPACE) {
+		pi.lastChar = ' ';
+	} else {
+		pi.lastChar = 0;
 	}
 }
 
@@ -681,6 +768,9 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 			case SDLK_l:
 				_pi.load = true;
 				break;
+			case SDLK_r:
+				_pi.rewind = true;
+				break;
 			case SDLK_KP_PLUS:
 			case SDLK_PAGEUP:
 				_pi.stateSlot = 1;
@@ -692,7 +782,7 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 			}
 			break;
 		}
-		_pi.lastChar = ev.key.keysym.sym;
+		setAsciiChar(_pi, &ev.key.keysym);
 		switch (ev.key.keysym.sym) {
 		case SDLK_LEFT:
 			_pi.dirMask &= ~PlayerInput::DIR_LEFT;
@@ -917,39 +1007,97 @@ void SystemStub_SDL::changeGraphics(bool fullscreen, int scaleFactor) {
 	prepareGraphics();
 }
 
-void SystemStub_SDL::changeScaler(int scaler) {
-	ScalerParameters scalerParameters = ScalerParameters::defaults();
-	switch (scaler) {
+void SystemStub_SDL::setScaler(const ScalerParameters *parameters) {
+	static const struct {
+		const char *name;
+		int type;
+		const Scaler *scaler;
+	} scalers[] = {
+		{ "point", kScalerTypePoint, 0 },
+		{ "linear", kScalerTypeLinear, 0 },
+		{ "scale", kScalerTypeInternal, &_internalScaler },
+#ifdef USE_STATIC_SCALER
+		{ "nearest", kScalerTypeInternal, &scaler_nearest },
+		{ "tv2x", kScalerTypeInternal, &scaler_tv2x },
+		{ "xbr", kScalerTypeInternal, &scaler_xbr },
+#endif
+		{ 0, -1 }
+	};
+	bool found = false;
+	for (int i = 0; scalers[i].name; ++i) {
+		if (strcmp(scalers[i].name, parameters->name) == 0) {
+			_scalerType = (ScalerType)scalers[i].type;
+			_scaler = scalers[i].scaler;
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+#ifdef _WIN32
+		static const char *libSuffix = "dll";
+#else
+		static const char *libSuffix = "so";
+#endif
+		char libname[64];
+		snprintf(libname, sizeof(libname), "scaler_%s.%s", parameters->name, libSuffix);
+		_scalerSo = SDL_LoadObject(libname);
+		if (!_scalerSo) {
+			warning("Scaler '%s' not found, using default", libname);
+		} else {
+			static const char *kSoSym = "getScaler";
+			void *symbol = SDL_LoadFunction(_scalerSo, kSoSym);
+			if (!symbol) {
+				warning("Symbol '%s' not found in '%s'", kSoSym, libname);
+			} else {
+				typedef const Scaler *(*GetScalerProc)();
+				const Scaler *scaler = ((GetScalerProc)symbol)();
+				const int tag = scaler ? scaler->tag : 0;
+				if (tag != SCALER_TAG) {
+					warning("Unexpected tag %d for scaler '%s'", tag, libname);
+				} else {
+					_scalerType = kScalerTypeExternal;
+					_scaler = scaler;
+				}
+			}
+		}
+	}
+	_scaleFactor = _scaler ? CLIP(parameters->factor, _scaler->factorMin, _scaler->factorMax) : 1;
+}
+
+void SystemStub_SDL::changeScaler(int scalerNum) {
+	ScalerType type = kScalerTypeInternal;
+	const Scaler *scaler = 0;
+	switch (scalerNum) {
 	case 0:
-		scalerParameters.type = kScalerTypePoint;
+		type = kScalerTypePoint;
 		break;
 	case 1:
-		scalerParameters.type = kScalerTypeLinear;
+		type = kScalerTypeLinear;
 		break;
 	case 2:
-		scalerParameters.type = kScalerTypeInternal;
-		scalerParameters.scaler = &_internalScaler;
+		type = kScalerTypeInternal;
+		scaler = &_internalScaler;
 		break;
 #ifdef USE_STATIC_SCALER
 	case 3:
-		scalerParameters.type = kScalerTypeInternal;
-		scalerParameters.scaler = &scaler_nearest;
+		type = kScalerTypeInternal;
+		scaler = &scaler_nearest;
 		break;
 	case 4:
-		scalerParameters.type = kScalerTypeInternal;
-		scalerParameters.scaler = &scaler_tv2x;
+		type = kScalerTypeInternal;
+		scaler = &scaler_tv2x;
 		break;
 	case 5:
-		scalerParameters.type = kScalerTypeInternal;
-		scalerParameters.scaler = &scaler_xbr;
+		type = kScalerTypeInternal;
+		scaler = &scaler_xbr;
 		break;
 #endif
 	default:
 		return;
 	}
-	if (_scalerType != scalerParameters.type || scalerParameters.scaler != _scaler) {
-		_scalerType = scalerParameters.type;
-		_scaler = scalerParameters.scaler;
+	if (_scalerType != type || scaler != _scaler) {
+		_scalerType = type;
+		_scaler = scaler;
 		if (_scalerType == kScalerTypeInternal || _scalerType == kScalerTypeExternal) {
 			_scaleFactor = CLIP(_scaleFactor, _scaler->factorMin, _scaler->factorMax);
 		} else {

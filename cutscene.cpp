@@ -410,8 +410,8 @@ void Cutscene::op_setPalette() {
 	}
 }
 
-void Cutscene::op_drawStringAtBottom() {
-	debug(DBG_CUT, "Cutscene::op_drawStringAtBottom()");
+void Cutscene::op_drawCaptionText() {
+	debug(DBG_CUT, "Cutscene::op_drawCaptionText()");
 	uint16_t strId = fetchNextCmdWord();
 	if (!_creditsSequence) {
 
@@ -1036,7 +1036,7 @@ bool Cutscene::load(uint16_t cutName) {
 			//
 			uint8_t *p = _res->_cmd + 0x322;
 			if (memcmp(p, "\x00\x18\x00\x3a", 4) == 0) {
-				p[0] = 0x06 << 2; // op_drawStringAtBottom
+				p[0] = 0x06 << 2; // op_drawCaptionText
 				p[1] = 0x00;
 				p[2] = 0x3a;
 				p[3] = 0x00; // op_markCurPos

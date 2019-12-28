@@ -9,13 +9,11 @@
 #include "systemstub.h"
 
 static uint8_t reverseBits(uint8_t ch) {
-	uint8_t r = 0;
-	for (int b = 0; b < 8; ++b) {
-		if (ch & (1 << b)) {
-			r |= (1 << (7 - b));
-		}
-	}
-	return r;
+	static const uint8_t lut[] = {
+		0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE,
+		0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF
+	};
+	return (lut[ch & 15] << 4) | lut[ch >> 4];
 }
 
 static uint8_t decryptChar(uint8_t ch) {
@@ -114,9 +112,6 @@ bool Game::handleProtectionScreenShape() {
 		if (c != 0) {
 			_stub->_pi.lastChar = 0;
 			if (len < kCodeLen) {
-				if (c >= 'a' && c <= 'z') {
-					c &= ~0x20;
-				}
 				if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
 					codeText[len] = c;
 					++len;
@@ -201,7 +196,7 @@ bool Game::handleProtectionScreenWords() {
 	const uint8_t code = getRandomNumber() % kWordsCount;
 	const uint8_t *protectionData = _protectionWordData + code * 18;
 
-	const char *kSecurityCodeText = "SECURITY CODE";
+	static const char *kSecurityCodeText = "SECURITY CODE";
 	_vid.drawString(kSecurityCodeText, 72 + (114 - strlen(kSecurityCodeText) * 8) / 2, 158, 0xE4);
 	char buf[16];
 	snprintf(buf, sizeof(buf), "PAGE %d", protectionData[0]);
@@ -229,9 +224,6 @@ bool Game::handleProtectionScreenWords() {
 		if (c != 0) {
 			_stub->_pi.lastChar = 0;
 			if (len < kCodeLen) {
-				if (c >= 'a' && c <= 'z') {
-					c &= ~0x20;
-				}
 				if (c >= 'A' && c <= 'Z') {
 					codeText[len] = c;
 					++len;

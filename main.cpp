@@ -156,50 +156,13 @@ static void initOptions() {
 }
 
 static void parseScaler(char *name, ScalerParameters *scalerParameters) {
-	static const struct {
-		const char *name;
-		int type;
-		const Scaler *scaler;
-	} scalers[] = {
-		{ "point", kScalerTypePoint, 0 },
-		{ "linear", kScalerTypeLinear, 0 },
-		{ "scale", kScalerTypeInternal, &_internalScaler },
-#ifdef USE_STATIC_SCALER
-		{ "nearest", kScalerTypeInternal, &scaler_nearest },
-		{ "tv2x", kScalerTypeInternal, &scaler_tv2x },
-		{ "xbr", kScalerTypeInternal, &scaler_xbr },
-#endif
-		{ 0, -1 }
-	};
-	bool found = false;
 	char *sep = strchr(name, '@');
 	if (sep) {
 		*sep = 0;
-	}
-	for (int i = 0; scalers[i].name; ++i) {
-		if (strcmp(scalers[i].name, name) == 0) {
-			scalerParameters->type = (ScalerType)scalers[i].type;
-			scalerParameters->scaler = scalers[i].scaler;
-			found = true;
-			break;
-		}
-	}
-	if (!found) {
-		char libname[32];
-		snprintf(libname, sizeof(libname), "scaler_%s", name);
-		const Scaler *scaler = findScaler(libname);
-		if (!scaler) {
-			warning("Scaler '%s' not found, using default", libname);
-		} else if (scaler->tag != SCALER_TAG) {
-			warning("Unexpected tag %d for scaler '%s'", scaler->tag, libname);
-		} else {
-			scalerParameters->type = kScalerTypeExternal;
-			scalerParameters->scaler = scaler;
-		}
-	}
-	if (sep) {
 		scalerParameters->factor = atoi(sep + 1);
 	}
+	strncpy(scalerParameters->name, name, sizeof(scalerParameters->name) - 1);
+	scalerParameters->name[sizeof(scalerParameters->name) - 1] = 0;
 }
 
 static WidescreenMode parseWidescreen(const char *mode) {

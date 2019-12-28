@@ -35,6 +35,7 @@ struct PlayerInput {
 	bool save;
 	bool load;
 	int stateSlot;
+	bool rewind;
 
 	uint8_t dbgMask;
 	bool quit;
@@ -42,7 +43,7 @@ struct PlayerInput {
 
 struct ScalerParameters {
 	ScalerType type;
-	const Scaler *scaler;
+	char name[32];
 	int factor;
 
 	static ScalerParameters defaults();
@@ -55,7 +56,7 @@ struct SystemStub {
 
 	virtual ~SystemStub() {}
 
-	virtual void init(const char *title, int w, int h, bool fullscreen, int widescreenMode, ScalerParameters *scalerParameters) = 0;
+	virtual void init(const char *title, int w, int h, bool fullscreen, int widescreenMode, const ScalerParameters *scalerParameters) = 0;
 	virtual void destroy() = 0;
 
 	virtual bool hasWidescreen() const = 0;
