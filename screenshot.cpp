@@ -2,39 +2,28 @@
 #include "screenshot.h"
 #include "file.h"
 
-static void TO_LE16(uint8_t *dst, uint16_t value) {
-	for (int i = 0; i < 2; ++i) {
-		dst[i] = value & 255;
-		value >>= 8;
-	}
-}
-
 #define kTgaImageTypeUncompressedTrueColor 2
 #define kTgaImageTypeRunLengthEncodedTrueColor 10
 #define kTgaDirectionTop (1 << 5)
 
-static const int TGA_HEADER_SIZE = 18;
-
 void saveTGA(const char *filename, const uint8_t *rgba, int w, int h) {
-
 	static const uint8_t kImageType = kTgaImageTypeRunLengthEncodedTrueColor;
-	uint8_t buffer[TGA_HEADER_SIZE];
-	buffer[0]            = 0; // ID Length
-	buffer[1]            = 0; // ColorMap Type
-	buffer[2]            = kImageType;
-	TO_LE16(buffer +  3,   0); // ColorMap Start
-	TO_LE16(buffer +  5,   0); // ColorMap Length
-	buffer[7]            = 0;  // ColorMap Bits
-	TO_LE16(buffer +  8,   0); // X-origin
-	TO_LE16(buffer + 10,   0); // Y-origin
-	TO_LE16(buffer + 12,   w); // Image Width
-	TO_LE16(buffer + 14,   h); // Image Height
-	buffer[16]           = 24; // Pixel Depth
-	buffer[17]           = kTgaDirectionTop;  // Descriptor
-
 	File f;
 	if (f.open(filename, "wb", ".")) {
-		f.write(buffer, sizeof(buffer));
+
+		f.writeByte(0); // ID Length
+		f.writeByte(0); // ColorMap Type
+		f.writeByte(kImageType);
+		f.writeUint16LE(0); // ColorMap Start
+		f.writeUint16LE(0); // ColorMap Length
+		f.writeByte(0);     // ColorMap Bits
+		f.writeUint16LE(0); // X-origin
+		f.writeUint16LE(0); // Y-origin
+		f.writeUint16LE(w); // Image Width
+		f.writeUint16LE(h); // Image Height
+		f.writeByte(24);    // Pixel Depth
+		f.writeByte(kTgaDirectionTop); // Descriptor
+
 		if (kImageType == kTgaImageTypeUncompressedTrueColor) {
 			for (int i = 0; i < w * h; ++i) {
 				f.writeByte(rgba[0]);

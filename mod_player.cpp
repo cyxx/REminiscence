@@ -40,6 +40,7 @@ struct ModPlayer_impl {
 		if (data) {
 			f->read(data, size);
 			_mf = ModPlug_Load(data, size);
+			free(data);
 		}
 		return _mf != 0;
 	}

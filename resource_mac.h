@@ -39,6 +39,7 @@ struct ResourceMac {
 	ResourceMacMap _map;
 	ResourceMacType *_types;
 	ResourceMacEntry **_entries;
+	int _sndIndex;
 
 	ResourceMac(const char *filePath, FileSystem *);
 	~ResourceMac();

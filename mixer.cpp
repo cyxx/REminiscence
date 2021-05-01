@@ -91,7 +91,7 @@ void Mixer::playMusic(int num) {
 	debug(DBG_SND, "Mixer::playMusic(%d)", num);
 	if (num > MUSIC_TRACK && num != _musicTrack) {
 		if (_ogg.playTrack(num - MUSIC_TRACK)) {
-			_musicType = MT_OGG;
+			_backgroundMusicType = _musicType = MT_OGG;
 			_musicTrack = num;
 			return;
 		}

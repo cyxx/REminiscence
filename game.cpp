@@ -365,7 +365,7 @@ void Game::resetGameState() {
 	_deathCutsceneCounter = 0;
 	_saveStateCompleted = false;
 	_loadMap = true;
-	pge_resetGroups();
+	pge_resetMessages();
 	_blinkingConradCounter = 0;
 	_pge_processOBJ = false;
 	_pge_opTempVar1 = 0;
@@ -1699,9 +1699,6 @@ void Game::loadLevelData() {
 	}
 
 	_cut._id = lvl->cutscene_id;
-	if (_res._isDemo && _currentLevel == 5) { // PC demo does not include TELEPORT.*
-		_cut._id = 0xFFFF;
-	}
 
 	_curMonsterNum = 0xFFFF;
 	_curMonsterFrame = 0;
@@ -1741,7 +1738,7 @@ void Game::loadLevelData() {
 			_pge_liveTable1[pge->room_location] = pge;
 		}
 	}
-	pge_resetGroups();
+	pge_resetMessages();
 	_validSaveState = false;
 
 	_mix.playMusic(Mixer::MUSIC_TRACK + lvl->track);
@@ -1811,8 +1808,10 @@ void Game::playSound(uint8_t num, uint8_t softVol) {
 	} else if (num >= 68 && num <= 75) {
 		// in-game music
 		_mix.playMusic(num);
+	} else if (num == 76) {
+		// metro
 	} else if (num == 77) {
-		// triggered when Conrad reaches a platform
+		// triggered when Conrad draw his gun
 	} else {
 		warning("Unknown sound num %d", num);
 	}

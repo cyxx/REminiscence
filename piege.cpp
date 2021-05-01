@@ -10,46 +10,47 @@
 #include "systemstub.h"
 #include "util.h"
 
-void Game::pge_resetGroups() {
-	memset(_pge_groupsTable, 0, sizeof(_pge_groupsTable));
-	GroupPGE *le = &_pge_groups[0];
-	_pge_nextFreeGroup = le;
+void Game::pge_resetMessages() {
+	memset(_pge_messagesTable, 0, sizeof(_pge_messagesTable));
+	MessagePGE *le = &_pge_messages[0];
+	_pge_nextFreeMessage = le;
 	int n = 0xFF;
 	while (n--) {
 		le->next_entry = le + 1;
 		le->index = 0;
-		le->group_id = 0;
+		le->msg_num = 0;
 		++le;
 	}
 	le->next_entry = 0;
 	le->index = 0;
-	le->group_id = 0;
+	le->msg_num = 0;
 }
 
-void Game::pge_removeFromGroup(uint8_t idx) {
-	GroupPGE *le = _pge_groupsTable[idx];
+void Game::pge_clearMessages(uint8_t pge_index) {
+	MessagePGE *le = _pge_messagesTable[pge_index];
 	if (le) {
-		_pge_groupsTable[idx] = 0;
-		GroupPGE *next = _pge_nextFreeGroup;
+		_pge_messagesTable[pge_index] = 0;
+		MessagePGE *next = _pge_nextFreeMessage;
 		while (le) {
-			GroupPGE *cur = le->next_entry;
+			MessagePGE *cur = le->next_entry;
 			le->next_entry = next;
 			le->index = 0;
-			le->group_id = 0;
+			le->msg_num = 0;
 			next = le;
 			le = cur;
 		}
-		_pge_nextFreeGroup = next;
+		_pge_nextFreeMessage = next;
 	}
 }
 
-int Game::pge_isInGroup(LivePGE *pge_dst, uint16_t group_id, uint16_t counter) {
+int Game::pge_hasMessageData(LivePGE *pge, uint16_t msg_num, uint16_t counter) const {
 	assert(counter >= 1 && counter <= 4);
-	uint16_t c = pge_dst->init_PGE->counter_values[counter - 1];
-	GroupPGE *le = _pge_groupsTable[pge_dst->index];
+	uint16_t pge_src_index = pge->init_PGE->counter_values[counter - 1];
+	const MessagePGE *le = _pge_messagesTable[pge->index];
 	while (le) {
-		if (le->group_id == group_id && le->index == c)
+		if (le->msg_num == msg_num && le->index == pge_src_index) {
 			return 1;
+		}
 		le = le->next_entry;
 	}
 	return 0;
@@ -117,7 +118,7 @@ void Game::pge_process(LivePGE *pge) {
 	_pge_playAnimSound = true;
 	_pge_currentPiegeFacingDir = (pge->flags & 1) != 0;
 	_pge_currentPiegeRoom = pge->room_location;
-	GroupPGE *le = _pge_groupsTable[pge->index];
+	MessagePGE *le = _pge_messagesTable[pge->index];
 	if (le) {
 		pge_setupNextAnimFrame(pge, le);
 	}
@@ -129,7 +130,7 @@ void Game::pge_process(LivePGE *pge) {
 		Object *obj = &on->objects[pge->first_obj_number];
 		while (1) {
 			if (obj->type != pge->obj_type) {
-				pge_removeFromGroup(pge->index);
+				pge_clearMessages(pge->index);
 				return;
 			}
 			uint16_t _ax = pge_execute(pge, init_pge, obj);
@@ -137,7 +138,7 @@ void Game::pge_process(LivePGE *pge) {
 				if (_currentLevel == 6 && (_currentRoom == 50 || _currentRoom == 51)) {
 					if (pge->index == 79 && _ax == 0xFFFF && obj->opcode1 == 0x60 && obj->opcode2 == 0 && obj->opcode3 == 0) {
 						if (col_getGridPos(&_pgeLive[79], 0) == col_getGridPos(&_pgeLive[0], 0)) {
-							pge_updateGroup(79, 0, 4);
+							pge_sendMessage(79, 0, 4);
 						}
 					}
 				}
@@ -156,37 +157,37 @@ void Game::pge_process(LivePGE *pge) {
 	}
 	pge_setupAnim(pge);
 	++pge->anim_seq;
-	pge_removeFromGroup(pge->index);
+	pge_clearMessages(pge->index);
 }
 
-void Game::pge_setupNextAnimFrame(LivePGE *pge, GroupPGE *le) {
+void Game::pge_setupNextAnimFrame(LivePGE *pge, MessagePGE *le) {
 	InitPGE *init_pge = pge->init_PGE;
 	assert(init_pge->obj_node_number < _res._numObjectNodes);
 	ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 	Object *obj = &on->objects[pge->first_obj_number];
 	int i = pge->first_obj_number;
 	while (i < on->last_obj_number && pge->obj_type == obj->type) {
-		GroupPGE *next_le = le;
+		MessagePGE *next_le = le;
 		while (next_le) {
-			uint16_t groupId = next_le->group_id;
-			if (obj->opcode2 == 0x6B) { // pge_op_isInGroupSlice
+			uint16_t msgNum = next_le->msg_num;
+			if (obj->opcode2 == 0x6B) { // pge_isToggleable
 				if (obj->opcode_arg2 == 0) {
-					if (groupId == 1 || groupId == 2) goto set_anim;
+					if (msgNum == 1 || msgNum == 2) goto set_anim;
 				}
 				if (obj->opcode_arg2 == 1) {
-					if (groupId == 3 || groupId == 4) goto set_anim;
+					if (msgNum == 3 || msgNum == 4) goto set_anim;
 				}
-			} else if (groupId == obj->opcode_arg2) {
+			} else if (msgNum == obj->opcode_arg2) {
 				if (obj->opcode2 == 0x22 || obj->opcode2 == 0x6F) goto set_anim;
 			}
-			if (obj->opcode1 == 0x6B) { // pge_op_isInGroupSlice
+			if (obj->opcode1 == 0x6B) { // pge_isToggleable
 				if (obj->opcode_arg1 == 0) {
-					if (groupId == 1 || groupId == 2) goto set_anim;
+					if (msgNum == 1 || msgNum == 2) goto set_anim;
 				}
 				if (obj->opcode_arg1 == 1) {
-					if (groupId == 3 || groupId == 4) goto set_anim;
+					if (msgNum == 3 || msgNum == 4) goto set_anim;
 				}
-			} else if (groupId == obj->opcode_arg1) {
+			} else if (msgNum == obj->opcode_arg1) {
 				if (obj->opcode1 == 0x22 || obj->opcode1 == 0x6F) goto set_anim;
 			}
 			next_le = next_le->next_entry;
@@ -796,10 +797,10 @@ int Game::pge_op_collides2u2o(ObjectOpcodeArgs *args) {
 	return 0;
 }
 
-int Game::pge_op_isInGroup(ObjectOpcodeArgs *args) {
-	GroupPGE *le = _pge_groupsTable[args->pge->index];
+int Game::pge_hasPiegeSentMessage(ObjectOpcodeArgs *args) {
+	MessagePGE *le = _pge_messagesTable[args->pge->index];
 	while (le) {
-		if (le->group_id == args->a) {
+		if (le->msg_num == args->a) {
 			return 0xFFFF;
 		}
 		le = le->next_entry;
@@ -807,27 +808,27 @@ int Game::pge_op_isInGroup(ObjectOpcodeArgs *args) {
 	return 0;
 }
 
-int Game::pge_op_updateGroup0(ObjectOpcodeArgs *args) {
+int Game::pge_op_sendMessageData0(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	pge_updateGroup(pge->index, pge->init_PGE->counter_values[0], args->a);
+	pge_sendMessage(pge->index, pge->init_PGE->counter_values[0], args->a);
 	return 0xFFFF;
 }
 
-int Game::pge_op_updateGroup1(ObjectOpcodeArgs *args) {
+int Game::pge_op_sendMessageData1(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	pge_updateGroup(pge->index, pge->init_PGE->counter_values[1], args->a);
+	pge_sendMessage(pge->index, pge->init_PGE->counter_values[1], args->a);
 	return 0xFFFF;
 }
 
-int Game::pge_op_updateGroup2(ObjectOpcodeArgs *args) {
+int Game::pge_op_sendMessageData2(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	pge_updateGroup(pge->index, pge->init_PGE->counter_values[2], args->a);
+	pge_sendMessage(pge->index, pge->init_PGE->counter_values[2], args->a);
 	return 0xFFFF;
 }
 
-int Game::pge_op_updateGroup3(ObjectOpcodeArgs *args) {
+int Game::pge_op_sendMessageData3(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	pge_updateGroup(pge->index, pge->init_PGE->counter_values[3], args->a);
+	pge_sendMessage(pge->index, pge->init_PGE->counter_values[3], args->a);
 	return 0xFFFF;
 }
 
@@ -888,7 +889,7 @@ int Game::pge_op_nop(ObjectOpcodeArgs *args) {
 int Game::pge_op_pickupObject(ObjectOpcodeArgs *args) {
 	LivePGE *pge = col_findPiege(args->pge, 3);
 	if (pge) {
-		pge_updateGroup(args->pge->index, pge->index, args->a);
+		pge_sendMessage(args->pge->index, pge->index, args->a);
 		return 0xFFFF;
 	}
 	return 0;
@@ -908,7 +909,7 @@ int Game::pge_op_copyPiege(ObjectOpcodeArgs *args) {
 	dst->pos_y = src->pos_y;
 	dst->room_location = src->room_location;
 
-	dst->flags &= 0xFE;
+	dst->flags &= ~1;
 	if (src->flags & 1) {
 		dst->flags |= 1;
 	}
@@ -918,7 +919,7 @@ int Game::pge_op_copyPiege(ObjectOpcodeArgs *args) {
 
 int Game::pge_op_removeItemFromInventory(ObjectOpcodeArgs *args) {
 	if (args->pge->current_inventory_PGE != 0xFF) {
-		pge_updateGroup(args->pge->index, args->pge->current_inventory_PGE, args->a);
+		pge_sendMessage(args->pge->index, args->pge->current_inventory_PGE, args->a);
 	}
 	return 1;
 }
@@ -960,20 +961,20 @@ int Game::pge_op_setCollisionState0(ObjectOpcodeArgs *args) {
 	return pge_updateCollisionState(args->pge, args->a, 0);
 }
 
-int Game::pge_op_isInGroup1(ObjectOpcodeArgs *args) {
-	return pge_isInGroup(args->pge, args->a, 1);
+int Game::pge_hasMessageData0(ObjectOpcodeArgs *args) {
+	return pge_hasMessageData(args->pge, args->a, 1);
 }
 
-int Game::pge_op_isInGroup2(ObjectOpcodeArgs *args) {
-	return pge_isInGroup(args->pge, args->a, 2);
+int Game::pge_hasMessageData1(ObjectOpcodeArgs *args) {
+	return pge_hasMessageData(args->pge, args->a, 2);
 }
 
-int Game::pge_op_isInGroup3(ObjectOpcodeArgs *args) {
-	return pge_isInGroup(args->pge, args->a, 3);
+int Game::pge_hasMessageData2(ObjectOpcodeArgs *args) {
+	return pge_hasMessageData(args->pge, args->a, 3);
 }
 
-int Game::pge_op_isInGroup4(ObjectOpcodeArgs *args) {
-	return pge_isInGroup(args->pge, args->a, 4);
+int Game::pge_hasMessageData3(ObjectOpcodeArgs *args) {
+	return pge_hasMessageData(args->pge, args->a, 4);
 }
 
 int Game::pge_o_unk0x3C(ObjectOpcodeArgs *args) {
@@ -1170,7 +1171,7 @@ int Game::pge_o_unk0x47(ObjectOpcodeArgs *args) {
 int Game::pge_o_unk0x48(ObjectOpcodeArgs *args) {
 	LivePGE *pge = col_findPiege(&_pgeLive[0], args->pge->init_PGE->counter_values[0]);
 	if (pge && pge->life == args->pge->life) {
-		pge_updateGroup(args->pge->index, pge->index, args->a);
+		pge_sendMessage(args->pge->index, pge->index, args->a);
 		return 1;
 	}
 	return 0;
@@ -1364,9 +1365,9 @@ int Game::pge_o_unk0x5F(ObjectOpcodeArgs *args) {
 }
 
 int Game::pge_op_findAndCopyPiege(ObjectOpcodeArgs *args) {
-	GroupPGE *le = _pge_groupsTable[args->pge->index];
+	MessagePGE *le = _pge_messagesTable[args->pge->index];
 	while (le) {
-		if (le->group_id == args->a) {
+		if (le->msg_num == args->a) {
 			args->a = le->index;
 			args->b = 0;
 			pge_op_copyPiege(args);
@@ -1429,7 +1430,7 @@ int Game::pge_op_setCollisionState2(ObjectOpcodeArgs *args) {
 int Game::pge_op_saveState(ObjectOpcodeArgs *args) {
 	_saveStateCompleted = true;
 	_validSaveState = saveGameState(kIngameSaveSlot);
-	if (_validSaveState and g_options.play_gamesaved_sound) {
+	if (_validSaveState && g_options.play_gamesaved_sound) {
 		_mix.play(Resource::_gameSavedSoundData, Resource::_gameSavedSoundLen, 8000, Mixer::MAX_VOLUME);
 	}
 	return 0xFFFF;
@@ -1544,20 +1545,20 @@ loc_0_15446:
 	return 0;
 }
 
-int Game::pge_op_isInGroupSlice(ObjectOpcodeArgs *args) {
+int Game::pge_isToggleable(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	GroupPGE *le = _pge_groupsTable[pge->index];
+	MessagePGE *le = _pge_messagesTable[pge->index];
 	if (le) {
 		if (args->a == 0) {
 			do {
-				if (le->group_id == 1 || le->group_id == 2) {
+				if (le->msg_num == 1 || le->msg_num == 2) {
 					return 1;
 				}
 				le = le->next_entry;
 			} while (le);
 		} else {
 			do {
-				if (le->group_id == 3 || le->group_id == 4) {
+				if (le->msg_num == 3 || le->msg_num == 4) {
 					return 1;
 				}
 				le = le->next_entry;
@@ -1571,7 +1572,7 @@ int Game::pge_o_unk0x6C(ObjectOpcodeArgs *args) {
 	LivePGE *pge = col_findPiege(&_pgeLive[0], args->pge->init_PGE->counter_values[0]);
 	if (pge) {
 		if (pge->life <= args->pge->life) {
-			pge_updateGroup(args->pge->index, pge->index, args->a);
+			pge_sendMessage(args->pge->index, pge->index, args->a);
 			return 1;
 		}
 	}
@@ -1589,9 +1590,9 @@ int Game::pge_op_isCollidingObject(ObjectOpcodeArgs *args) {
 
 // elevator
 int Game::pge_o_unk0x6E(ObjectOpcodeArgs *args) {
-	GroupPGE *le = _pge_groupsTable[args->pge->index];
+	MessagePGE *le = _pge_messagesTable[args->pge->index];
 	while (le) {
-		if (args->a == le->group_id) {
+		if (args->a == le->msg_num) {
 			pge_updateInventory(&_pgeLive[le->index], args->pge);
 			return 0xFFFF;
 		}
@@ -1603,10 +1604,10 @@ int Game::pge_o_unk0x6E(ObjectOpcodeArgs *args) {
 
 int Game::pge_o_unk0x6F(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	GroupPGE *le = _pge_groupsTable[pge->index];
+	MessagePGE *le = _pge_messagesTable[pge->index];
 	while (le) {
-		if (args->a == le->group_id) {
-			pge_updateGroup(pge->index, le->index, 0xC);
+		if (args->a == le->msg_num) {
+			pge_sendMessage(pge->index, le->index, 0xC);
 			return 1;
 		}
 		le = le->next_entry;
@@ -1617,7 +1618,7 @@ int Game::pge_o_unk0x6F(ObjectOpcodeArgs *args) {
 int Game::pge_o_unk0x70(ObjectOpcodeArgs *args) {
 	uint8_t pge_num = args->pge->current_inventory_PGE;
 	while (pge_num != 0xFF) {
-		pge_updateGroup(args->pge->index, _pgeLive[pge_num].index, args->a);
+		pge_sendMessage(args->pge->index, _pgeLive[pge_num].index, args->a);
 		pge_num = _pgeLive[pge_num].next_inventory_PGE;
 	}
 	return 1;
@@ -1626,9 +1627,9 @@ int Game::pge_o_unk0x70(ObjectOpcodeArgs *args) {
 // elevator
 int Game::pge_o_unk0x71(ObjectOpcodeArgs *args) {
 	LivePGE *pge = args->pge;
-	GroupPGE *le = _pge_groupsTable[pge->index];
+	MessagePGE *le = _pge_messagesTable[pge->index];
 	while (le) {
-		if (le->group_id == args->a) {
+		if (le->msg_num == args->a) {
 			pge_reorderInventory(args->pge);
 			return 1;
 		}
@@ -1785,7 +1786,6 @@ int Game::pge_op_isFacingConrad(ObjectOpcodeArgs *args) {
 						return 0xFFFF;
 				}
 			}
-
 		}
 	}
 	return 0;
@@ -1817,7 +1817,7 @@ int Game::pge_o_unk0x7C(ObjectOpcodeArgs *args) {
 		}
 	}
 	if (pge != 0) {
-		pge_updateGroup(args->pge->index, pge->index, args->a);
+		pge_sendMessage(args->pge->index, pge->index, args->a);
 	}
 	return 0;
 }
@@ -1876,13 +1876,21 @@ int Game::pge_op_setPiegePosModX(ObjectOpcodeArgs *args) {
 	return 0xFFFF;
 }
 
-// taxi, level4
+// taxi and teleporter
 int Game::pge_op_changeRoom(ObjectOpcodeArgs *args) {
 	InitPGE *init_pge_1 = args->pge->init_PGE;
 	assert(args->a >= 0 && args->a < 3);
 	const int16_t _ax = init_pge_1->counter_values[args->a];
-	if (_ax == 0 && !g_options.bypass_protection) {
-		warning("pge_op_changeRoom(): protection check");
+	if (_ax == 0 && !g_options.bypass_protection && !g_options.use_words_protection && !_res.isMac()) {
+		if (!handleProtectionScreenShape()) {
+			warning("Game::pge_op_changeRoom() protection check failed");
+			// when protection check fails, the changeRoom opcode is disabled,
+			// rendering the teleporter unusable.
+			//
+			// _pge_opcodeTable[0x82] = &Game::pge_op_nop;
+			// _pge_opTempVar1 = 0xFFFF;
+			// return;
+		}
 	}
 	const int16_t _bx = init_pge_1->counter_values[args->a + 1];
 	LivePGE *live_pge_1 = &_pgeLive[_bx];
@@ -1897,7 +1905,7 @@ int Game::pge_op_changeRoom(ObjectOpcodeArgs *args) {
 		InitPGE *init_pge_2 = live_pge_2->init_PGE;
 		init_pge_1 = live_pge_1->init_PGE;
 		if (init_pge_2->obj_node_number == init_pge_1->obj_node_number) {
-			live_pge_2->flags &= 0xFE;
+			live_pge_2->flags &= ~1;
 			if (live_pge_1->flags & 1) {
 				live_pge_2->flags |= 1;
 			}
@@ -2061,7 +2069,6 @@ int Game::pge_updateCollisionState(LivePGE *pge, int16_t pge_dy, uint8_t var8) {
 
 		CollisionSlot2 *slot1 = _col_slots2Next;
 		int16_t i = 255;
-		pge_pos_x = i;
 		if (_pge_currentPiegeFacingDir) {
 			i = pge_unk1C - 1;
 			grid_data -= i;
@@ -2071,7 +2078,6 @@ int Game::pge_updateCollisionState(LivePGE *pge, int16_t pge_dy, uint8_t var8) {
 				slot1->data_size = pge_unk1C - 1;
 				assert(pge_unk1C < 0x70);
 				memset(grid_data, var8, pge_unk1C);
-				grid_data += pge_unk1C;
 				return 1;
 			} else {
 				++i;
@@ -2126,36 +2132,36 @@ int Game::pge_ZOrder(LivePGE *pge, int16_t num, pge_ZOrderCallback compare, uint
 	return 0;
 }
 
-void Game::pge_updateGroup(uint8_t idx, uint8_t unk1, int16_t unk2) {
-	debug(DBG_GAME, "Game::pge_updateGroup() idx=0x%X unk1=0x%X unk2=0x%X", idx, unk1, unk2);
-	LivePGE *pge = &_pgeLive[unk1];
+void Game::pge_sendMessage(uint8_t src_pge_index, uint8_t dst_pge_index, int16_t num) {
+	debug(DBG_GAME, "Game::pge_sendMessage() src=0x%X dst=0x%X num=0x%X", src_pge_index, dst_pge_index, num);
+	LivePGE *pge = &_pgeLive[dst_pge_index];
 	if (!(pge->flags & 4)) {
 		if (!(pge->init_PGE->flags & 1)) {
 			return;
 		}
 		pge->flags |= 4;
-		_pge_liveTable2[unk1] = pge;
+		_pge_liveTable2[dst_pge_index] = pge;
 	}
-	if (unk2 <= 4) {
+	if (num <= 4) {
 		uint8_t pge_room = pge->room_location;
-		pge = &_pgeLive[idx];
+		pge = &_pgeLive[src_pge_index];
 		if (pge_room != pge->room_location) {
 			return;
 		}
-		if (unk1 == 0 && _blinkingConradCounter != 0) {
+		if (dst_pge_index == 0 && _blinkingConradCounter != 0) {
 			return;
 		}
 		// XXX
 	}
-	GroupPGE *le = _pge_nextFreeGroup;
+	MessagePGE *le = _pge_nextFreeMessage;
 	if (le) {
 		// append to the list
-		_pge_nextFreeGroup = le->next_entry;
-		GroupPGE *_ax = _pge_groupsTable[unk1];
-		_pge_groupsTable[unk1] = le;
-		le->next_entry = _ax;
-		le->index = idx;
-		le->group_id = unk2;
+		_pge_nextFreeMessage = le->next_entry;
+		MessagePGE *next = _pge_messagesTable[dst_pge_index];
+		_pge_messagesTable[dst_pge_index] = le;
+		le->next_entry = next;
+		le->index = src_pge_index;
+		le->msg_num = num;
 	}
 }
 
@@ -2190,7 +2196,7 @@ int Game::pge_ZOrderByAnimYIfType(LivePGE *pge1, LivePGE *pge2, uint8_t comp, ui
 
 int Game::pge_ZOrderIfIndex(LivePGE *pge1, LivePGE *pge2, uint8_t comp, uint8_t comp2) {
 	if (pge1->index != comp2) {
-		pge_updateGroup(pge2->index, pge1->index, comp);
+		pge_sendMessage(pge2->index, pge1->index, comp);
 		return 1;
 	}
 	return 0;
@@ -2198,7 +2204,7 @@ int Game::pge_ZOrderIfIndex(LivePGE *pge1, LivePGE *pge2, uint8_t comp, uint8_t 
 
 int Game::pge_ZOrderByIndex(LivePGE *pge1, LivePGE *pge2, uint8_t comp, uint8_t comp2) {
 	if (pge1 != pge2) {
-		pge_updateGroup(pge2->index, pge1->index, comp);
+		pge_sendMessage(pge2->index, pge1->index, comp);
 		_pge_compareVar1 = 0xFFFF;
 	}
 	return 0;
@@ -2221,7 +2227,7 @@ int Game::pge_ZOrderIfDifferentDirection(LivePGE *pge1, LivePGE *pge2, uint8_t c
 	if (pge1 != pge2) {
 		if ((pge1->flags & 1) != (pge2->flags & 1)) {
 			_pge_compareVar1 = 1;
-			pge_updateGroup(pge2->index, pge1->index, comp);
+			pge_sendMessage(pge2->index, pge1->index, comp);
 			if (pge2->index == 0) {
 				return 0xFFFF;
 			}
@@ -2234,7 +2240,7 @@ int Game::pge_ZOrderIfSameDirection(LivePGE *pge1, LivePGE *pge2, uint8_t comp, 
 	if (pge1 != pge2) {
 		if ((pge1->flags & 1) == (pge2->flags & 1)) {
 			_pge_compareVar2 = 1;
-			pge_updateGroup(pge2->index, pge1->index, comp);
+			pge_sendMessage(pge2->index, pge1->index, comp);
 			if (pge2->index == 0) {
 				return 0xFFFF;
 			}

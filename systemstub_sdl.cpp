@@ -996,7 +996,7 @@ void SystemStub_SDL::cleanupGraphics() {
 }
 
 void SystemStub_SDL::changeGraphics(bool fullscreen, int scaleFactor) {
-	int factor = CLIP(scaleFactor, _scaler->factorMin, _scaler->factorMax);
+	const int factor = _scaler ? CLIP(scaleFactor, _scaler->factorMin, _scaler->factorMax) : scaleFactor;
 	if (fullscreen == _fullscreen && factor == _scaleFactor) {
 		// no change
 		return;

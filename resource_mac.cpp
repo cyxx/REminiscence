@@ -10,7 +10,7 @@ const char *ResourceMac::FILENAME1 = "Flashback.bin";
 const char *ResourceMac::FILENAME2 = "Flashback.rsrc";
 
 ResourceMac::ResourceMac(const char *filePath, FileSystem *fs)
-	: _dataOffset(0), _types(0), _entries(0) {
+	: _dataOffset(0), _types(0), _entries(0), _sndIndex(-1) {
 	memset(&_map, 0, sizeof(_map));
 	_f.open(filePath, "rb", fs);
 }
@@ -66,6 +66,9 @@ void ResourceMac::loadResourceFork(uint32_t resourceOffset, uint32_t dataSize) {
 		_f.read(_types[i].id, 4);
 		_types[i].count = _f.readUint16BE() + 1;
 		_types[i].startOffset = _f.readUint16BE();
+		if (_sndIndex < 0 && memcmp(_types[i].id, "snd ", 4) == 0) {
+			_sndIndex = i;
+		}
 	}
 	_entries = (ResourceMacEntry **)calloc(_map.typesCount, sizeof(ResourceMacEntry *));
 	for (int i = 0; i < _map.typesCount; ++i) {

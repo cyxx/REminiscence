@@ -18,6 +18,7 @@ struct Cutscene {
 	typedef void (Cutscene::*OpcodeStub)();
 
 	enum {
+		MAX_VERTICES = 128,
 		NUM_OPCODES = 15,
 		TIMER_SLICE = 15
 	};
@@ -26,6 +27,10 @@ struct Cutscene {
 		kTextJustifyLeft = 0,
 		kTextJustifyAlign = 1,
 		kTextJustifyCenter = 2,
+	};
+
+	enum {
+		kCineMemo = 48
 	};
 
 	struct SetShape {
@@ -54,6 +59,8 @@ struct Cutscene {
 	static const Text _frTextsTable[];
 	static const Text _enTextsTable[];
 	static const uint8_t _caillouSetData[];
+	static const uint8_t _memoSetShape2Data[];
+	static const uint8_t _memoSetShape4Data[];
 
 	Graphics _gfx;
 	Resource *_res;
@@ -77,7 +84,7 @@ struct Cutscene {
 	uint32_t _rotMat[4];
 	uint8_t _primitiveColor;
 	uint8_t _clearScreen;
-	Point _vertices[0x80];
+	Point _vertices[MAX_VERTICES];
 	bool _hasAlphaColor;
 	uint8_t _varKey;
 	int16_t _shape_ix;
@@ -102,7 +109,7 @@ struct Cutscene {
 	uint8_t _creditsTextPosX;
 	uint8_t _creditsTextPosY;
 	int16_t _creditsTextCounter;
-	uint8_t *_page0, *_page1, *_pageC;
+	uint8_t *_frontPage, *_backPage, *_auxPage;
 
 	Cutscene(Resource *res, SystemStub *stub, Video *vid);
 
@@ -112,11 +119,11 @@ struct Cutscene {
 	void sync();
 	void copyPalette(const uint8_t *pal, uint16_t num);
 	void updatePalette();
-	void setPalette();
+	void updateScreen();
 	void setRotationTransform(uint16_t a, uint16_t b, uint16_t c);
 	uint16_t findTextSeparators(const uint8_t *p, int len);
 	void drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify);
-	void swapLayers();
+	void clearBackPage();
 	void drawCreditsText();
 	void drawProtectionShape(uint8_t shapeNum, int16_t zoom);
 	void drawShape(const uint8_t *data, int16_t x, int16_t y);
@@ -134,8 +141,8 @@ struct Cutscene {
 	void op_refreshAll();
 	void op_drawShapeScale();
 	void op_drawShapeScaleRotate();
-	void op_drawCreditsText();
-	void op_drawStringAtPos();
+	void op_copyScreen();
+	void op_drawTextAtPos();
 	void op_handleKeys();
 
 	uint8_t fetchNextCmdByte();
@@ -148,7 +155,7 @@ struct Cutscene {
 	void playText(const char *str);
 	void play();
 
-	void drawSetShape(const uint8_t *p, uint16_t offset, int x, int y, uint8_t *paletteLut);
+	void drawSetShape(const uint8_t *p, uint16_t offset, int x, int y, const uint8_t *paletteLut);
 	void playSet(const uint8_t *p, int offset);
 };
 

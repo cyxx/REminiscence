@@ -66,8 +66,7 @@ void Resource::init() {
 			_aba = new ResourceAba(_fs);
 			_aba->readEntries();
 			_isDemo = true;
-		}
-		if (!fileExists("LEVEL1.MAP")) { // fbdemofr (no cutscenes)
+		} else if (!fileExists("LEVEL2.MAP")) { // fbdemofr (no cutscenes)
 			_isDemo = true;
 		}
 		break;
@@ -742,6 +741,7 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 			switch (objType) {
 			case OT_CMD:
 			case OT_POL:
+			case OT_CMP:
 				warning("Unable to load '%s' type %d", _entryName, objType);
 				return;
 			}
@@ -1425,6 +1425,22 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 	return bankData;
 }
 
+uint8_t *Resource::decodeResourceMacText(const char *name, const char *suffix) {
+	char buf[256];
+	snprintf(buf, sizeof(buf), "%s %s", name, suffix);
+	const ResourceMacEntry *entry = _mac->findEntry(buf);
+	if (entry) {
+		return decodeResourceMacData(buf, false);
+	} else { // CD version
+		if (strcmp(name, "Flashback") == 0) {
+			name = "Game";
+		}
+		const char *language = (_lang == LANG_FR) ? "French" : "English";
+		snprintf(buf, sizeof(buf), "%s %s %s", name, suffix, language);
+		return decodeResourceMacData(buf, false);
+	}
+}
+
 uint8_t *Resource::decodeResourceMacData(const char *name, bool decompressLzss) {
 	_resourceMacDataSize = 0;
 	uint8_t *data = 0;
@@ -1600,10 +1616,10 @@ void Resource::MAC_loadLevelData(int level) {
 	snprintf(name, sizeof(name), "Objects %c", _macLevelNumbers[level][0]);
 	_spc = decodeResourceMacData(name, true);
 	// .TBN
-	snprintf(name, sizeof(name), "Level %s names", _macLevelNumbers[level]);
-	_tbn = decodeResourceMacData(name, false);
+	snprintf(name, sizeof(name), "Level %s", _macLevelNumbers[level]);
+	_tbn = decodeResourceMacText(name, "names");
 
-	_str = decodeResourceMacData("Flashback strings", false);
+	_str = decodeResourceMacText("Flashback", "strings");
 }
 
 void Resource::MAC_loadLevelRoom(int level, int i, DecodeBuffer *dst) {
@@ -1700,12 +1716,12 @@ void Resource::MAC_loadCutscene(const char *cutscene) {
 }
 
 void Resource::MAC_loadCutsceneText() {
-	_cine_txt = decodeResourceMacData("Movie strings", false);
+	_cine_txt = decodeResourceMacText("Movie", "strings");
 	_cine_off = 0; // offsets are prepended to _cine_txt
 }
 
 void Resource::MAC_loadCreditsText() {
-	_credits = decodeResourceMacData("Credit strings", false);
+	_credits = decodeResourceMacText("Credit", "strings");
 }
 
 void Resource::MAC_loadSounds() {
@@ -1722,12 +1738,13 @@ void Resource::MAC_loadSounds() {
 		return;
 	}
 	static const int kHeaderSize = 0x24;
-	static const int kSoundType = 4;
+	const int soundType = _mac->_sndIndex;
+	assert(soundType != -1);
 	for (int i = 0; i < NUM_SFXS; ++i) {
 		const int num = table[i];
 		if (num != -1) {
-			assert(num >= 0 && num < _mac->_types[kSoundType].count);
-			const ResourceMacEntry *entry = &_mac->_entries[kSoundType][num];
+			assert(num >= 0 && num < _mac->_types[soundType].count);
+			const ResourceMacEntry *entry = &_mac->_entries[soundType][num];
 			_mac->_f.seek(_mac->_dataOffset + entry->dataOffset);
 			int dataSize = _mac->_f.readUint32BE();
 			assert(dataSize > kHeaderSize);

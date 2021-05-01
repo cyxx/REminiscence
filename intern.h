@@ -136,6 +136,7 @@ struct Options {
 	bool play_serrure_cutscene;
 	bool play_carte_cutscene;
 	bool play_gamesaved_sound;
+	bool restore_memo_cutscene;
 };
 
 struct Color {
@@ -171,7 +172,7 @@ struct InitPGE {
 	int16_t pos_y;
 	uint16_t obj_node_number;
 	uint16_t life;
-	int16_t counter_values[4]; // messages
+	int16_t counter_values[4]; // data
 	uint8_t object_type;
 	uint8_t init_room;
 	uint8_t room_location;
@@ -181,7 +182,7 @@ struct InitPGE {
 	uint8_t object_id;
 	uint8_t skill;
 	uint8_t mirror_x;
-	uint8_t flags;
+	uint8_t flags; // 1:xflip 4:active
 	uint8_t unk1C; // collidable, collision_data_len
 	uint16_t text_num;
 };
@@ -206,10 +207,10 @@ struct LivePGE {
 	InitPGE *init_PGE;
 };
 
-struct GroupPGE {
-	GroupPGE *next_entry;
-	uint16_t index;
-	uint16_t group_id;
+struct MessagePGE {
+	MessagePGE *next_entry;
+	uint16_t index; // src_pge
+	uint16_t msg_num;
 };
 
 struct Object {
