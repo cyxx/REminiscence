@@ -30,8 +30,10 @@ static bool nextBit(UnpackCtx *uc) {
 template<int count>
 static uint32_t getBits(UnpackCtx *uc) { // rdd1bits
 	uint32_t bits = 0;
-	for (int i = 0; i < count; ++i) {
-		bits |= (nextBit(uc) ? 1 : 0) << (count - 1 - i);
+	for (uint32_t mask = 1 << (count - 1); mask != 0; mask >>= 1) {
+		if (nextBit(uc)) {
+			bits |= mask;
+		}
 	}
 	return bits;
 }

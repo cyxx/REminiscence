@@ -30,7 +30,9 @@ struct Cutscene {
 	};
 
 	enum {
-		kCineMemo = 48
+		kCineMemo = 48,
+		kCineVoyage = 52,
+		kCineEspions = 57
 	};
 
 	struct SetShape {
@@ -104,11 +106,13 @@ struct Cutscene {
 	uint8_t _textBuf[500];
 	const uint8_t *_textCurPtr;
 	uint8_t *_textCurBuf;
-	uint8_t _creditsSlowText;
-	uint8_t _creditsKeepText;
+	bool _creditsSlowText;
+	bool _creditsKeepText;
 	uint8_t _creditsTextPosX;
 	uint8_t _creditsTextPosY;
 	int16_t _creditsTextCounter;
+	int _creditsTextIndex; /* MAC has the credits data in a resource */
+	int _creditsTextLen;
 	uint8_t *_frontPage, *_backPage, *_auxPage;
 
 	Cutscene(Resource *res, SystemStub *stub, Video *vid);

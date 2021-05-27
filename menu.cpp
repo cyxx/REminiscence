@@ -259,9 +259,9 @@ bool Menu::handleLevelScreen() {
 		}
 		_vid->markBlockAsDirty(4 * Video::CHAR_W, 7 * Video::CHAR_H, 192, 7 * Video::CHAR_H, _vid->_layerScale);
 
-                drawString(_res->getMenuString(LocaleData::LI_13_EASY),   23,  4, (currentSkill == 0) ? 2 : 3);
-                drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 23, 14, (currentSkill == 1) ? 2 : 3);
-                drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 23, 24, (currentSkill == 2) ? 2 : 3);
+		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   23,  4, (currentSkill == 0) ? 2 : 3);
+		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 23, 14, (currentSkill == 1) ? 2 : 3);
+		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 23, 24, (currentSkill == 2) ? 2 : 3);
 		_vid->markBlockAsDirty(4 * Video::CHAR_W, 23 * Video::CHAR_H, 192, Video::CHAR_H, _vid->_layerScale);
 
 		_vid->updateScreen();

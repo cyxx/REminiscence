@@ -35,6 +35,7 @@ static int detectVersion(FileSystem *fs) {
 		const char *name;
 	} table[] = {
 		{ "DEMO_UK.ABA", kResourceTypeDOS, "DOS (Demo)" },
+		{ "GLOB_FR.ABA", kResourceTypeDOS, "DOS" },
 		{ "INTRO.SEQ", kResourceTypeDOS, "DOS CD" },
 		{ "MENU1SSI.MAP", kResourceTypeDOS, "DOS SSI" },
 		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS" },
@@ -60,7 +61,8 @@ static Language detectLanguage(FileSystem *fs) {
 		const char *filename;
 		Language language;
 	} table[] = {
-		// PC
+		// DOS
+		{ "GLOB_FR.ABA", LANG_FR },
 		{ "ENGCINE.TXT", LANG_EN },
 		{ "FR_CINE.TXT", LANG_FR },
 		{ "GERCINE.TXT", LANG_DE },

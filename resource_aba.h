@@ -11,22 +11,23 @@ struct ResourceAbaEntry {
 	uint32_t offset;
 	uint32_t compressedSize;
 	uint32_t size;
+	int fileIndex;
 };
 
 struct ResourceAba {
 
-	static const char *FILENAME;
 	static const int TAG = 0x442E4D2E;
 
 	FileSystem *_fs;
-	File _f;
+	File _f[3];
+	int _filesCount;
 	ResourceAbaEntry *_entries;
 	int _entriesCount;
 
 	ResourceAba(FileSystem *fs);
 	~ResourceAba();
 
-	void readEntries();
+	void readEntries(const char *aba);
 	const ResourceAbaEntry *findEntry(const char *name) const;
 	uint8_t *loadEntry(const char *name, uint32_t *size = 0);
 };

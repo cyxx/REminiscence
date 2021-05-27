@@ -11,7 +11,6 @@
 #include "game.h"
 #include "seq_player.h"
 #include "systemstub.h"
-#include "unpack.h"
 #include "util.h"
 
 Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave)
@@ -557,7 +556,8 @@ void Game::playCutscene(int id) {
 				_stub->setPaletteEntry(0xC0 + i, &palette[i]);
 			}
 		}
-		if (id == 0x3D) {
+		if (_cut._id == 0x3D) {
+			_mix.playMusic(Mixer::MUSIC_TRACK + 9);
 			_cut.playCredits();
 		}
 		_mix.stopMusic();
@@ -1678,7 +1678,7 @@ void Game::loadLevelData() {
 		_res.load(lvl->name, Resource::OT_CT);
 		_res.load(lvl->name, Resource::OT_PAL);
 		_res.load(lvl->name, Resource::OT_RP);
-		if (_res._isDemo || g_options.use_tile_data) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
+		if (_res._isDemo || g_options.use_tile_data || _res._aba) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
 			if (_currentLevel == 0) {
 				_res.load(lvl->name, Resource::OT_SGD);
 			}

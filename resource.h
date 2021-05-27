@@ -137,13 +137,13 @@ struct Resource {
 	uint8_t *_icn;
 	int _icnLen;
 	uint8_t *_tab;
-	uint8_t *_spc; // BE
+	uint8_t *_spc;
 	uint16_t _numSpc;
-	uint8_t _rp[0x4A];
-	uint8_t *_pal; // BE
+	uint8_t _rp[74];
+	uint8_t *_pal;
 	uint8_t *_ani;
 	uint8_t *_tbn;
-	int8_t _ctData[0x1D00];
+	int8_t _ctData[256 + 112 * 64];
 	uint8_t *_spr1;
 	uint8_t *_sprData[NUM_SPRITES]; // 0-0x22F + 0x28E-0x2E9 ... conrad, 0x22F-0x28D : junkie
 	uint8_t _sprm[0x10000];
@@ -313,6 +313,15 @@ struct Resource {
 	const char *getMenuString(int num) const {
 		return (num >= 0 && num < LocaleData::LI_NUM) ? _textsTable[num] : "";
 	}
+	const uint8_t *getCreditsString(int num) {
+		assert(_type == kResourceTypeMac);
+		const int count = READ_BE_UINT16(_credits);
+		if (num < count) {
+			const int offset = READ_BE_UINT16(_credits + 2 + num * 2);
+			return _credits + offset;
+		}
+		return 0;
+	}
 	void clearBankData();
 	int getBankDataSize(uint16_t num);
 	uint8_t *findBankData(uint16_t num);
@@ -320,6 +329,7 @@ struct Resource {
 
 	uint8_t *decodeResourceMacText(const char *name, const char *suffix);
 	uint8_t *decodeResourceMacData(const char *name, bool decompressLzss);
+	uint8_t *decodeResourceMacData(const ResourceMacEntry *entry, bool decompressLzss);
 	void MAC_decodeImageData(const uint8_t *ptr, int i, DecodeBuffer *dst);
 	void MAC_decodeDataCLUT(const uint8_t *ptr);
 	void MAC_loadClutData();

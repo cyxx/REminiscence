@@ -3,11 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "decode_mac.h"
-#include "file.h"
+#include "util.h"
 
 uint8_t *decodeLzss(File &f, uint32_t &decodedSize) {
 	decodedSize = f.readUint32BE();
 	uint8_t *dst = (uint8_t *)malloc(decodedSize);
+	if (!dst) {
+		warning("Failed to allocate %d bytes for LZSS", decodedSize);
+		return 0;
+	}
 	uint32_t count = 0;
 	while (count < decodedSize) {
 		const int code = f.readByte();

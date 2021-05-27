@@ -3,10 +3,9 @@
 #include "unpack.h"
 #include "util.h"
 
-const char *ResourceAba::FILENAME = "DEMO_UK.ABA";
-
 ResourceAba::ResourceAba(FileSystem *fs)
 	: _fs(fs) {
+	_filesCount = 0;
 	_entries = 0;
 	_entriesCount = 0;
 }
@@ -19,31 +18,38 @@ static int compareAbaEntry(const void *a, const void *b) {
 	return strcasecmp(((ResourceAbaEntry *)a)->name, ((ResourceAbaEntry *)b)->name);
 }
 
-void ResourceAba::readEntries() {
-	if (_f.open(FILENAME, "rb", _fs)) {
-		_entriesCount = _f.readUint16BE();
-		_entries = (ResourceAbaEntry *)calloc(_entriesCount, sizeof(ResourceAbaEntry));
+void ResourceAba::readEntries(const char *aba) {
+	assert(_filesCount < 3);
+	if (_f[_filesCount].open(aba, "rb", _fs)) {
+		File &f = _f[_filesCount];
+		const int currentCount = _entriesCount;
+		const int entriesCount = f.readUint16BE();
+		_entries = (ResourceAbaEntry *)realloc(_entries, (currentCount + entriesCount) * sizeof(ResourceAbaEntry));
 		if (!_entries) {
-			error("Failed to allocate %d _entries", _entriesCount);
+			error("Failed to allocate %d _entries", currentCount + entriesCount);
 			return;
 		}
-		const int entrySize = _f.readUint16BE();
+		_entriesCount = currentCount + entriesCount;
+		const int entrySize = f.readUint16BE();
 		assert(entrySize == 30);
 		uint32_t nextOffset = 0;
-		for (int i = 0; i < _entriesCount; ++i) {
-			_f.read(_entries[i].name, sizeof(_entries[i].name));
-			_entries[i].offset = _f.readUint32BE();
-			_entries[i].compressedSize = _f.readUint32BE();
-			_entries[i].size = _f.readUint32BE();
-			const uint32_t tag = _f.readUint32BE();
+		for (int i = 0; i < entriesCount; ++i) {
+			const int j = currentCount + i;
+			f.read(_entries[j].name, sizeof(_entries[j].name));
+			_entries[j].offset = f.readUint32BE();
+			_entries[j].compressedSize = f.readUint32BE();
+			_entries[j].size = f.readUint32BE();
+			_entries[j].fileIndex = _filesCount;
+			const uint32_t tag = f.readUint32BE();
 			assert(tag == TAG);
-			debug(DBG_RES, "'%s' offset 0x%X size %d/%d", _entries[i].name,  _entries[i].offset, _entries[i].compressedSize, _entries[i].size);
+			debug(DBG_RES, "'%s' offset 0x%X size %d/%d", _entries[j].name,  _entries[j].offset, _entries[j].compressedSize, _entries[j].size);
 			if (i != 0) {
-				assert(nextOffset == _entries[i].offset);
+				assert(nextOffset == _entries[j].offset);
 			}
-			nextOffset = _entries[i].offset + _entries[i].compressedSize;
+			nextOffset = _entries[j].offset + _entries[j].compressedSize;
 		}
 		qsort(_entries, _entriesCount, sizeof(ResourceAbaEntry), compareAbaEntry);
+		++_filesCount;
 	}
 }
 
@@ -65,8 +71,8 @@ uint8_t *ResourceAba::loadEntry(const char *name, uint32_t *size) {
 			error("Failed to allocate %d bytes", e->compressedSize);
 			return 0;
 		}
-		_f.seek(e->offset);
-		_f.read(tmp, e->compressedSize);
+		_f[e->fileIndex].seek(e->offset);
+		_f[e->fileIndex].read(tmp, e->compressedSize);
 		if (e->compressedSize == e->size) {
 			dst = tmp;
 		} else {

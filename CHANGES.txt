@@ -1,3 +1,8 @@
+* release 0.4.8
+	- added detection for DOS version with .ABA files
+	- added Macintosh credits
+	- fixed ESPIONS cutscene timing with Amiga music
+
 * release 0.4.7
 	- added detection for Macintosh CD version
 	- restored some content from MEMO cutscene

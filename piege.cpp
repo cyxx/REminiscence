@@ -4,7 +4,6 @@
  * Copyright (C) 2005-2019 Gregory Montoir (cyx@users.sourceforge.net)
  */
 
-#include "cutscene.h"
 #include "game.h"
 #include "resource.h"
 #include "systemstub.h"
