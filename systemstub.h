@@ -20,7 +20,8 @@ struct PlayerInput {
 	enum {
 		DF_FASTMODE = 1 << 0,
 		DF_DBLOCKS  = 1 << 1,
-		DF_SETLIFE  = 1 << 2
+		DF_SETLIFE  = 1 << 2,
+		DF_AUTOZOOM = 1 << 3
 	};
 
 	uint8_t dirMask;
@@ -68,6 +69,7 @@ struct SystemStub {
 	virtual void setOverscanColor(int i) = 0;
 	virtual void copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch) = 0;
 	virtual void copyRectRgb24(int x, int y, int w, int h, const uint8_t *rgb) = 0;
+	virtual void zoomRect(int x, int y, int h, int w) = 0;
 	virtual void copyWidescreenLeft(int w, int h, const uint8_t *buf) = 0;
 	virtual void copyWidescreenRight(int w, int h, const uint8_t *buf) = 0;
 	virtual void copyWidescreenMirror(int w, int h, const uint8_t *buf) = 0;
@@ -97,6 +99,22 @@ struct LockAudioStack {
 		_stub->unlockAudio();
 	}
 	SystemStub *_stub;
+};
+
+struct ToggleWidescreenStack {
+	ToggleWidescreenStack(SystemStub *stub, bool state)
+		: _stub(stub), _state(state) {
+		if (_stub->hasWidescreen()) {
+			_stub->enableWidescreen(_state);
+		}
+	}
+	~ToggleWidescreenStack() {
+		if (_stub->hasWidescreen()) {
+			_stub->enableWidescreen(!_state);
+		}
+	}
+	SystemStub *_stub;
+	bool _state;
 };
 
 extern SystemStub *SystemStub_SDL_create();

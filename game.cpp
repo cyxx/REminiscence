@@ -13,7 +13,7 @@
 #include "systemstub.h"
 #include "util.h"
 
-Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave)
+Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave, uint32_t cheats)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
 	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub, widescreenMode),
 	_stub(stub), _fs(fs), _savePath(savePath) {
@@ -26,6 +26,7 @@ Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, Re
 	_autoSave = autoSave;
 	_rewindPtr = -1;
 	_rewindLen = 0;
+	_cheats = cheats;
 }
 
 void Game::run() {
@@ -56,7 +57,7 @@ void Game::run() {
 		break;
 	}
 
-	if (!g_options.bypass_protection && !g_options.use_words_protection && !_res.isMac()) {
+	if (!g_options.bypass_protection && !g_options.use_words_protection && (_res.isAmiga() || _res.isDOS())) {
 		while (!handleProtectionScreenShape()) {
 			if (_stub->_pi.quit) {
 				return;
@@ -126,12 +127,11 @@ void Game::run() {
 					_skillLevel = kSkillNormal;
 					_currentLevel = _demoInputs[_demoBin].level;
 					_randSeed = 0;
-					_mix.stopMusic();
-					break;
+				} else {
+					_demoBin = -1;
+					_skillLevel = _menu._skill;
+					_currentLevel = _menu._level;
 				}
-				_demoBin = -1;
-				_skillLevel = _menu._skill;
-				_currentLevel = _menu._level;
 				_mix.stopMusic();
 				break;
 			case kResourceTypeAmiga:
@@ -171,7 +171,6 @@ void Game::run() {
 				if (_demoBin != -1 && _inp_demPos >= _res._demLen) {
 					debug(DBG_DEMO, "End of demo");
 					// exit level
-					_demoBin = -1;
 					_endLoop = true;
 				}
 			}
@@ -360,15 +359,17 @@ void Game::resetGameState() {
 	_animBuffers._curPos[3] = 0xFF;
 	_currentRoom = _res._pgeInit[0].init_room;
 	_cut._deathCutsceneId = 0xFFFF;
-	_pge_opTempVar2 = 0xFFFF;
 	_deathCutsceneCounter = 0;
 	_saveStateCompleted = false;
 	_loadMap = true;
 	pge_resetMessages();
 	_blinkingConradCounter = 0;
 	_pge_processOBJ = false;
-	_pge_opTempVar1 = 0;
+	_pge_opGunVar = 0;
 	_textToDisplay = 0xFFFF;
+	_pge_zoomPiegeNum = 0;
+	_pge_zoomCounter = 0;
+	_pge_zoomX = _pge_zoomY = 0;
 }
 
 void Game::mainLoop() {
@@ -417,7 +418,11 @@ void Game::mainLoop() {
 			_currentLevel = oldLevel;
 		}
 		changeLevel();
-		_pge_opTempVar1 = 0;
+		_pge_opGunVar = 0;
+		return;
+	}
+	if (_currentLevel == 3 && _cut._id == 50) {
+		// do not draw next room when boarding taxi
 		return;
 	}
 	if (_loadMap) {
@@ -430,6 +435,9 @@ void Game::mainLoop() {
 			_loadMap = false;
 			_vid.fullRefresh();
 		}
+	}
+	if (_res.isDOS() && (_stub->_pi.dbgMask & PlayerInput::DF_AUTOZOOM) != 0) {
+		pge_updateZoom();
 	}
 	prepareAnims();
 	drawAnims();
@@ -481,9 +489,7 @@ void Game::playCutscene(int id) {
 		_cut._id = id;
 	}
 	if (_cut._id != 0xFFFF) {
-		if (_stub->hasWidescreen()) {
-			_stub->enableWidescreen(false);
-		}
+		ToggleWidescreenStack tws(_stub, false);
 		_mix.stopMusic();
 		if (_res._hasSeqData) {
 			int num = 0;
@@ -532,22 +538,20 @@ void Game::playCutscene(int id) {
 					} else {
 						_cut._id = 0xFFFF;
 					}
+					_mix.stopMusic();
 					return;
 				}
 			}
 		}
-		if (_cut._id != 0x4A) {
-			_mix.playMusic(Cutscene::_musicTable[_cut._id]);
-		}
+		_mix.playMusic(Cutscene::_musicTable[_cut._id]);
 		_cut.play();
 		if (id == 0xD && !_cut._interrupted) {
-			const bool extendedIntroduction = (_res._type == kResourceTypeDOS || _res._type == kResourceTypeMac);
-			if (extendedIntroduction) {
-				_cut._id = 0x4A;
+			if (!_res.isAmiga()) {
+				_cut._id = 0x4A; // second part of the introduction cutscene
 				_cut.play();
 			}
 		}
-		if (_res._type == kResourceTypeMac && !(id == 0x48 || id == 0x49)) { // continue or score screens
+		if (_res.isMac() && !(id == 0x48 || id == 0x49)) { // continue or score screens
 			// restore palette entries modified by the cutscene player (0xC and 0xD)
 			Color palette[32];
 			_res.MAC_copyClut16(palette, 0, 0x37);
@@ -561,9 +565,6 @@ void Game::playCutscene(int id) {
 			_cut.playCredits();
 		}
 		_mix.stopMusic();
-		if (_stub->hasWidescreen()) {
-			_stub->enableWidescreen(true);
-		}
 	}
 }
 
@@ -639,10 +640,10 @@ void Game::showFinalScore() {
 }
 
 bool Game::handleConfigPanel() {
-	const int x = 7;
-	const int y = 10;
-	const int w = 17;
-	const int h = 12;
+	static const int x = 7;
+	static const int y = 10;
+	static const int w = 17;
+	static const int h = 12;
 
 	_vid._charShadowColor = 0xE2;
 	_vid._charFrontColor = 0xEE;
@@ -1027,7 +1028,7 @@ void Game::drawString(const uint8_t *p, int x, int y, uint8_t color, bool hcente
 }
 
 void Game::prepareAnims() {
-	if (!(_currentRoom & 0x80) && _currentRoom < 0x40) {
+	if (_currentRoom < 0x40) {
 		int8_t pge_room;
 		LivePGE *pge = _pge_liveTable1[_currentRoom];
 		while (pge) {
@@ -1540,6 +1541,10 @@ bool Game::hasLevelMap(int level, int room) const {
 	return false;
 }
 
+static bool isMetro(int level, int room) {
+	return level == 1 && (room == 0 || room == 13 || room == 38 || room == 51);
+}
+
 void Game::loadLevelMap() {
 	debug(DBG_GAME, "Game::loadLevelMap() room=%d", _currentRoom);
 	bool widescreenUpdated = false;
@@ -1574,14 +1579,14 @@ void Game::loadLevelMap() {
 	case kResourceTypeDOS:
 		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
 			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
-			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
+			if (leftRoom >= 0 && hasLevelMap(_currentLevel, leftRoom) && !isMetro(_currentLevel, leftRoom)) {
 				_vid.PC_decodeMap(_currentLevel, leftRoom);
 				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
 			} else {
 				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
 			}
 			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
-			if (rightRoom > 0 && hasLevelMap(_currentLevel, rightRoom)) {
+			if (rightRoom >= 0 && hasLevelMap(_currentLevel, rightRoom) && !isMetro(_currentLevel, rightRoom)) {
 				_vid.PC_decodeMap(_currentLevel, rightRoom);
 				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
 			} else {
@@ -1594,14 +1599,14 @@ void Game::loadLevelMap() {
 	case kResourceTypeMac:
 		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
 			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
-			if (leftRoom > 0 && hasLevelMap(_currentLevel, leftRoom)) {
+			if (leftRoom >= 0 && hasLevelMap(_currentLevel, leftRoom)) {
 				_vid.MAC_decodeMap(_currentLevel, leftRoom);
 				_stub->copyWidescreenLeft(_vid._w, _vid._h, _vid._backLayer);
 			} else {
 				_stub->copyWidescreenLeft(_vid._w, _vid._h, 0);
 			}
 			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
-			if (rightRoom > 0 && hasLevelMap(_currentLevel, rightRoom)) {
+			if (rightRoom >= 0 && hasLevelMap(_currentLevel, rightRoom)) {
 				_vid.MAC_decodeMap(_currentLevel, rightRoom);
 				_stub->copyWidescreenRight(_vid._w, _vid._h, _vid._backLayer);
 			} else {
@@ -1910,11 +1915,11 @@ void Game::handleInventory() {
 					}
 					icon_x_pos += 32;
 				}
-				if (current_line != 0) {
-					drawIcon(78, 120, 176, 0xA); // down arrow
-				}
-				if (current_line != num_lines - 1) {
+				if (current_line != (g_options.order_inventory_original ? 0 : (num_lines - 1))) {
 					drawIcon(77, 120, 143, 0xA); // up arrow
+				}
+				if (current_line != (g_options.order_inventory_original ? (num_lines - 1) : 0)) {
+					drawIcon(78, 120, 176, 0xA); // down arrow
 				}
 			} else {
 				char buf[50];
@@ -1922,24 +1927,51 @@ void Game::handleInventory() {
 				_vid.drawString(buf, (114 - strlen(buf) * Video::CHAR_W) / 2 + 72, 158, 0xE5);
 				snprintf(buf, sizeof(buf), "%s:%s", _res.getMenuString(LocaleData::LI_06_LEVEL), _res.getMenuString(LocaleData::LI_13_EASY + _skillLevel));
 				_vid.drawString(buf, (114 - strlen(buf) * Video::CHAR_W) / 2 + 72, 166, 0xE5);
+				if (0) { // if the protection screen code was not properly cracked...
+					static const uint8_t kCrackerText[17] = {
+						0x19, 0x08, 0x1B, 0x19, 0x11, 0x1F, 0x08, 0x67, 0x18,
+						0x16, 0x1B, 0x13, 0x08, 0x1F, 0x1B, 0x0F, 0x5A
+					};
+					for (int i = 0; i < 17; ++i) {
+						buf[i] = kCrackerText[i] ^ 0x5A;
+					}
+					_vid.drawString(buf, 65, 193, 0xE4);
+				}
 			}
 
 			_vid.updateScreen();
 			_stub->sleep(80);
 			inp_update();
 
-			if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
-				_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
-				if (current_line < num_lines - 1) {
-					++current_line;
-					current_item = current_line * 4;
+			if (g_options.order_inventory_original) {
+				if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
+					_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+					if (current_line < num_lines - 1) {
+						++current_line;
+						current_item = current_line * 4;
+					}
 				}
-			}
-			if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
-				_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-				if (current_line > 0) {
-					--current_line;
-					current_item = current_line * 4;
+				if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
+					_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
+					if (current_line > 0) {
+						--current_line;
+						current_item = current_line * 4;
+					}
+				}
+			} else {
+				if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
+					_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
+					if (current_line < num_lines - 1) {
+						++current_line;
+						current_item = current_line * 4;
+					}
+				}
+				if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
+					_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+					if (current_line > 0) {
+						--current_line;
+						current_item = current_line * 4;
+					}
 				}
 			}
 			if (_stub->_pi.dirMask & PlayerInput::DIR_LEFT) {
@@ -1990,6 +2022,9 @@ void Game::makeGameStateName(uint8_t slot, char *buf) {
 	sprintf(buf, "rs-level%d-%02d.state", _currentLevel + 1, slot);
 }
 
+// 3: persist _pge_opGunVar
+static const int kSaveVersion = 3;
+
 static const uint32_t TAG_FBSV = 0x46425356;
 
 bool Game::saveGameState(uint8_t slot) {
@@ -2005,7 +2040,7 @@ bool Game::saveGameState(uint8_t slot) {
 	} else {
 		// header
 		f.writeUint32BE(TAG_FBSV);
-		f.writeUint16BE(2);
+		f.writeUint16BE(kSaveVersion);
 		char buf[32];
 		memset(buf, 0, sizeof(buf));
 		snprintf(buf, sizeof(buf), "level=%d room=%d", _currentLevel + 1, _currentRoom);
@@ -2037,15 +2072,15 @@ bool Game::loadGameState(uint8_t slot) {
 		if (id != TAG_FBSV) {
 			warning("Bad save state format");
 		} else {
-			uint16_t ver = f.readUint16BE();
-			if (ver != 2) {
+			const uint16_t version = f.readUint16BE();
+			if (version < 2) {
 				warning("Invalid save state version");
 			} else {
 				// header
 				char buf[32];
 				f.read(buf, sizeof(buf));
 				// contents
-				loadState(&f);
+				loadState(&f, version);
 				if (f.ioErr()) {
 					warning("I/O error when loading game state");
 				} else {
@@ -2083,7 +2118,7 @@ void Game::saveState(File *f) {
 		f->writeByte(pge->collision_slot);
 		f->writeByte(pge->next_inventory_PGE);
 		f->writeByte(pge->current_inventory_PGE);
-		f->writeByte(pge->unkF);
+		f->writeByte(pge->ref_inventory_PGE);
 		f->writeUint16BE(pge->anim_number);
 		f->writeByte(pge->flags);
 		f->writeByte(pge->index);
@@ -2114,9 +2149,10 @@ void Game::saveState(File *f) {
 		f->writeByte(cs2->data_size);
 		f->write(cs2->data_buf, 0x10);
 	}
+	f->writeUint16BE(_pge_opGunVar);
 }
 
-void Game::loadState(File *f) {
+void Game::loadState(File *f, int version) {
 	uint16_t i;
 	uint32_t off;
 	_skillLevel = f->readByte();
@@ -2147,7 +2183,7 @@ void Game::loadState(File *f) {
 		pge->collision_slot = f->readByte();
 		pge->next_inventory_PGE = f->readByte();
 		pge->current_inventory_PGE = f->readByte();
-		pge->unkF = f->readByte();
+		pge->ref_inventory_PGE = f->readByte();
 		pge->anim_number = f->readUint16BE();
 		pge->flags = f->readByte();
 		pge->index = f->readByte();
@@ -2193,6 +2229,9 @@ void Game::loadState(File *f) {
 		}
 	}
 	resetGameState();
+	if (version >= 3) {
+		_pge_opGunVar = f->readUint16BE();
+	}
 }
 
 void Game::clearStateRewind() {
@@ -2234,7 +2273,7 @@ bool Game::loadStateRewind() {
 	}
 	File &f = _rewindBuffer[ptr];
 	f.seek(0);
-	loadState(&f);
+	loadState(&f, kSaveVersion);
 	if (_rewindLen > 0) {
 		--_rewindLen;
 	}

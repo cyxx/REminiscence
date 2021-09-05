@@ -361,10 +361,8 @@ void Menu::handleTitleScreen() {
 	++menuItemsCount;
 
 	_selectedOption = -1;
-	_currentScreen = -1;
 	_nextScreen = SCREEN_TITLE;
 
-	bool quitLoop = false;
 	int currentEntry = 0;
 
 	static const struct {
@@ -386,7 +384,7 @@ void Menu::handleTitleScreen() {
 		}
 	}
 
-	while (!quitLoop && !_stub->_pi.quit) {
+	while (!_stub->_pi.quit) {
 
 		int selectedItem = -1;
 		int previousLanguage = currentLanguage;
@@ -398,7 +396,6 @@ void Menu::handleTitleScreen() {
 			_charVar3 = 1;
 			_charVar4 = 2;
 			currentEntry = 0;
-			_currentScreen = _nextScreen;
 			_nextScreen = -1;
 		}
 
@@ -444,30 +441,27 @@ void Menu::handleTitleScreen() {
 			_selectedOption = menuItems[selectedItem].opt;
 			switch (_selectedOption) {
 			case MENU_OPTION_ITEM_START:
-				quitLoop = true;
-				break;
+				return;
 			case MENU_OPTION_ITEM_SKILL:
-				_currentScreen = SCREEN_SKILL;
 				handleSkillScreen();
 				break;
 			case MENU_OPTION_ITEM_PASSWORD:
-				_currentScreen = SCREEN_PASSWORD;
-				quitLoop = handlePasswordScreen();
+				if (handlePasswordScreen()) {
+					return;
+				}
 				break;
 			case MENU_OPTION_ITEM_LEVEL:
-				_currentScreen = SCREEN_LEVEL;
-				quitLoop = handleLevelScreen();
+				if (handleLevelScreen()) {
+					return;
+				}
 				break;
 			case MENU_OPTION_ITEM_INFO:
-				_currentScreen = SCREEN_INFO;
 				handleInfoScreen();
 				break;
 			case MENU_OPTION_ITEM_DEMO:
-				quitLoop = true;
-				break;
+				return;
 			case MENU_OPTION_ITEM_QUIT:
-				quitLoop = true;
-				break;
+				return;
 			}
 			_nextScreen = SCREEN_TITLE;
 			continue;

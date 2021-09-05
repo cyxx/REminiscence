@@ -30,6 +30,8 @@ struct Cutscene {
 	};
 
 	enum {
+		kCineDebut = 0,
+		kCineChute = 47,
 		kCineMemo = 48,
 		kCineVoyage = 52,
 		kCineEspions = 57

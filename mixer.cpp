@@ -42,6 +42,7 @@ void Mixer::play(const uint8_t *data, uint32_t len, uint16_t freq, uint8_t volum
 		if (cur->active) {
 			if (cur->chunk.data == data) {
 				cur->chunkPos = 0;
+				cur->volume = volume;
 				return;
 			}
 		} else {
@@ -89,22 +90,21 @@ static bool isMusicSfx(int num) {
 
 void Mixer::playMusic(int num) {
 	debug(DBG_SND, "Mixer::playMusic(%d)", num);
-	if (num > MUSIC_TRACK && num != _musicTrack) {
-		if (_ogg.playTrack(num - MUSIC_TRACK)) {
-			_backgroundMusicType = _musicType = MT_OGG;
-			_musicTrack = num;
-			return;
-		}
-		if (_cpc.playTrack(num - MUSIC_TRACK)) {
-			_backgroundMusicType = _musicType = MT_CPC;
-			_musicTrack = num;
-			return;
-		}
-	}
+	int trackNum = -1;
 	if (num == 1) { // menu screen
-		if (_cpc.playTrack(2) || _ogg.playTrack(2)) {
+		trackNum = 2;
+	} else if (num > MUSIC_TRACK) {
+		trackNum = num - MUSIC_TRACK;
+	}
+	if (trackNum != -1 && trackNum != _musicTrack) {
+		if (_ogg.playTrack(trackNum)) {
 			_backgroundMusicType = _musicType = MT_OGG;
-			_musicTrack = 2;
+			_musicTrack = trackNum;
+			return;
+		}
+		if (_cpc.playTrack(trackNum)) {
+			_backgroundMusicType = _musicType = MT_CPC;
+			_musicTrack = trackNum;
 			return;
 		}
 	}

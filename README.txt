@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.4.8
+Release version: 0.4.9
 -------------------------------------------------------------------------------
 
 
@@ -59,25 +59,20 @@ The widescreen option accepts two modes :
 
 In-game hotkeys :
 
-    Arrow Keys      move Conrad
-    Enter           use the current inventory object
-    Shift           talk / use / run / shoot
-    Escape          display the options
-    Backspace       display the inventory
-    Alt Enter       toggle windowed/fullscreen mode
-    Alt + and -     increase or decrease game screen scaler factor
-    Alt S           write screenshot as .tga
-    Ctrl S          save game state
-    Ctrl L          load game state
-    Ctrl R          rewind game state buffer (requires --autosave)
-    Ctrl + and -    change game state slot
-    Function Keys   change game screen scaler
-
-Debug hotkeys :
-
-    Ctrl F          toggle fast mode
-    Ctrl I          Conrad 'infinite' life
-    Ctrl B          toggle display of updated dirty blocks
+    Arrow Keys        move Conrad
+    Enter             use the current inventory object
+    Shift             talk / use / run / shoot
+    Escape            display options
+    Backspace / Tab   display inventory / skip cutscene
+    Alt Enter         toggle windowed / fullscreen mode
+    Alt + and -       increase or decrease game screen scaler factor
+    Alt S             take screenshot
+    Ctrl G            toggle auto zoom (DOS version only)
+    Ctrl S            save game state
+    Ctrl L            load game state
+    Ctrl R            rewind game state buffer (requires --autosave)
+    Ctrl + and -      change game state slot
+    Function Keys     change game screen scaler
 
 
 Credits:

@@ -1064,7 +1064,7 @@ void Resource::load_PGE(File *f) {
 		pge->obj_node_number = f->readUint16LE();
 		pge->life = f->readUint16LE();
 		for (int lc = 0; lc < 4; ++lc) {
-			pge->counter_values[lc] = f->readUint16LE();
+			pge->data[lc] = f->readUint16LE();
 		}
 		pge->object_type = f->readByte();
 		pge->init_room = f->readByte();
@@ -1076,7 +1076,7 @@ void Resource::load_PGE(File *f) {
 		pge->skill = f->readByte();
 		pge->mirror_x = f->readByte();
 		pge->flags = f->readByte();
-		pge->unk1C = f->readByte();
+		pge->collision_data_len = f->readByte();
 		f->readByte();
 		pge->text_num = f->readUint16LE();
 	}
@@ -1095,7 +1095,7 @@ void Resource::decodePGE(const uint8_t *p, int size) {
 		pge->obj_node_number = _readUint16(p); p += 2;
 		pge->life = _readUint16(p); p += 2;
 		for (int lc = 0; lc < 4; ++lc) {
-			pge->counter_values[lc] = _readUint16(p); p += 2;
+			pge->data[lc] = _readUint16(p); p += 2;
 		}
 		pge->object_type = *p++;
 		pge->init_room = *p++;
@@ -1107,7 +1107,7 @@ void Resource::decodePGE(const uint8_t *p, int size) {
 		pge->skill = *p++;
 		pge->mirror_x = *p++;
 		pge->flags = *p++;
-		pge->unk1C = *p++;
+		pge->collision_data_len = *p++;
 		++p;
 		pge->text_num = _readUint16(p); p += 2;
 	}
@@ -1417,6 +1417,10 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 		dataOffset &= 0xFFFF;
 	}
 	const int size = getBankDataSize(num);
+	if (size == 0) {
+		warning("Invalid bank data %d", num);
+		return _bankDataHead;
+	}
 	const int avail = _bankDataTail - _bankDataHead;
 	if (avail < size) {
 		clearBankData();

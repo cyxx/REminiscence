@@ -15,7 +15,7 @@ ResourceAba::~ResourceAba() {
 }
 
 static int compareAbaEntry(const void *a, const void *b) {
-	return strcasecmp(((ResourceAbaEntry *)a)->name, ((ResourceAbaEntry *)b)->name);
+	return strcasecmp(((const ResourceAbaEntry *)a)->name, ((const ResourceAbaEntry *)b)->name);
 }
 
 void ResourceAba::readEntries(const char *aba) {

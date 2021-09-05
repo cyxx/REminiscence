@@ -3585,7 +3585,7 @@ const Game::pge_OpcodeProc Game::_pge_opcodeTable[] = {
 	/* 0x48 */
 	&Game::pge_o_unk0x48,
 	&Game::pge_o_unk0x49,
-	&Game::pge_o_unk0x4A,
+	&Game::pge_op_killInventoryPiege,
 	&Game::pge_op_killPiege,
 	/* 0x4C */
 	&Game::pge_op_isInCurrentRoom,
@@ -3606,7 +3606,7 @@ const Game::pge_OpcodeProc Game::_pge_opcodeTable[] = {
 	&Game::pge_op_setLifeCounter,
 	&Game::pge_op_decLifeCounter,
 	&Game::pge_op_playCutscene,
-	&Game::pge_op_isTempVar2Set,
+	&Game::pge_op_compareUnkVar,
 	/* 0x5C */
 	&Game::pge_op_playDeathCutscene,
 	&Game::pge_o_unk0x5D,
@@ -3665,8 +3665,8 @@ const Game::pge_OpcodeProc Game::_pge_opcodeTable[] = {
 	/* 0x88 */
 	&Game::pge_op_adjustPos,
 	0,
-	&Game::pge_op_setTempVar1,
-	&Game::pge_op_isTempVar1Set
+	&Game::pge_op_setGunVar,
+	&Game::pge_op_compareGunVar
 };
 
 const uint8_t Game::_pge_modKeysTable[] = {

@@ -102,6 +102,7 @@ static void initOptions() {
 	g_options.play_carte_cutscene = false;
 	g_options.play_gamesaved_sound = false;
 	g_options.restore_memo_cutscene = true;
+	g_options.order_inventory_original = false;
 	// read configuration file
 	struct {
 		const char *name;
@@ -123,6 +124,7 @@ static void initOptions() {
 		{ "play_carte_cutscene", &g_options.play_carte_cutscene },
 		{ "play_gamesaved_sound", &g_options.play_gamesaved_sound },
 		{ "restore_memo_cutscene", &g_options.restore_memo_cutscene },
+		{ "order_inventory_original", &g_options.order_inventory_original },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";
@@ -194,6 +196,7 @@ int main(int argc, char *argv[]) {
 	int levelNum = 0;
 	bool fullscreen = false;
 	bool autoSave = false;
+	uint32_t cheats = 0;
 	WidescreenMode widescreen = kWidescreenNone;
 	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
@@ -214,6 +217,7 @@ int main(int argc, char *argv[]) {
 			{ "language",   required_argument, 0, 6 },
 			{ "widescreen", required_argument, 0, 7 },
 			{ "autosave",   no_argument,       0, 8 },
+			{ "cheats",     required_argument, 0, 9 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -264,6 +268,9 @@ int main(int argc, char *argv[]) {
 		case 8:
 			autoSave = true;
 			break;
+		case 9:
+			cheats = atoi(optarg);
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
@@ -279,7 +286,7 @@ int main(int argc, char *argv[]) {
 	}
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
-	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave);
+	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave, cheats);
 	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen, &scalerParameters);
 	g->run();
 	delete g;

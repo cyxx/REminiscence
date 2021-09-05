@@ -147,16 +147,12 @@ uint16_t Cutscene::findTextSeparators(const uint8_t *p, int len) {
 void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, uint8_t *page, int textJustify) {
 	debug(DBG_CUT, "Cutscene::drawText(x=%d, y=%d, c=%d, justify=%d)", x, y, color, textJustify);
 	int len = 0;
-	if (_res->isMac()) {
-		if (p == _textBuf) {
-			while (p[len] != 0xA) {
-				++len;
-			}
-		} else {
-			len = *p++;
-		}
+	if (p != _textBuf && _res->isMac()) {
+		len = *p++;
 	} else {
-		len = strlen((const char *)p);
+		while (p[len] != 0xA && p[len]) {
+			++len;
+		}
 	}
 	Video::drawCharFunc dcf = _vid->_drawChar;
 	const uint8_t *fnt = (_res->_lang == LANG_JP) ? Video::_font8Jp : _res->_fnt;
@@ -202,71 +198,69 @@ void Cutscene::clearBackPage() {
 }
 
 void Cutscene::drawCreditsText() {
-	if (_creditsSequence) {
-		if (_creditsKeepText) {
-			if (_creditsSlowText) {
+	if (_creditsKeepText) {
+		if (_creditsSlowText) {
+			return;
+		}
+		_creditsKeepText = false;
+	}
+	if (_creditsTextCounter <= 0) {
+		uint8_t code;
+		const bool isMac = _res->isMac();
+		if (isMac && _creditsTextLen <= 0) {
+			const uint8_t *p = _res->getCreditsString(_creditsTextIndex++);
+			if (!p) {
 				return;
 			}
-			_creditsKeepText = false;
+			_creditsTextCounter = 60;
+			_creditsTextPosX = p[0];
+			_creditsTextPosY = p[1];
+			_creditsTextLen = p[2];
+			_textCurPtr = p + 2;
+			code = 0;
+		} else {
+			code = *_textCurPtr;
 		}
-		if (_creditsTextCounter <= 0) {
-			uint8_t code;
-			const bool isMac = _res->isMac();
-			if (isMac && _creditsTextLen <= 0) {
-				const uint8_t *p = _res->getCreditsString(_creditsTextIndex++);
-				if (!p) {
-					return;
-				}
-				_creditsTextCounter = 60;
-				_creditsTextPosX = p[0];
-				_creditsTextPosY = p[1];
-				_creditsTextLen = p[2];
-				_textCurPtr = p + 2;
-				code = 0;
-			} else {
-				code = *_textCurPtr;
+		if (code == 0x7D && isMac) {
+			++_textCurPtr;
+			code = *_textCurPtr++;
+			_creditsTextLen -= 2;
+			assert(code > 0x30);
+			for (int i = 0; i < (code - 0x30); ++i) {
+				*_textCurBuf++ = ' ';
 			}
-			if (code == 0x7D && isMac) {
-				++_textCurPtr;
-				code = *_textCurPtr++;
-				_creditsTextLen -= 2;
-				assert(code > 0x30);
-				for (int i = 0; i < (code - 0x30); ++i) {
-					*_textCurBuf++ = ' ';
-				}
-				*_textCurBuf = 0xA;
-			} else if (code == 0xFF) {
-				_textBuf[0] = 0xA;
-			} else if (code == 0xFE) {
-				++_textCurPtr;
-				_creditsTextCounter = *_textCurPtr++;
-			} else if (code == 1) {
-				++_textCurPtr;
-				_creditsTextPosX = *_textCurPtr++;
-				_creditsTextPosY = *_textCurPtr++;
-			} else if (code == 0) {
-				_textCurBuf = _textBuf;
-				_textBuf[0] = 0xA;
-				++_textCurPtr;
-				if (_creditsSlowText) {
-					_creditsKeepText = true;
-				}
-			} else {
-				*_textCurBuf++ = code;
-				*_textCurBuf = 0xA;
-				++_textCurPtr;
-				if (isMac) {
-					--_creditsTextLen;
-					if (_creditsTextLen == 0) {
-						_creditsTextCounter = 600;
-					}
-				}
+			*_textCurBuf = 0xA;
+		} else if (code == 0xFF) {
+			_textBuf[0] = 0xA;
+		} else if (code == 0xFE) {
+			++_textCurPtr;
+			_creditsTextCounter = *_textCurPtr++;
+		} else if (code == 1) {
+			++_textCurPtr;
+			_creditsTextPosX = *_textCurPtr++;
+			_creditsTextPosY = *_textCurPtr++;
+		} else if (code == 0) {
+			_textCurBuf = _textBuf;
+			_textBuf[0] = 0xA;
+			++_textCurPtr;
+			if (_creditsSlowText) {
+				_creditsKeepText = true;
 			}
 		} else {
-			_creditsTextCounter -= 10;
+			*_textCurBuf++ = code;
+			*_textCurBuf = 0xA;
+			++_textCurPtr;
+			if (isMac) {
+				--_creditsTextLen;
+				if (_creditsTextLen == 0) {
+					_creditsTextCounter = 600;
+				}
+			}
 		}
-		drawText((_creditsTextPosX - 1) * 8, _creditsTextPosY * 8, _textBuf, 0xEF, _backPage, kTextJustifyLeft);
+	} else {
+		_creditsTextCounter -= 10;
 	}
+	drawText((_creditsTextPosX - 1) * 8, _creditsTextPosY * 8, _textBuf, 0xEF, _backPage, kTextJustifyLeft);
 }
 
 void Cutscene::drawProtectionShape(uint8_t shapeNum, int16_t zoom) {
@@ -307,8 +301,16 @@ void Cutscene::drawProtectionShape(uint8_t shapeNum, int16_t zoom) {
 void Cutscene::op_markCurPos() {
 	debug(DBG_CUT, "Cutscene::op_markCurPos()");
 	_cmdPtrBak = _cmdPtr;
-	drawCreditsText();
 	_frameDelay = 5;
+	if (!_creditsSequence) {
+		if (_id == kCineDebut) {
+			_frameDelay = 7;
+		} else if (_id == kCineChute) {
+			_frameDelay = 6;
+		}
+	} else {
+		drawCreditsText();
+	}
 	updateScreen();
 	clearBackPage();
 	_creditsSlowText = false;

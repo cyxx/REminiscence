@@ -42,13 +42,13 @@ void Game::col_clearState() {
 void Game::col_preparePiegeState(LivePGE *pge) {
 	debug(DBG_COL, "Game::col_preparePiegeState() pge_num=%ld", pge - &_pgeLive[0]);
 	CollisionSlot *ct_slot1, *ct_slot2;
-	if (pge->init_PGE->unk1C == 0) {
+	if (pge->init_PGE->collision_data_len == 0) {
 		pge->collision_slot = 0xFF;
 		return;
 	}
 	int i = 0;
 	ct_slot1 = 0;
-	for (int c = 0; c < pge->init_PGE->unk1C; ++c) {
+	for (int c = 0; c < pge->init_PGE->collision_data_len; ++c) {
 		ct_slot2 = _col_curSlot;
 		if (ct_slot2 + 1 > &_col_slots[255])
 			return;
@@ -231,7 +231,7 @@ int16_t Game::col_detectHit(LivePGE *pge, int16_t arg2, int16_t arg4, col_Callba
 	if (pge_room < 0 || pge_room >= 0x40) {
 		return 0;
 	}
-	int16_t thr = pge->init_PGE->counter_values[0];
+	int16_t thr = pge->init_PGE->data[0];
 	if (thr > 0) {
 		pos_dx = -1;
 		pos_dy = -1;
@@ -452,9 +452,9 @@ int Game::col_detectGunHit(LivePGE *pge, int16_t arg2, int16_t arg4, col_Callbac
 	if (pge_room < 0 || pge_room >= 0x40) return 0;
 	int16_t thr, pos_dx, pos_dy;
 	if (argC == -1) {
-		thr = pge->init_PGE->counter_values[0];
+		thr = pge->init_PGE->data[0];
 	} else {
-		thr = pge->init_PGE->counter_values[3];
+		thr = pge->init_PGE->data[3];
 	}
 	if (thr > 0) {
 		pos_dx = -1;

@@ -31,6 +31,7 @@ struct SystemStub_SDL : SystemStub {
 	SDL_Renderer *_renderer;
 	SDL_Texture *_texture;
 	int _texW, _texH;
+	SDL_Rect _texRect;
 	SDL_GameController *_controller;
 	SDL_PixelFormat *_fmt;
 	const char *_caption;
@@ -66,6 +67,7 @@ struct SystemStub_SDL : SystemStub {
 	virtual void setOverscanColor(int i);
 	virtual void copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch);
 	virtual void copyRectRgb24(int x, int y, int w, int h, const uint8_t *rgb);
+	virtual void zoomRect(int x, int y, int w, int h);
 	virtual void copyWidescreenLeft(int w, int h, const uint8_t *buf);
 	virtual void copyWidescreenRight(int w, int h, const uint8_t *buf);
 	virtual void copyWidescreenMirror(int w, int h, const uint8_t *buf);
@@ -98,7 +100,7 @@ SystemStub *SystemStub_SDL_create() {
 }
 
 void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int widescreenMode, const ScalerParameters *scalerParameters) {
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER);
 	SDL_ShowCursor(SDL_DISABLE);
 	_caption = title;
 	memset(&_pi, 0, sizeof(_pi));
@@ -267,6 +269,16 @@ void SystemStub_SDL::copyRectRgb24(int x, int y, int w, int h, const uint8_t *rg
 	if (_pi.dbgMask & PlayerInput::DF_DBLOCKS) {
 		drawRect(x, y, w, h, 0xE7);
 	}
+}
+
+void SystemStub_SDL::zoomRect(int x, int y, int w, int h) {
+	if (_pi.dbgMask & PlayerInput::DF_DBLOCKS) {
+		drawRect(x, y, w, h, 0xE7);
+	}
+	_texRect.x = x * _texW / _screenW;
+	_texRect.y = y * _texH / _screenH;
+	_texRect.w = w * _texW / _screenW;
+	_texRect.h = h * _texH / _screenH;
 }
 
 static void clearTexture(SDL_Texture *texture, int h, SDL_PixelFormat *fmt) {
@@ -502,7 +514,7 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 		SDL_RenderGetLogicalSize(_renderer, &r.w, &r.h);
 		r.x = (r.w - _texW) / 2;
 		r.w = _texW;
-		SDL_RenderCopy(_renderer, _texture, 0, &r);
+		SDL_RenderCopy(_renderer, _texture, &_texRect, &r);
 	} else {
 		if (_fadeOnUpdateScreen) {
 			SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
@@ -524,9 +536,13 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 		r.x = 0;
 		r.y = shakeOffset * _scaleFactor;
 		SDL_RenderGetLogicalSize(_renderer, &r.w, &r.h);
-		SDL_RenderCopy(_renderer, _texture, 0, &r);
+		SDL_RenderCopy(_renderer, _texture, &_texRect, &r);
 	}
 	SDL_RenderPresent(_renderer);
+	_texRect.x = 0;
+	_texRect.y = 0;
+	_texRect.w = _texW;
+	_texRect.h = _texH;
 }
 
 void SystemStub_SDL::processEvents() {
@@ -740,8 +756,8 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 				break;
 			case SDLK_s: {
 					char name[32];
-					snprintf(name, sizeof(name), "screenshot-%03d.tga", _screenshot);
-					saveTGA(name, (const uint8_t *)_screenBuffer, _screenW, _screenH);
+					snprintf(name, sizeof(name), "screenshot-%03d.bmp", _screenshot);
+					saveBMP(name, (const uint8_t *)_screenBuffer, 0, _screenW, _screenH);
 					++_screenshot;
 					debug(DBG_INFO, "Written '%s'", name);
 				}
@@ -771,6 +787,10 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 			case SDLK_r:
 				_pi.rewind = true;
 				break;
+			case SDLK_g:
+				_pi.dbgMask ^= PlayerInput::DF_AUTOZOOM;
+				debug(DBG_INFO, "Auto zoom %s", (_pi.dbgMask & PlayerInput::DF_AUTOZOOM) ? "enabled" : "disabled");
+				break;
 			case SDLK_KP_PLUS:
 			case SDLK_PAGEUP:
 				_pi.stateSlot = 1;
@@ -785,15 +805,19 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 		setAsciiChar(_pi, &ev.key.keysym);
 		switch (ev.key.keysym.sym) {
 		case SDLK_LEFT:
+		case SDLK_KP_4:
 			_pi.dirMask &= ~PlayerInput::DIR_LEFT;
 			break;
 		case SDLK_RIGHT:
+		case SDLK_KP_6:
 			_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
 			break;
 		case SDLK_UP:
+		case SDLK_KP_8:
 			_pi.dirMask &= ~PlayerInput::DIR_UP;
 			break;
 		case SDLK_DOWN:
+		case SDLK_KP_2:
 			_pi.dirMask &= ~PlayerInput::DIR_DOWN;
 			break;
 		case SDLK_SPACE:
@@ -829,15 +853,19 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 		}
 		switch (ev.key.keysym.sym) {
 		case SDLK_LEFT:
+		case SDLK_KP_4:
 			_pi.dirMask |= PlayerInput::DIR_LEFT;
 			break;
 		case SDLK_RIGHT:
+		case SDLK_KP_6:
 			_pi.dirMask |= PlayerInput::DIR_RIGHT;
 			break;
 		case SDLK_UP:
+		case SDLK_KP_8:
 			_pi.dirMask |= PlayerInput::DIR_UP;
 			break;
 		case SDLK_DOWN:
+		case SDLK_KP_2:
 			_pi.dirMask |= PlayerInput::DIR_DOWN;
 			break;
 		case SDLK_BACKSPACE:
@@ -935,6 +963,10 @@ void SystemStub_SDL::prepareGraphics() {
 		_texH *= _scaleFactor;
 		break;
 	}
+	_texRect.x = 0;
+	_texRect.y = 0;
+	_texRect.w = _texW;
+	_texRect.h = _texH;
 	int windowW = _screenW * _scaleFactor;
 	int windowH = _screenH * _scaleFactor;
 	int flags = 0;
@@ -1061,7 +1093,7 @@ void SystemStub_SDL::setScaler(const ScalerParameters *parameters) {
 			}
 		}
 	}
-	_scaleFactor = _scaler ? CLIP(parameters->factor, _scaler->factorMin, _scaler->factorMax) : 1;
+	_scaleFactor = _scaler ? CLIP(parameters->factor, _scaler->factorMin, _scaler->factorMax) : parameters->factor;
 }
 
 void SystemStub_SDL::changeScaler(int scalerNum) {

@@ -1,3 +1,10 @@
+* release 0.4.9
+	- added option to match original inventory items order
+	- added zoom from DOS version
+	- added Sega CD tracks playback based on stb_vorbis (OGG 22khz)
+	- fixed piege opcode 0x57
+	- fixed repeating sounds volume
+
 * release 0.4.8
 	- added detection for DOS version with .ABA files
 	- added Macintosh credits

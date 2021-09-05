@@ -7,6 +7,9 @@
 #ifdef USE_TREMOR
 #include <tremor/ivorbisfile.h>
 #endif
+#ifdef USE_STB_VORBIS
+#include "stb_vorbis.c"
+#endif
 #include "file.h"
 #include "mixer.h"
 #include "ogg_player.h"
@@ -67,13 +70,17 @@ struct OggDecoder_impl {
 		}
 	}
 
-	bool load(VorbisFile *f, int mixerSampleRate) {
+	bool load(const char *name, FileSystem *fs, int mixerSampleRate) {
+		if (!_f.open(name, "rb", fs)) {
+			return false;
+		}
+		_f.offset = 0;
 		ov_callbacks ovcb;
 		ovcb.read_func  = VorbisFile::readHelper;
 		ovcb.seek_func  = VorbisFile::seekHelper;
 		ovcb.close_func = VorbisFile::closeHelper;
 		ovcb.tell_func  = VorbisFile::tellHelper;
-		if (ov_open_callbacks(f, &_ovf, 0, 0, ovcb) < 0) {
+		if (ov_open_callbacks(&_f, &_ovf, 0, 0, ovcb) < 0) {
 			warning("Invalid .ogg file");
 			return false;
 		}
@@ -131,6 +138,7 @@ struct OggDecoder_impl {
 		return count;
 	}
 
+	VorbisFile _f;
 	OggVorbis_File _ovf;
 	int _channels;
 	bool _open;
@@ -139,66 +147,163 @@ struct OggDecoder_impl {
 };
 #endif
 
+#ifdef USE_STB_VORBIS
+static const int kMusicVolume = 192;
+
+struct OggDecoder_impl {
+	OggDecoder_impl()
+		: _v(0) {
+	}
+	~OggDecoder_impl() {
+		if (_v) {
+			stb_vorbis_close(_v);
+			_v = 0;
+		}
+	}
+	bool load(const char *name, FileSystem *fs, int mixerSampleRate) {
+		if (!_f.open(name, "rb", fs)) {
+			return false;
+		}
+		_count = _f.read(_buffer, sizeof(_buffer));
+		if (_count > 0) {
+			int bytes = 0;
+			int error = 0;
+			_v = stb_vorbis_open_pushdata(_buffer, _count, &bytes, &error, 0);
+			if (_v) {
+				_offset = bytes;
+				stb_vorbis_info info = stb_vorbis_get_info(_v);
+				if (info.channels != 2 || (int)info.sample_rate != mixerSampleRate) {
+					warning("Unhandled ogg/pcm format ch %d rate %d", info.channels, info.sample_rate);
+					return false;
+				}
+				_decodedSamplesLen = 0;
+				return true;
+			}
+		}
+		return false;
+	}
+	int read(int16_t *dst, int samples) {
+		int total = 0;
+		if (_decodedSamplesLen != 0) {
+			const int len = MIN(_decodedSamplesLen, samples);
+			for (int i = 0; i < len; ++i) {
+				const int sample = (_decodedSamples[0][i] + _decodedSamples[1][i]) / 2;
+				*dst = ADDC_S16(*dst, ((sample * kMusicVolume) >> 8));
+				++dst;
+			}
+			total += len;
+			_decodedSamplesLen -= len;
+		}
+		while (total < samples) {
+			int channels = 0;
+			float **outputs;
+			int count;
+			int bytes = stb_vorbis_decode_frame_pushdata(_v, _buffer + _offset, _count - _offset, &channels, &outputs, &count);
+			if (bytes == 0) {
+				if (_offset != _count) {
+					memmove(_buffer, _buffer + _offset, _count - _offset);
+					_offset = _count - _offset;
+				} else {
+					_offset = 0;
+				}
+				_count = sizeof(_buffer) - _offset;
+				bytes = _f.read(_buffer + _offset, _count);
+				if (bytes < 0) {
+					break;
+				}
+				if (bytes == 0) {
+					// rewind
+					_f.seek(0);
+					_count = _f.read(_buffer, sizeof(_buffer));
+					stb_vorbis_flush_pushdata(_v);
+				} else {
+					_count = _offset + bytes;
+				}
+				_offset = 0;
+				continue;
+			}
+			_offset += bytes;
+			if (channels == 2) {
+				const int remain = samples - total;
+				const int len = MIN(count, remain);
+				for (int i = 0; i < len; ++i) {
+					const int l = int(outputs[0][i] * 32768 + .5);
+					const int r = int(outputs[1][i] * 32768 + .5);
+					const int sample = (l + r) / 2;
+					*dst = ADDC_S16(*dst, ((sample * kMusicVolume) >> 8));
+					++dst;
+				}
+				if (count > remain) {
+					_decodedSamplesLen = count - remain;
+					assert(_decodedSamplesLen < 1024);
+					for (int i = 0; i < _decodedSamplesLen; ++i) {
+						_decodedSamples[0][i] = int(outputs[0][len + i] * 32768 + .5);
+						_decodedSamples[1][i] = int(outputs[1][len + i] * 32768 + .5);
+					}
+					total = samples;
+					break;
+				}
+			} else {
+				warning("Invalid decoded data channels %d count %d", channels, count);
+			}
+			total += count;
+		}
+		return total;
+	}
+
+	uint8_t _buffer[8192];
+	int16_t _decodedSamples[2][1024];
+	int _decodedSamplesLen;
+	uint32_t _offset, _count;
+	stb_vorbis *_v;
+	File _f;
+};
+#endif
+
 OggPlayer::OggPlayer(Mixer *mixer, FileSystem *fs)
-	: _mix(mixer), _fs(fs), _impl(0) {
+	: _mix(mixer), _fs(fs) {
+	_impl = new OggDecoder_impl;
 }
 
 OggPlayer::~OggPlayer() {
-#ifdef USE_TREMOR
 	delete _impl;
-#endif
+	_impl = 0;
 }
 
 bool OggPlayer::playTrack(int num) {
-#ifdef USE_TREMOR
 	stopTrack();
 	char buf[16];
 	snprintf(buf, sizeof(buf), "track%02d.ogg", num);
-	VorbisFile *vf = new VorbisFile;
-	if (vf->open(buf, "rb", _fs)) {
-		vf->offset = 0;
-		_impl = new OggDecoder_impl();
-		if (_impl->load(vf, _mix->getSampleRate())) {
-			debug(DBG_INFO, "Playing '%s'", buf);
-			_mix->setPremixHook(mixCallback, this);
-			return true;
-		}
+	if (_impl->load(buf, _fs, _mix->getSampleRate())) {
+		debug(DBG_INFO, "Playing '%s'", buf);
+		_mix->setPremixHook(mixCallback, this);
+		return true;
 	}
-	delete vf;
-#endif
 	return false;
 }
 
 void OggPlayer::stopTrack() {
-#ifdef USE_TREMOR
-	_mix->setPremixHook(0, 0);
-	delete _impl;
-	_impl = 0;
-#endif
-}
-
-void OggPlayer::pauseTrack() {
-#ifdef USE_TREMOR
 	if (_impl) {
 		_mix->setPremixHook(0, 0);
 	}
-#endif
+}
+
+void OggPlayer::pauseTrack() {
+	if (_impl) {
+		_mix->setPremixHook(0, 0);
+	}
 }
 
 void OggPlayer::resumeTrack() {
-#ifdef USE_TREMOR
 	if (_impl) {
 		_mix->setPremixHook(mixCallback, this);
 	}
-#endif
 }
 
 bool OggPlayer::mix(int16_t *buf, int len) {
-#ifdef USE_TREMOR
 	if (_impl) {
 		return _impl->read(buf, len) != 0;
 	}
-#endif
 	return false;
 }
 

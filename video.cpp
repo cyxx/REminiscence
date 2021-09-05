@@ -1058,9 +1058,9 @@ void Video::fillRect(int x, int y, int w, int h, uint8_t color) {
 
 static void fixOffsetDecodeBuffer(DecodeBuffer *buf, const uint8_t *dataPtr) {
         if (buf->xflip) {
-                buf->x += (int16_t)READ_BE_UINT16(dataPtr + 4) - READ_BE_UINT16(dataPtr) - 1;
+		buf->x += (int16_t)READ_BE_UINT16(dataPtr + 4) - READ_BE_UINT16(dataPtr) - 1;
         } else {
-                buf->x -= (int16_t)READ_BE_UINT16(dataPtr + 4);
+		buf->x -= (int16_t)READ_BE_UINT16(dataPtr + 4);
         }
         buf->y -= (int16_t)READ_BE_UINT16(dataPtr + 6);
 }

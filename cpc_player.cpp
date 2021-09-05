@@ -108,6 +108,7 @@ int8_t CpcPlayer::readSampleData() {
 			// rewind
 			_f.seek(_restartPos);
 			nextChunk();
+			_sampleL = _sampleR = 0;
 		}
 	}
 	const int8_t data = _f.readByte();

@@ -137,6 +137,7 @@ struct Options {
 	bool play_carte_cutscene;
 	bool play_gamesaved_sound;
 	bool restore_memo_cutscene;
+	bool order_inventory_original;
 };
 
 struct Color {
@@ -172,8 +173,8 @@ struct InitPGE {
 	int16_t pos_y;
 	uint16_t obj_node_number;
 	uint16_t life;
-	int16_t counter_values[4]; // data
-	uint8_t object_type;
+	int16_t data[4];
+	uint8_t object_type; // 1:conrad, 10:monster
 	uint8_t init_room;
 	uint8_t room_location;
 	uint8_t init_flags;
@@ -183,7 +184,7 @@ struct InitPGE {
 	uint8_t skill;
 	uint8_t mirror_x;
 	uint8_t flags; // 1:xflip 4:active
-	uint8_t unk1C; // collidable, collision_data_len
+	uint8_t collision_data_len;
 	uint16_t text_num;
 };
 
@@ -194,11 +195,11 @@ struct LivePGE {
 	uint8_t anim_seq;
 	uint8_t room_location;
 	int16_t life;
-	int16_t counter_value; // msg
+	int16_t counter_value;
 	uint8_t collision_slot;
 	uint8_t next_inventory_PGE;
 	uint8_t current_inventory_PGE;
-	uint8_t unkF; // unk_inventory_PGE
+	uint8_t ref_inventory_PGE;
 	uint16_t anim_number;
 	uint8_t flags;
 	uint8_t index;
@@ -209,7 +210,7 @@ struct LivePGE {
 
 struct MessagePGE {
 	MessagePGE *next_entry;
-	uint16_t index; // src_pge
+	uint16_t src_pge;
 	uint16_t msg_num;
 };
 
@@ -268,9 +269,9 @@ struct BankSlot {
 
 struct CollisionSlot2 {
 	CollisionSlot2 *next_slot;
-	int8_t *unk2;
+	int8_t *unk2; // grid_data_pos
 	uint8_t data_size;
-	uint8_t data_buf[0x10]; // XXX check size
+	uint8_t data_buf[0x10]; // <= InitPGE.collision_data_len
 };
 
 struct InventoryItem {
