@@ -8,14 +8,16 @@
 #include "systemstub.h"
 #include "util.h"
 
-Mixer::Mixer(FileSystem *fs, SystemStub *stub)
-	: _stub(stub), _musicType(MT_NONE), _cpc(this, fs), _mod(this, fs), _ogg(this, fs), _sfx(this) {
+Mixer::Mixer(FileSystem *fs, SystemStub *stub, int midiDriver)
+	: _stub(stub), _musicType(MT_NONE), _cpc(this, fs), _mod(this, fs), _ogg(this, fs), _prf(this, fs, midiDriver), _sfx(this) {
 	_musicTrack = -1;
 	_backgroundMusicType = MT_NONE;
 }
 
 void Mixer::init() {
-	memset(_channels, 0, sizeof(_channels));
+	for (int i = 0; i < NUM_CHANNELS; ++i) {
+		_channels[i].active = false;
+	}
 	_premixHook = 0;
 	_stub->startAudio(Mixer::mixCallback, this);
 }
@@ -120,6 +122,14 @@ void Mixer::playMusic(int num) {
 		_mod.play(num);
 		if (_mod._playing) {
 			_musicType = MT_MOD;
+			return;
+		}
+		if (g_options.use_prf_music) {
+			_prf.play(num);
+			if (_prf._playing) {
+				_musicType = MT_PRF;
+				return;
+			}
 		}
 	}
 }
@@ -134,6 +144,9 @@ void Mixer::stopMusic() {
 		break;
 	case MT_OGG:
 		_ogg.pauseTrack();
+		break;
+	case MT_PRF:
+		_prf.stop();
 		break;
 	case MT_SFX:
 		_sfx.stop();

@@ -25,6 +25,7 @@ struct File {
 	bool ioErr() const;
 	uint32_t size();
 	void seek(int32_t off);
+	uint32_t tell();
 	uint32_t read(void *ptr, uint32_t len);
 	uint8_t readByte();
 	uint16_t readUint16LE();

@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.4.9
+Release version: 0.5.0
 -------------------------------------------------------------------------------
 
 
@@ -21,43 +21,48 @@ release. Support for Amiga and Macintosh is still experimental.
 For the Macintosh release, the resource fork must be dumped as a file named
 'FLASHBACK.BIN' (MacBinary) or 'FLASHBACK.RSRC' (AppleDouble).
 
-To hear music during polygonal cutscenes with the PC version, you need to copy
-the music/ directory of the Amiga version or use the .mod fileset from
-unexotica [4].
-
 For speech with in-game dialogues, you need to copy the 'VOICE.VCE' file from
 the SegaCD version to the DATA directory.
+
+The music/ directory of the Amiga version or the .mod fileset from
+unexotica [4] can be used as an alternative to the MIDI tracks from the
+DOS version. Simply copy the files to the DATA directory and set the
+'use_prf_music' option to false in the configuration file.
 
 
 Running:
 --------
 
-By default, the engine tries to load the game data files from the 'DATA'
-directory, as the original game executable did. The savestates are saved in the
-current directory.
+By default, the engine loads the game data files from the 'DATA' directory,
+as the original game executable did. The savestates are saved in the current
+directory.
 
-These paths can be changed using command line switches :
+These paths can be changed using command line switches:
 
     Usage: rs [OPTIONS]...
     --datapath=PATH   Path to data files (default 'DATA')
     --savepath=PATH   Path to save files (default '.')
     --levelnum=NUM    Level to start from (default '0')
     --fullscreen      Fullscreen display
-    --widescreen=MODE 16:9 display (adjacent,mirror,blur,none)
+    --widescreen=MODE Widescreen display (adjacent,mirror,blur,cdi,none)
     --scaler=NAME@X   Graphics scaler (default 'scale@3')
     --language=LANG   Language (fr,en,de,sp,it,jp)
     --autosave        Save game state automatically
+    --mididriver=MIDI Driver (adlib, mt32)
 
-The scaler option specifies the algorithm used to smoothen the image in
-addition to a scaling factor. External scalers are also supported, the suffix
-shall be used as the name. Eg. If you have scaler_xbr.dll, you can pass
-'--scaler xbr@2' to use that algorithm with a doubled window size (512x448).
+The scaler option specifies the algorithm used to smoothen the image and the
+scaling factor. External scalers are also supported, the suffix shall be used
+as the name. Eg. If you have scaler_xbr.dll, you can pass '--scaler xbr@2'
+to use that algorithm with a doubled window size (512x448).
 
-The widescreen option accepts two modes :
-    'adjacent' : left and right rooms bitmaps will be drawn
-    'mirror' : the current room bitmap will be drawn mirrored
+The widescreen option accepts the modes below:
 
-In-game hotkeys :
+    adjacent   draw left and right rooms bitmap
+    mirror     mirror the current room bitmap
+    blur       blur and stretch the current room bitmap
+    cdi        use bitmaps from the CD-i release ('flashp?.bob' files)
+
+In-game keys:
 
     Arrow Keys        move Conrad
     Enter             use the current inventory object

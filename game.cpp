@@ -9,13 +9,14 @@
 #include "file.h"
 #include "fs.h"
 #include "game.h"
+#include "screenshot.h"
 #include "seq_player.h"
 #include "systemstub.h"
 #include "util.h"
 
-Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave, uint32_t cheats)
+Game::Game(SystemStub *stub, FileSystem *fs, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave, int midiDriver, uint32_t cheats)
 	: _cut(&_res, stub, &_vid), _menu(&_res, stub, &_vid),
-	_mix(fs, stub), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub, widescreenMode),
+	_mix(fs, stub, midiDriver), _res(fs, ver, lang), _seq(stub, &_mix), _vid(&_res, stub, widescreenMode),
 	_stub(stub), _fs(fs), _savePath(savePath) {
 	_stateSlot = 1;
 	_inp_demPos = 0;
@@ -1372,11 +1373,11 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 
 void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, uint8_t a, uint8_t b, uint8_t flags) {
 	debug(DBG_GAME, "Game::drawCharacter(%p, %d, %d, 0x%X, 0x%X, 0x%X)", dataPtr, pos_x, pos_y, a, b, flags);
-	bool var16 = false; // sprite_mirror_y
+	bool sprite_mirror_y = false;
 	if (b & 0x40) {
-		b &= 0xBF;
+		b &= ~0x40;
 		SWAP(a, b);
-		var16 = true;
+		sprite_mirror_y = true;
 	}
 	uint16_t sprite_h = a;
 	uint16_t sprite_w = b;
@@ -1392,7 +1393,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 			sprite_clipped_w = 256 - pos_x;
 			if (flags & 2) {
 				var14 = true;
-				if (var16) {
+				if (sprite_mirror_y) {
 					src += (sprite_w - 1) * sprite_h;
 				} else {
 					src += sprite_w - 1;
@@ -1402,7 +1403,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 	} else {
 		sprite_clipped_w = pos_x + sprite_w;
 		if (!(flags & 2)) {
-			if (var16) {
+			if (sprite_mirror_y) {
 				src -= sprite_h * pos_x;
 				pos_x = 0;
 			} else {
@@ -1411,7 +1412,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 			}
 		} else {
 			var14 = true;
-			if (var16) {
+			if (sprite_mirror_y) {
 				src += sprite_h * (pos_x + sprite_w - 1);
 				pos_x = 0;
 			} else {
@@ -1434,7 +1435,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 		}
 	} else {
 		sprite_clipped_h = sprite_h + pos_y;
-		if (var16) {
+		if (sprite_mirror_y) {
 			src -= pos_y;
 		} else {
 			src -= sprite_w * pos_y;
@@ -1446,7 +1447,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 	}
 
 	if (!var14 && (flags & 2)) {
-		if (var16) {
+		if (sprite_mirror_y) {
 			src += sprite_h * (sprite_w - 1);
 		} else {
 			src += sprite_w - 1;
@@ -1459,13 +1460,13 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 	debug(DBG_GAME, "dst_offset=0x%X src_offset=%ld", dst_offset, src - dataPtr);
 
 	if (!(flags & 2)) {
-		if (var16) {
+		if (sprite_mirror_y) {
 			_vid.drawSpriteSub5(src, _vid._frontLayer + dst_offset, sprite_h, sprite_clipped_h, sprite_clipped_w, sprite_col_mask);
 		} else {
 			_vid.drawSpriteSub3(src, _vid._frontLayer + dst_offset, sprite_w, sprite_clipped_h, sprite_clipped_w, sprite_col_mask);
 		}
 	} else {
-		if (var16) {
+		if (sprite_mirror_y) {
 			_vid.drawSpriteSub6(src, _vid._frontLayer + dst_offset, sprite_h, sprite_clipped_h, sprite_clipped_w, sprite_col_mask);
 		} else {
 			_vid.drawSpriteSub4(src, _vid._frontLayer + dst_offset, sprite_w, sprite_clipped_h, sprite_clipped_w, sprite_col_mask);
@@ -1536,7 +1537,7 @@ bool Game::hasLevelMap(int level, int room) const {
 	if (_res._map) {
 		return READ_LE_UINT32(_res._map + room * 6) != 0;
 	} else if (_res._lev) {
-		return READ_BE_UINT32(_res._lev + room * 4) != 0;
+		return READ_BE_UINT32(_res._lev + room * 4) > 0x100;
 	}
 	return false;
 }
@@ -1702,6 +1703,19 @@ void Game::loadLevelData() {
 		_res.MAC_loadLevelData(_currentLevel);
 		break;
 	}
+	if (0) {
+		for (int i = 0; i < 64; ++i) {
+			if (hasLevelMap(_currentLevel, i)) {
+				_currentRoom = i;
+				loadLevelMap();
+				uint8_t palette[256 * 3];
+				_stub->getPalette(palette, 256);
+				char name[64];
+				snprintf(name, sizeof(name), "DUMP/level%d_room%02d.bmp", _currentLevel, i);
+				saveBMP(name, _vid._backLayer, palette, _vid._w, _vid._h);
+			}
+		}
+	}
 
 	_cut._id = lvl->cutscene_id;
 
@@ -1747,6 +1761,22 @@ void Game::loadLevelData() {
 	_validSaveState = false;
 
 	_mix.playMusic(Mixer::MUSIC_TRACK + lvl->track);
+
+	if (_widescreenMode == kWidescreenCDi) {
+		char name[16];
+		snprintf(name, sizeof(name), "flashp%d.bob", _currentLevel + 1);
+		File f;
+		if (f.open(name, "rb", _fs)) {
+			const int w = f.readUint16LE();
+			const int h = f.readUint16LE();
+			if (w != kWidescreenBorderCDiW || h != kWidescreenBorderCDiH) {
+				warning("Unsupported CDi border w:%d h:%d", w, h);
+			} else {
+				f.read(_res._scratchBuffer, 256 * 3 + w * h);
+				_stub->copyWidescreenCDi(w, h, _res._scratchBuffer + 256 * 3, _res._scratchBuffer);
+			}
+		}
+	}
 }
 
 void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {

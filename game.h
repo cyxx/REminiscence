@@ -109,7 +109,7 @@ struct Game {
 	bool _autoSave;
 	uint32_t _saveTimestamp;
 
-	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave, uint32_t cheats);
+	Game(SystemStub *, FileSystem *, const char *savePath, int level, ResourceType ver, Language lang, WidescreenMode widescreenMode, bool autoSave, int midiDriver, uint32_t cheats);
 
 	void run();
 	void displayTitleScreenAmiga();

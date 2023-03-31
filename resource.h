@@ -353,7 +353,7 @@ struct Resource {
 	void MAC_loadSounds();
 
 	int MAC_getPersoFrame(int anim) const {
-		static const int data[] = {
+		static const int16_t data[] = {
 			0x000, 0x22E,
 			0x28E, 0x2E9,
 			0x4E9, 0x506,
@@ -371,7 +371,7 @@ struct Resource {
 		return 0;
 	}
 	int MAC_getMonsterFrame(int anim) const {
-		static const int data[] = {
+		static const int16_t data[] = {
 			0x22F, 0x28D, // junky - 94
 			0x2EA, 0x385, // mercenai - 156
 			0x387, 0x42F, // replican - 169

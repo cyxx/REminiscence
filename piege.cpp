@@ -165,7 +165,7 @@ void Game::pge_setupNextAnimFrame(LivePGE *pge, MessagePGE *le) {
 	ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 	Object *obj = &on->objects[pge->first_obj_number];
 	int i = pge->first_obj_number;
-	while (i < on->last_obj_number && pge->obj_type == obj->type) {
+	while (i < on->num_objects && pge->obj_type == obj->type) {
 		MessagePGE *next_le = le;
 		while (next_le) {
 			uint16_t msgNum = next_le->msg_num;
@@ -403,7 +403,7 @@ uint16_t Game::pge_processOBJ(LivePGE *pge) {
 	ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 	Object *obj = &on->objects[pge->first_obj_number];
 	int i = pge->first_obj_number;
-	while (i < on->last_obj_number && pge->obj_type == obj->type) {
+	while (i < on->num_objects && pge->obj_type == obj->type) {
 		if (obj->opcode2 == 0x6B) return 0xFFFF;
 		if (obj->opcode2 == 0x22 && obj->opcode_arg2 <= 4) return 0xFFFF;
 

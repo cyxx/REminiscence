@@ -74,6 +74,7 @@ struct SystemStub {
 	virtual void copyWidescreenRight(int w, int h, const uint8_t *buf) = 0;
 	virtual void copyWidescreenMirror(int w, int h, const uint8_t *buf) = 0;
 	virtual void copyWidescreenBlur(int w, int h, const uint8_t *buf) = 0;
+	virtual void copyWidescreenCDi(int w, int h, const uint8_t *buf, const uint8_t *pal) = 0;
 	virtual void clearWidescreen() = 0;
 	virtual void enableWidescreen(bool enable) = 0;
 	virtual void fadeScreen() = 0;

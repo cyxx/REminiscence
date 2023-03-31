@@ -24,6 +24,7 @@ struct File_impl {
 	virtual void close() = 0;
 	virtual uint32_t size() = 0;
 	virtual void seek(int32_t off) = 0;
+	virtual uint32_t tell() = 0;
 	virtual uint32_t read(void *ptr, uint32_t len) = 0;
 	virtual uint32_t write(const void *ptr, uint32_t len) = 0;
 };
@@ -56,6 +57,12 @@ struct StdioFile : File_impl {
 		if (_fp) {
 			fseek(_fp, off, SEEK_SET);
 		}
+	}
+	uint32_t tell() {
+		if (_fp) {
+			return ftell(_fp);
+		}
+		return 0;
 	}
 	uint32_t read(void *ptr, uint32_t len) {
 		if (_fp) {
@@ -108,6 +115,12 @@ struct GzipFile : File_impl {
 		if (_fp) {
 			gzseek(_fp, off, SEEK_SET);
 		}
+	}
+	uint32_t tell() {
+		if (_fp) {
+			return gztell(_fp);
+		}
+		return 0;
 	}
 	uint32_t read(void *ptr, uint32_t len) {
 		if (_fp) {
@@ -341,6 +354,10 @@ uint32_t File::size() {
 
 void File::seek(int32_t off) {
 	_impl->seek(off);
+}
+
+uint32_t File::tell() {
+	return _impl->tell();
 }
 
 uint32_t File::read(void *ptr, uint32_t len) {

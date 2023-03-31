@@ -1,9 +1,13 @@
+* release 0.5.0
+	- added CD-i widescreen mode (flashp*bob)
+	- added support for DOS .prf music (Adlib, MT32)
+
 * release 0.4.9
 	- added option to match original inventory items order
 	- added zoom from DOS version
 	- added Sega CD tracks playback based on stb_vorbis (OGG 22khz)
 	- fixed piege opcode 0x57
-	- fixed repeating sounds volume
+	- fixed volume of repeating sounds
 
 * release 0.4.8
 	- added detection for DOS version with .ABA files

@@ -6503,3 +6503,34 @@ const uint8_t Menu::_flagSp16x12[] = {
 	0x03, 0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03,
 	0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03, 0x00, 0x8d, 0x03, 0x00, 0x8e, 0x03, 0x00
 };
+
+const char *PrfPlayer::_names[] = {
+	"introl3",
+	"option3",
+	"journal3",
+	"chute3",
+	"desinte3",
+	"capture3",
+	"voyage3",
+	"telepor3",
+	"planexp3",
+	"end31",
+	"lift3",
+	"present3",
+	"gameove3",
+	"holo3",
+	"memory3",
+	"chutevi3",
+	"reveil3",
+	"misvali3",
+	"taxi3",
+	"donner3",
+	"mission3",
+	"objet3",
+	"recharg3",
+	"generat3",
+	"pont3",
+	"rechage3"
+};
+
+const int PrfPlayer::_namesCount = ARRAYSIZE(_names);

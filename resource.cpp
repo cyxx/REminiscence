@@ -917,9 +917,9 @@ void Resource::load_OBJ(File *f) {
 				error("Unable to allocate ObjectNode num=%d", i);
 			}
 			f->seek(offsets[i] + 2);
-			on->last_obj_number = f->readUint16LE();
-			on->num_objects = objectsCount[iObj];
-			debug(DBG_RES, "last=%d num=%d", on->last_obj_number, on->num_objects);
+			on->num_objects = f->readUint16LE();
+			debug(DBG_RES, "count=%d", on->num_objects, objectsCount[iObj]);
+			assert(on->num_objects == objectsCount[iObj]);
 			on->objects = (Object *)malloc(sizeof(Object) * on->num_objects);
 			for (int j = 0; j < on->num_objects; ++j) {
 				Object *obj = &on->objects[j];
@@ -1012,8 +1012,8 @@ void Resource::decodeOBJ(const uint8_t *tmp, int size) {
 				error("Unable to allocate ObjectNode num=%d", i);
 			}
 			const uint8_t *objData = tmp + offsets[i];
-			on->last_obj_number = _readUint16(objData); objData += 2;
-			on->num_objects = objectsCount[iObj];
+			on->num_objects = _readUint16(objData); objData += 2;
+			assert(on->num_objects == objectsCount[iObj]);
 			on->objects = (Object *)malloc(sizeof(Object) * on->num_objects);
 			for (int j = 0; j < on->num_objects; ++j) {
 				Object *obj = &on->objects[j];

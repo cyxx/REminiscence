@@ -118,6 +118,12 @@ enum WidescreenMode {
 	kWidescreenAdjacentRooms,
 	kWidescreenMirrorRoom,
 	kWidescreenBlur,
+	kWidescreenCDi,
+};
+
+enum {
+	kWidescreenBorderCDiW = 52,
+	kWidescreenBorderCDiH = 224
 };
 
 struct Options {
@@ -130,6 +136,7 @@ struct Options {
 	bool use_seq_cutscenes;
 	bool use_words_protection;
 	bool use_white_tshirt;
+	bool use_prf_music;
 	bool play_asc_cutscene;
 	bool play_caillou_cutscene;
 	bool play_metro_cutscene;
@@ -230,9 +237,8 @@ struct Object {
 };
 
 struct ObjectNode {
-	uint16_t last_obj_number;
-	Object *objects;
 	uint16_t num_objects;
+	Object *objects;
 };
 
 struct ObjectOpcodeArgs {

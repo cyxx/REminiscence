@@ -15,13 +15,13 @@ struct UnpackCtx {
 	const uint8_t *src;
 };
 
-static bool nextBit(UnpackCtx *uc) {
-	bool bit = (uc->bits & 1) != 0;
+static int nextBit(UnpackCtx *uc) {
+	int bit = (uc->bits & 1);
 	uc->bits >>= 1;
 	if (uc->bits == 0) { // getnextlwd
 		const uint32_t bits = READ_BE_UINT32(uc->src); uc->src -= 4;
 		uc->crc ^= bits;
-		bit = (bits & 1) != 0;
+		bit = (bits & 1);
 		uc->bits = (1 << 31) | (bits >> 1);
 	}
 	return bit;
@@ -30,10 +30,8 @@ static bool nextBit(UnpackCtx *uc) {
 template<int count>
 static uint32_t getBits(UnpackCtx *uc) { // rdd1bits
 	uint32_t bits = 0;
-	for (uint32_t mask = 1 << (count - 1); mask != 0; mask >>= 1) {
-		if (nextBit(uc)) {
-			bits |= mask;
-		}
+	for (int i = 0; i < count; ++i) {
+		bits = (bits << 1) | nextBit(uc);
 	}
 	return bits;
 }
@@ -44,10 +42,9 @@ static void copyLiteral(UnpackCtx *uc, int len) { // getd3chr
 		len += uc->size;
 		uc->size = 0;
 	}
-	for (int i = 0; i < len; ++i) {
-		*(uc->dst - i) = (uint8_t)getBits<8>(uc);
+	for (int i = 0; i < len; ++i, --uc->dst) {
+		*(uc->dst) = (uint8_t)getBits<8>(uc);
 	}
-	uc->dst -= len;
 }
 
 static void copyReference(UnpackCtx *uc, int len, int offset) { // copyd3bytes
@@ -56,10 +53,9 @@ static void copyReference(UnpackCtx *uc, int len, int offset) { // copyd3bytes
 		len += uc->size;
 		uc->size = 0;
 	}
-	for (int i = 0; i < len; ++i) {
-		*(uc->dst - i) = *(uc->dst - i + offset);
+	for (int i = 0; i < len; ++i, --uc->dst) {
+		*(uc->dst) = *(uc->dst + offset);
 	}
-	uc->dst -= len;
 }
 
 bool bytekiller_unpack(uint8_t *dst, int dstSize, const uint8_t *src, int srcSize) {

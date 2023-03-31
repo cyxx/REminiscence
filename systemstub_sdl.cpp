@@ -72,6 +72,7 @@ struct SystemStub_SDL : SystemStub {
 	virtual void copyWidescreenRight(int w, int h, const uint8_t *buf);
 	virtual void copyWidescreenMirror(int w, int h, const uint8_t *buf);
 	virtual void copyWidescreenBlur(int w, int h, const uint8_t *buf);
+	virtual void copyWidescreenCDi(int w, int h, const uint8_t *buf, const uint8_t *pal);
 	virtual void clearWidescreen();
 	virtual void enableWidescreen(bool enable);
 	virtual void fadeScreen();
@@ -475,6 +476,28 @@ void SystemStub_SDL::copyWidescreenBlur(int w, int h, const uint8_t *buf) {
 		free(tmp);
 
 		SDL_UnlockTexture(_widescreenTexture);
+	}
+}
+
+void SystemStub_SDL::copyWidescreenCDi(int w, int h, const uint8_t *buf, const uint8_t *pal) {
+	uint32_t *rgb = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+	if (rgb) {
+		for (int i = 0; i < w * h; ++i) {
+			const uint8_t *p = pal + buf[i] * 3;
+			const uint32_t color = SDL_MapRGB(_fmt, p[0], p[1], p[2]);
+			rgb[i] = color;
+		}
+		SDL_Rect r;
+		r.y = 0;
+		r.w = w;
+		r.h = h;
+		// left border
+		r.x = 0;
+		SDL_UpdateTexture(_widescreenTexture, &r, rgb, w * sizeof(uint32_t));
+		// right border
+		r.x = _screenW + w;
+		SDL_UpdateTexture(_widescreenTexture, &r, rgb, w * sizeof(uint32_t));
+		free(rgb);
 	}
 }
 
@@ -983,7 +1006,9 @@ void SystemStub_SDL::prepareGraphics() {
 			_widescreenMode = kWidescreenNone;
                 }
 	}
-	if (_widescreenMode != kWidescreenNone) {
+	if (_widescreenMode == kWidescreenCDi) {
+		windowW = (_screenW + kWidescreenBorderCDiW * 2) * _scaleFactor;
+	} else if (_widescreenMode != kWidescreenNone) {
 		windowW = windowH * 16 / 9;
 	}
 	_window = SDL_CreateWindow(_caption, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowW, windowH, flags);
@@ -996,11 +1021,15 @@ void SystemStub_SDL::prepareGraphics() {
 	SDL_RenderSetLogicalSize(_renderer, windowW, windowH);
 	_texture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, _texW, _texH);
 	if (_widescreenMode != kWidescreenNone) {
+		int w = _screenH * 16 / 9;
 		// in blur mode, the background texture has the same dimensions as the game texture
 		// SDL stretches the texture to 16:9
-		const int w = (_widescreenMode == kWidescreenBlur) ? _screenW : _screenH * 16 / 9;
-		const int h = _screenH;
-		_widescreenTexture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, w, h);
+		if (_widescreenMode == kWidescreenBlur) {
+			w = _screenW;
+		} else if (_widescreenMode == kWidescreenCDi) {
+			w = _screenW + kWidescreenBorderCDiW * 2;
+		}
+		_widescreenTexture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, w, _screenH);
 		clearTexture(_widescreenTexture, _screenH, _fmt);
 
 		// left and right borders
@@ -1053,7 +1082,7 @@ void SystemStub_SDL::setScaler(const ScalerParameters *parameters) {
 		{ "tv2x", kScalerTypeInternal, &scaler_tv2x },
 		{ "xbr", kScalerTypeInternal, &scaler_xbr },
 #endif
-		{ 0, -1 }
+		{ 0, -1, 0 }
 	};
 	bool found = false;
 	for (int i = 0; scalers[i].name; ++i) {

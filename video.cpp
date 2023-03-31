@@ -121,6 +121,7 @@ void Video::updateWidescreen() {
 			_stub->copyWidescreenMirror(_w, _h, _backLayer);
 		} else if (_widescreenMode == kWidescreenBlur) {
 			_stub->copyWidescreenBlur(_w, _h, _backLayer);
+		} else if (_widescreenMode == kWidescreenCDi) {
 		} else {
 			_stub->clearWidescreen();
 		}
@@ -498,14 +499,14 @@ static void PC_drawTileMask(uint8_t *dst, int x0, int y0, int w, int h, uint8_t 
 	}
 }
 
-static void decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data, const bool isAmiga) {
+static void decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data, const bool isAmiga, int level, int room) {
 	int num = -1;
 	uint8_t buf[256 * 32];
 	int count = READ_BE_UINT16(src) - 1; src += 2;
 	do {
 		int d2 = READ_BE_UINT16(src); src += 2;
-		const int d0 = (int16_t)READ_BE_UINT16(src); src += 2;
-		const int d1 = (int16_t)READ_BE_UINT16(src); src += 2;
+		int x_pos = (int16_t)READ_BE_UINT16(src); src += 2;
+		int y_pos = (int16_t)READ_BE_UINT16(src); src += 2;
 		if (d2 != 0xFFFF) {
 			d2 &= ~(1 << 15);
 			const int32_t offset = READ_BE_UINT32(data + d2 * 4);
@@ -526,13 +527,16 @@ static void decodeSgd(uint8_t *dst, const uint8_t *src, const uint8_t *data, con
 				}
 			}
 		}
+		if (level == 0 && room == 26 && d2 == 38 && y_pos == 176) {
+			y_pos += 8;
+		}
 		const int w = (buf[0] + 1) >> 1;
 		const int h = buf[1] + 1;
 		const int planarSize = READ_BE_UINT16(buf + 2);
 		if (isAmiga) {
-			AMIGA_planar_mask(dst, d0, d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+			AMIGA_planar_mask(dst, x_pos, y_pos, w, h, buf + 4, buf + 4 + planarSize, planarSize);
 		} else {
-			PC_drawTileMask(dst, d0, d1, w, h, buf + 4, buf + 4 + planarSize, planarSize);
+			PC_drawTileMask(dst, x_pos, y_pos, w, h, buf + 4, buf + 4 + planarSize, planarSize);
 		}
 	} while (--count >= 0);
 }
@@ -648,7 +652,7 @@ static void decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10, int 
 				const int d3 = isPC ? READ_LE_UINT16(a0) : READ_BE_UINT16(a0); a0 += 2;
 				int d0 = d3 & 0x7FF;
 				if (d0 != 0 && sgdBuf) {
-					d0 -= 896;
+					d0 -= 0x380;
 				}
 				if (d0 != 0) {
 					const uint8_t *a2 = a5 + d0 * 32;
@@ -659,6 +663,9 @@ static void decodeLevHelper(uint8_t *dst, const uint8_t *src, int offset10, int 
 						mask = 0x10;
 					} else if ((d3 & 0x8000) != 0) {
 						mask = 0x80 + ((d3 >> 6) & 0x10);
+						if (d3 & 0x4000) {
+							mask = 0x90;
+						}
 					}
 					if (isPC) {
 						PC_drawTile(dst + y * 256 + x, a2, mask, xflip, yflip, 0);
@@ -718,7 +725,7 @@ void Video::AMIGA_decodeLev(int level, int room) {
 	memset(_frontLayer, 0, _layerSize);
 	if (tmp[1] != 0) {
 		assert(_res->_sgd);
-		decodeSgd(_frontLayer, tmp + offset10, _res->_sgd, _res->isAmiga());
+		decodeSgd(_frontLayer, tmp + offset10, _res->_sgd, _res->isAmiga(), level, room);
 		offset10 = 0;
 	}
 	decodeLevHelper(_frontLayer, tmp, offset10, offset12, buf, tmp[1] != 0, _res->isDOS());

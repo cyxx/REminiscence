@@ -26,6 +26,7 @@ static const char *USAGE =
 	"  --scaler=NAME@X   Graphics scaler (default 'scale@3')\n"
 	"  --language=LANG   Language (fr,en,de,sp,it,jp)\n"
 	"  --autosave        Save game state automatically\n"
+	"  --mididriver=MIDI Driver (adlib, mt32)\n"
 ;
 
 static int detectVersion(FileSystem *fs) {
@@ -95,6 +96,7 @@ static void initOptions() {
 	g_options.use_seq_cutscenes = true;
 	g_options.use_words_protection = false;
 	g_options.use_white_tshirt = false;
+	g_options.use_prf_music = true;
 	g_options.play_asc_cutscene = false;
 	g_options.play_caillou_cutscene = false;
 	g_options.play_metro_cutscene = false;
@@ -117,6 +119,7 @@ static void initOptions() {
 		{ "use_seq_cutscenes", &g_options.use_seq_cutscenes },
 		{ "use_words_protection", &g_options.use_words_protection },
 		{ "use_white_tshirt", &g_options.use_white_tshirt },
+		{ "use_prf_music", &g_options.use_prf_music },
 		{ "play_asc_cutscene", &g_options.play_asc_cutscene },
 		{ "play_caillou_cutscene", &g_options.play_caillou_cutscene },
 		{ "play_metro_cutscene", &g_options.play_metro_cutscene },
@@ -179,6 +182,7 @@ static WidescreenMode parseWidescreen(const char *mode) {
 		{ "adjacent", kWidescreenAdjacentRooms },
 		{ "mirror", kWidescreenMirrorRoom },
 		{ "blur", kWidescreenBlur },
+		{ "cdi", kWidescreenCDi },
 		{ 0, kWidescreenNone },
 	};
 	for (int i = 0; modes[i].name; ++i) {
@@ -200,6 +204,7 @@ int main(int argc, char *argv[]) {
 	WidescreenMode widescreen = kWidescreenNone;
 	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
+	int midiDriver = MODE_ADLIB;
 	if (argc == 2) {
 		// data path as the only command line argument
 		struct stat st;
@@ -218,6 +223,7 @@ int main(int argc, char *argv[]) {
 			{ "widescreen", required_argument, 0, 7 },
 			{ "autosave",   no_argument,       0, 8 },
 			{ "cheats",     required_argument, 0, 9 },
+			{ "mididriver", required_argument, 0, 10 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -271,6 +277,23 @@ int main(int argc, char *argv[]) {
 		case 9:
 			cheats = atoi(optarg);
 			break;
+		case 10: {
+				static const struct {
+					int mode;
+					const char *str;
+				} drivers[] = {
+					{ MODE_ADLIB, "adlib" },
+					{ MODE_MT32, "mt32" },
+					{ -1, 0 }
+				};
+				for (int i = 0; drivers[i].str; ++i) {
+					if (strcasecmp(drivers[i].str, optarg) == 0) {
+						midiDriver = drivers[i].mode;
+						break;
+					}
+				}
+			}
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
@@ -286,7 +309,7 @@ int main(int argc, char *argv[]) {
 	}
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
-	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave, cheats);
+	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave, midiDriver, cheats);
 	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen, &scalerParameters);
 	g->run();
 	delete g;
