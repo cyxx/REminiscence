@@ -16,8 +16,8 @@ struct ModPlayer_impl;
 struct ModPlayer {
 
 	static const uint16_t _periodTable[];
-	static const char *_modulesFiles[][2];
-	static const int _modulesFilesCount;
+	static const char *_names[];
+	static const int _namesCount;
 
 	bool _isAmiga;
 	bool _playing;
@@ -28,7 +28,7 @@ struct ModPlayer {
         ModPlayer(Mixer *mixer, FileSystem *fs);
 	~ModPlayer();
 
-	void play(int num);
+	void play(int num, int tempo);
 	void stop();
 
 	static bool mixCallback(void *param, int16_t *buf, int len);

@@ -13,7 +13,7 @@
 static const int kMasterVolume = 64 * 3;
 
 // 12 dB/oct Butterworth low-pass filter at 3.3 kHz
-static const bool kLowPassFilter = true;
+static const bool kLowPassFilter = false;
 
 #define NZEROS 2
 #define NPOLES 2
@@ -151,8 +151,11 @@ void SfxPlayer::mixSamples(int16_t *buf, int samplesLen) {
 					curLen = 0;
 				}
 				while (count--) {
-					const int out = si->getPCM(pos >> FRAC_BITS) * si->vol / kMasterVolume;
-					*mixbuf = ADDC_S16(*mixbuf, S8_to_S16(out));
+					const int sample8 = si->getPCM(pos >> FRAC_BITS) * si->vol / kMasterVolume;
+					const int sample16 = S8_to_S16(sample8);
+					*mixbuf = ADDC_S16(*mixbuf, sample16);
+					++mixbuf;
+					*mixbuf = ADDC_S16(*mixbuf, sample16);
 					++mixbuf;
 					pos += deltaPos;
 				}
@@ -163,7 +166,7 @@ void SfxPlayer::mixSamples(int16_t *buf, int samplesLen) {
 }
 
 bool SfxPlayer::mix(int16_t *buf, int len) {
-	memset(buf, 0, sizeof(int16_t) * len);
+	memset(buf, 0, sizeof(int16_t) * len * 2); // stereo
 	if (_playing) {
 		const int samplesPerTick = _mix->getSampleRate() / 50;
 		while (len != 0) {
@@ -179,9 +182,9 @@ bool SfxPlayer::mix(int16_t *buf, int len) {
 			len -= count;
 			mixSamples(buf, count);
 			if (kLowPassFilter) {
-				butterworth(buf, count);
+				butterworth(buf, count * 2); // stereo
 			}
-			buf += count;
+			buf += count * 2; // stereo
 		}
 	}
 	return _playing;

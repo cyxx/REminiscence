@@ -19,8 +19,7 @@ struct Cutscene {
 
 	enum {
 		MAX_VERTICES = 128,
-		NUM_OPCODES = 15,
-		TIMER_SLICE = 15
+		NUM_OPCODES = 15
 	};
 
 	enum {
@@ -58,7 +57,8 @@ struct Cutscene {
 	static const uint8_t _creditsDataDOS[];
 	static const uint8_t _creditsDataAmiga[];
 	static const uint16_t _creditsCutSeq[];
-	static const uint8_t _musicTable[];
+	static const uint8_t _musicTableDOS[];
+	static const uint8_t _musicTableAmiga[];
 	static const uint8_t _protectionShapeData[];
 	static const Text _frTextsTable[];
 	static const Text _enTextsTable[];
@@ -122,7 +122,7 @@ struct Cutscene {
 	const uint8_t *getCommandData() const;
 	const uint8_t *getPolygonData() const;
 
-	void sync();
+	void sync(int delay);
 	void copyPalette(const uint8_t *pal, uint16_t num);
 	void updatePalette();
 	void updateScreen();

@@ -16,6 +16,7 @@ struct ModPlayer_impl {
 
 	ModPlugFile *_mf;
 	ModPlug_Settings _settings;
+	int _songTempo;
 	bool _repeatIntro;
 
 	ModPlayer_impl()
@@ -26,7 +27,7 @@ struct ModPlayer_impl {
 		memset(&_settings, 0, sizeof(_settings));
 		ModPlug_GetSettings(&_settings);
 		_settings.mFlags = MODPLUG_ENABLE_OVERSAMPLING | MODPLUG_ENABLE_NOISE_REDUCTION;
-		_settings.mChannels = 1;
+		_settings.mChannels = 2;
 		_settings.mBits = 16;
 		_settings.mFrequency = rate;
 		_settings.mResamplingMode = MODPLUG_RESAMPLE_FIR;
@@ -59,7 +60,7 @@ struct ModPlayer_impl {
 				ModPlug_SeekOrder(_mf, 1);
 				_repeatIntro = false;
 			}
-			const int count = ModPlug_Read(_mf, buf, len * sizeof(int16_t));
+			const int count = ModPlug_Read(_mf, buf, len * sizeof(int16_t) * 2);
 			// setting mLoopCount to non-zero does not trigger any looping in
 			// my test and ModPlug_Read returns 0.
 			// looking at the libmodplug-0.8.8 tarball, it seems the variable
@@ -82,6 +83,7 @@ struct ModPlayer_impl {
 		NUM_TRACKS = 4,
 		NUM_PATTERNS = 128,
 		FRAC_BITS = 12,
+		BASE_TEMPO = 125,
 		PAULA_FREQ = 3546897
 	};
 
@@ -234,7 +236,7 @@ bool ModPlayer_impl::load(File *f) {
 	_currentTick = 0;
 	_patternDelay = 0;
 	_songSpeed = 6;
-	_songTempo = 125;
+	_songTempo = BASE_TEMPO;
 	_patternLoopPos = 0;
 	_patternLoopCount = -1;
 	_samplesLeft = 0;
@@ -506,6 +508,7 @@ void ModPlayer_impl::handleEffect(int trackNum, bool tick) {
 					tk->volume = 0;
 				}
 			}
+			break;
 		case 0xD: // delay sample
 			if (!tick) {
 				tk->delayCounter = effectY;
@@ -616,8 +619,11 @@ void ModPlayer_impl::mixSamples(int16_t *buf, int samplesLen) {
 					curLen = 0;
 				}
 				while (count--) {
-					const int out = si->getPCM(pos >> FRAC_BITS) * tk->volume / 64;
-					*mixbuf = ADDC_S16(*mixbuf, S8_to_S16(out));
+					const int sample8 = si->getPCM(pos >> FRAC_BITS) * tk->volume / 64;
+					const int sample16 = S8_to_S16(sample8);
+					*mixbuf = ADDC_S16(*mixbuf, sample16);
+					++mixbuf;
+					*mixbuf = ADDC_S16(*mixbuf, sample16);
 					++mixbuf;
 					pos += deltaPos;
 				}
@@ -628,9 +634,9 @@ void ModPlayer_impl::mixSamples(int16_t *buf, int samplesLen) {
 }
 
 bool ModPlayer_impl::mix(int16_t *buf, int len) {
-	memset(buf, 0, sizeof(int16_t) * len);
+	memset(buf, 0, sizeof(int16_t) * len * 2); // stereo
 	if (_playing) {
-		const int samplesPerTick = _mixingRate / (50 * _songTempo / 125);
+		const int samplesPerTick = _mixingRate / (50 * _songTempo / BASE_TEMPO);
 		while (len != 0) {
 			if (_samplesLeft == 0) {
 				handleTick();
@@ -643,7 +649,7 @@ bool ModPlayer_impl::mix(int16_t *buf, int len) {
 			_samplesLeft -= count;
 			len -= count;
 			mixSamples(buf, count);
-			buf += count;
+			buf += count * 2; // stereo
 		}
 	}
 	return _playing;
@@ -659,19 +665,23 @@ ModPlayer::~ModPlayer() {
 	delete _impl;
 }
 
-void ModPlayer::play(int num) {
-	if (num < _modulesFilesCount) {
+void ModPlayer::play(int num, int tempo) {
+	if (num * 2 < _namesCount) {
 		File f;
-		for (uint8_t i = 0; i < ARRAYSIZE(_modulesFiles[num]); ++i) {
-			if (f.open(_modulesFiles[num][i], "rb", _fs)) {
-				_impl->init(_mix->getSampleRate());
-				if (_impl->load(&f)) {
-					_impl->_repeatIntro = (num == 0) && !_isAmiga;
-					_mix->setPremixHook(mixCallback, _impl);
-					_playing = true;
-				}
+		if (!f.open(_names[num * 2], "rb", _fs)) {
+			const char *p = _names[num * 2 + 1];
+			char name[32];
+			snprintf(name, sizeof(name), "mod.flashback-%s", p ? p : _names[num * 2]);
+			if (!f.open(name, "rb", _fs)) {
 				return;
 			}
+		}
+		_impl->init(_mix->getSampleRate());
+		if (_impl->load(&f)) {
+			_impl->_songTempo = tempo;
+			_impl->_repeatIntro = (num == 0) && !_isAmiga;
+			_mix->setPremixHook(mixCallback, _impl);
+			_playing = true;
 		}
 	}
 }

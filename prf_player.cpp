@@ -167,8 +167,10 @@ void PrfPlayer::play() {
 	for (int i = 0; i < _parser._tracksCount; ++i) {
 		PrfTrack *current_track = &_tracks[i];
 		MidiTrack *track = &_parser._tracks[i];
-		MidiEvent ev = track->events.front();
-		current_track->counter = ev.timestamp;
+		track->rewind();
+		const MidiEvent *ev = track->nextEvent();
+		current_track->counter = ev ? ev->timestamp : 0;
+		current_track->counter2 = current_track->counter % _prfData.timerMod;
 	}
 	_timerTick = _musicTick = 0;
 	_samplesLeft = 0;
@@ -233,7 +235,7 @@ void PrfPlayer::adlibNoteOff(int track, int note, int velocity) {
 void PrfPlayer::handleTick() {
 	for (int i = 0; i < _parser._tracksCount; ++i) {
 		MidiTrack *track = &_parser._tracks[i];
-		if (track->events.size() == 0) {
+		if (track->endOfTrack) {
 			continue;
 		}
 		const int track_index = i;
@@ -242,12 +244,8 @@ void PrfPlayer::handleTick() {
 			--current_track->counter;
 			continue;
 		}
-next_event:
-		MidiEvent ev = track->events.front();
-		track->events.pop();
-		if (current_track->loop_flag) {
-			track->events.push(ev);
-		}
+	while (1) {
+		const MidiEvent &ev = track->event;
 		switch (ev.command & 0xF0) {
 		case MIDI_COMMAND_NOTE_OFF: {
 				int note = ev.param1;
@@ -358,14 +356,25 @@ next_event:
 			warning("Unhandled MIDI event command 0x%x", ev.command);
 			break;
 		}
-		if (track->events.size() != 0) {
-			ev = track->events.front();
-			current_track->counter = ev.timestamp;
-			if (current_track->counter == 0) {
-				goto next_event;
+		const MidiEvent *next = track->nextEvent();
+		if (!next) {
+			if (current_track->loop_flag == 0) {
+				track->rewind();
+				const MidiEvent *next = track->nextEvent();
+				if (next) {
+					current_track->counter = _prfData.timerMod - current_track->counter2 + next->timestamp - 1;
+					current_track->counter2 = next->timestamp % _prfData.timerMod;
+				}
 			}
-			--current_track->counter;
+			break;
 		}
+		current_track->counter = next->timestamp;
+		current_track->counter2 = (current_track->counter + current_track->counter2) % _prfData.timerMod;
+		if (current_track->counter != 0) {
+			--current_track->counter;
+			break;
+		}
+	}
 	}
 }
 
@@ -377,19 +386,13 @@ int PrfPlayer::readSamples(int16_t *samples, int count) {
 	const int total = count;
 	while (count != 0) {
 		if (_samplesLeft == 0) {
-			//++_timerTick;
-			//if (_timerTick == _prfData.timerTicks) {
-				//fprintf(stdout, "musicTick #%d of %d\n", _musicTick, _prfData.totalDurationTicks);
-				handleTick();
-				//_timerTick = 0;
-				if (_prfData.totalDurationTicks != 0) {
-					++_musicTick;
-					if (_musicTick == _prfData.totalDurationTicks + 1) {
-						debug(DBG_PRF, "End of music");
-						//break;
-					}
+			handleTick();
+			if (_prfData.totalDurationTicks != 0) {
+				++_musicTick;
+				if (_musicTick == _prfData.totalDurationTicks + 1) {
+					debug(DBG_PRF, "End of music");
 				}
-			//}
+			}
 			_samplesLeft = _samplesPerTick * _prfData.timerTicks;
 		}
 		const int len = (count < _samplesLeft) ? count : _samplesLeft;
@@ -406,16 +409,6 @@ bool PrfPlayer::mixCallback(void *param, int16_t *buf, int len) {
 }
 
 bool PrfPlayer::mix(int16_t *buf, int len) {
-	int16_t *p = (int16_t *)alloca(len * sizeof(int16_t) * 2);
-	if (p) {
-		const int count = readSamples(p, len);
-		/* stereo to mono */
-		for (int i = 0; i < count; ++i) {
-			const int16_t l = *p++;
-			const int16_t r = *p++;
-			buf[i] = CLIP((l + r) / 2, -32768, 32767);
-		}
-		return count != 0;
-	}
-	return false;
+	const int count = readSamples(buf, len);
+	return count != 0;
 }

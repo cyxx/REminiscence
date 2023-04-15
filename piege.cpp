@@ -1641,21 +1641,24 @@ int Game::pge_o_unk0x71(ObjectOpcodeArgs *args) {
 }
 
 int Game::pge_o_unk0x72(ObjectOpcodeArgs *args) {
-	int8_t *var4 = &_res._ctData[0x100] + args->pge->room_location * 0x70;
-	var4 += (((args->pge->pos_y / 36) & ~1) + args->a) * 16 + (args->pge->pos_x + 8) / 16;
+	int8_t *grid_data = &_res._ctData[0x100] + args->pge->room_location * 0x70;
+	int16_t pge_pos_y = ((args->pge->pos_y / 36) & ~1) + args->a;
+	int16_t pge_pos_x = (args->pge->pos_x + 8) >> 4;
+	grid_data += pge_pos_y * 16 + pge_pos_x;
 
 	CollisionSlot2 *_di = _col_slots2Next;
-	int _cx = 0x100;
-	while (_di && _cx != 0) {
-		if (_di->unk2 != var4) {
+	int count = 256; // ARRAYSIZE(_col_slots2)
+	while (_di && count != 0) {
+		if (_di->unk2 != grid_data) {
 			_di = _di->next_slot;
-			--_cx;
+			--count;
 		} else {
 			memcpy(_di->unk2, _di->data_buf, _di->data_size + 1);
 			break;
 		}
 	}
-	return 0xFFFF; // XXX var4;
+	// original returns the pointer to ctData
+	return 0xFFFF;
 }
 
 int Game::pge_o_unk0x73(ObjectOpcodeArgs *args) {
@@ -2079,7 +2082,21 @@ int Game::pge_updateCollisionState(LivePGE *pge, int16_t pge_dy, uint8_t value) 
 				memset(grid_data, value, pge_collision_data_len);
 				return 1;
 			} else {
+				// the increment looks wrong but matches the DOS disassembly
+				//
+				// seg000:667B    inc cx
+				// seg000:667C    mov si, bx
+				// seg000:667E    mov bx, [bx+t_collision_slot2.next_slot]
+				// seg000:6680    loop loc_0_1665B
+				//
+				// interestingly Amiga does not have it
+				//
+				// CODE:000042BA  movea.l a4,a5
+				// CODE:000042BC  movea.l 0(a4),a4
+				// CODE:000042C0  dbf     d0,loc_4290
+
 				++i;
+
 				slot1 = slot1->next_slot;
 				if (--i == 0) {
 					break;

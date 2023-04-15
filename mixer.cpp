@@ -90,8 +90,8 @@ static bool isMusicSfx(int num) {
 	return (num >= 68 && num <= 75);
 }
 
-void Mixer::playMusic(int num) {
-	debug(DBG_SND, "Mixer::playMusic(%d)", num);
+void Mixer::playMusic(int num, int tempo) {
+	debug(DBG_SND, "Mixer::playMusic(%d, %d)", num, tempo);
 	int trackNum = -1;
 	if (num == 1) { // menu screen
 		trackNum = 2;
@@ -119,7 +119,7 @@ void Mixer::playMusic(int num) {
 			_musicType = MT_SFX;
 		}
 	} else { // cutscene
-		_mod.play(num);
+		_mod.play(num, tempo);
 		if (_mod._playing) {
 			_musicType = MT_MOD;
 			return;
@@ -156,7 +156,7 @@ void Mixer::stopMusic() {
 		break;
 	}
 	_musicType = MT_NONE;
-	if (_musicTrack != -1) {
+	if (_musicTrack > 2) { // do not resume menu music
 		switch (_backgroundMusicType) {
 		case MT_OGG:
 			_ogg.resumeTrack();
@@ -194,18 +194,21 @@ void Mixer::mix(int16_t *out, int len) {
 		MixerChannel *ch = &_channels[i];
 		if (ch->active) {
 			for (int pos = 0; pos < len; ++pos) {
-				if ((ch->chunkPos >> FRAC_BITS) >= (ch->chunk.len - 1)) {
+				const uint32_t cpos = ch->chunkPos >> FRAC_BITS;
+				if (cpos >= ch->chunk.len) {
 					ch->active = false;
 					break;
 				}
-				const int sample = ch->chunk.getPCM(ch->chunkPos >> FRAC_BITS) * ch->volume / Mixer::MAX_VOLUME;
-				out[pos] = ADDC_S16(out[pos], S8_to_S16(sample));
+				const int sample8 = ch->chunk.getPCM(cpos) * ch->volume / Mixer::MAX_VOLUME;
+				const int sample16 = S8_to_S16(sample8);
+				out[2 * pos]     = ADDC_S16(out[2 * pos],     sample16);
+				out[2 * pos + 1] = ADDC_S16(out[2 * pos + 1], sample16);
 				ch->chunkPos += ch->chunkInc;
 			}
 		}
 	}
 	if (kUseNr) {
-		nr(out, len);
+		nr(out, len * 2); // stereo
 	}
 }
 

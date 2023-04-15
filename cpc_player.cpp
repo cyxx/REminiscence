@@ -120,7 +120,8 @@ bool CpcPlayer::mix(int16_t *buf, int len) {
 	for (int i = 0; i < len; ++i) {
 		_sampleL = decodeSDX2(_sampleL, readSampleData());
 		_sampleR = decodeSDX2(_sampleR, readSampleData());
-		*buf++ = (_sampleL + _sampleR) / 2;
+		*buf++ = _sampleL;
+		*buf++ = _sampleR;
 	}
 	return true;
 }

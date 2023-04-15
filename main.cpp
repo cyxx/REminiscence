@@ -260,11 +260,15 @@ int main(int argc, char *argv[]) {
 					{ LANG_JP, "JP" },
 					{ -1, 0 }
 				};
-				for (int i = 0; languages[i].str; ++i) {
+				int i = 0;
+				for (; languages[i].str; ++i) {
 					if (strcasecmp(languages[i].str, optarg) == 0) {
 						forcedLanguage = languages[i].lang;
 						break;
 					}
+				}
+				if (!languages[i].str) {
+					warning("Invalid language '%s'", optarg);
 				}
 			}
 			break;
@@ -286,11 +290,15 @@ int main(int argc, char *argv[]) {
 					{ MODE_MT32, "mt32" },
 					{ -1, 0 }
 				};
-				for (int i = 0; drivers[i].str; ++i) {
+				int i = 0;
+				for (; drivers[i].str; ++i) {
 					if (strcasecmp(drivers[i].str, optarg) == 0) {
 						midiDriver = drivers[i].mode;
 						break;
 					}
+				}
+				if (!drivers[i].str) {
+					warning("Invalid MIDI driver '%s'", optarg);
 				}
 			}
 			break;

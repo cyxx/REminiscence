@@ -84,7 +84,7 @@ struct Mixer {
 	bool isPlaying(const uint8_t *data) const;
 	uint32_t getSampleRate() const;
 	void stopAll();
-	void playMusic(int num);
+	void playMusic(int num, int tempo = 0);
 	void stopMusic();
 	void mix(int16_t *buf, int len);
 

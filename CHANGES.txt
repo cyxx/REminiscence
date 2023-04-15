@@ -1,3 +1,8 @@
+* release 0.5.1
+	- added looping for DOS .prf music
+	- changed audio mixer to stereo
+	- updated timings for cutscenes
+
 * release 0.5.0
 	- added CD-i widescreen mode (flashp*bob)
 	- added support for DOS .prf music (Adlib, MT32)

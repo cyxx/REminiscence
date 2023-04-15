@@ -24,7 +24,8 @@ enum {
 	DBG_SFX    = 1 << 11,
 	DBG_FILE   = 1 << 12,
 	DBG_DEMO   = 1 << 13,
-	DBG_PRF    = 1 << 14
+	DBG_PRF    = 1 << 14,
+	DBG_MIDI   = 1 << 15
 };
 
 extern uint16_t g_debugMask;

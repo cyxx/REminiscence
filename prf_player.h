@@ -32,6 +32,7 @@ struct PrfData {
 struct PrfTrack {
 	uint8_t instrument_num;
 	uint32_t counter;
+	uint32_t counter2;
 	uint8_t hw_channel_num;
 	uint8_t mt32_program_num;
 	uint8_t loop_flag;

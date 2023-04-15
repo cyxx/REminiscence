@@ -52,8 +52,7 @@ inline int16_t S8_to_S16(int a) {
 	} else if (a > 127) {
 		return 32767;
 	} else {
-		const uint8_t u8 = (a ^ 0x80);
-		return ((u8 << 8) | u8) - 32768;
+		return ((uint8_t)a) * 257;
 	}
 }
 

@@ -35,15 +35,16 @@ const uint8_t *Cutscene::getPolygonData() const {
 	return _res->_pol;
 }
 
-void Cutscene::sync() {
+void Cutscene::sync(int frameDelay) {
 	if (_stub->_pi.quit) {
 		return;
 	}
 	if (_stub->_pi.dbgMask & PlayerInput::DF_FASTMODE) {
 		return;
 	}
+	static const int frameHz = 60;
 	const int32_t delay = _stub->getTimeStamp() - _tstamp;
-	const int32_t pause = _frameDelay * TIMER_SLICE - delay;
+	const int32_t pause = frameDelay * (1000 / frameHz) - delay;
 	if (pause > 0) {
 		_stub->sleep(pause);
 	}
@@ -72,7 +73,7 @@ void Cutscene::updatePalette() {
 }
 
 void Cutscene::updateScreen() {
-	sync();
+	sync(_frameDelay - 1);
 	updatePalette();
 	SWAP(_frontPage, _backPage);
 	_stub->copyRect(0, 0, _vid->_w, _vid->_h, _frontPage, _vid->_w);
@@ -343,7 +344,7 @@ void Cutscene::op_waitForSync() {
 		_creditsSlowText = false;
 	} else {
 		_frameDelay = fetchNextCmdByte() * 4;
-		sync(); // XXX handle input
+		sync(_frameDelay);
 	}
 }
 
@@ -470,7 +471,7 @@ void Cutscene::op_drawCaptionText() {
 		} else if (_id == kCineEspions) {
 			// cutscene relies on drawCaptionText opcodes for timing
 			_frameDelay = 100;
-			sync();
+			sync(_frameDelay);
 		}
 	}
 }
@@ -1257,7 +1258,7 @@ void Cutscene::playText(const char *str) {
 			_stub->_pi.backspace = false;
 			break;
 		}
-		_stub->sleep(TIMER_SLICE);
+		_stub->sleep(30);
 	}
 }
 
@@ -1467,7 +1468,7 @@ void Cutscene::playSet(const uint8_t *p, int offset) {
 
 		_stub->copyRect(0, 0, _vid->_w, _vid->_h, _backPage, _vid->_w);
 		_stub->updateScreen(0);
-		const int diff = 6 * TIMER_SLICE - (_stub->getTimeStamp() - timestamp);
+		const int diff = 90 - (_stub->getTimeStamp() - timestamp);
 		_stub->sleep((diff < 16) ? 16 : diff);
 		_stub->processEvents();
 		if (_stub->_pi.backspace) {

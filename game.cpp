@@ -133,7 +133,6 @@ void Game::run() {
 					_skillLevel = _menu._skill;
 					_currentLevel = _menu._level;
 				}
-				_mix.stopMusic();
 				break;
 			case kResourceTypeAmiga:
 				displayTitleScreenAmiga();
@@ -143,6 +142,7 @@ void Game::run() {
 				displayTitleScreenMac(Menu::kMacTitleScreen_Flashback);
 				break;
 			}
+			_mix.stopMusic();
 		}
 		if (_stub->_pi.quit) {
 			break;
@@ -544,7 +544,18 @@ void Game::playCutscene(int id) {
 				}
 			}
 		}
-		_mix.playMusic(Cutscene::_musicTable[_cut._id]);
+		if (_res.isAmiga()) {
+			const int num = Cutscene::_musicTableAmiga[_cut._id * 2];
+			if (num != 0xFF) {
+				const int bpm = Cutscene::_musicTableAmiga[_cut._id * 2 + 1];
+				_mix.playMusic(num, bpm);
+			}
+		} else {
+			const int num = Cutscene::_musicTableDOS[_cut._id];
+			if (num != 0xFF) {
+				_mix.playMusic(num);
+			}
+		}
 		_cut.play();
 		if (id == 0xD && !_cut._interrupted) {
 			if (!_res.isAmiga()) {
@@ -1713,6 +1724,18 @@ void Game::loadLevelData() {
 				char name[64];
 				snprintf(name, sizeof(name), "DUMP/level%d_room%02d.bmp", _currentLevel, i);
 				saveBMP(name, _vid._backLayer, palette, _vid._w, _vid._h);
+
+				memcpy(_vid._frontLayer, _vid._backLayer, _vid._layerSize);
+				for (int y = 0; y < 7; ++y) {
+					for (int x = 0; x < 16; ++x) {
+						const uint8_t num = _res._ctData[0x100 + _currentRoom * 0x70 + y * 16 + x];
+						char buf[16];
+						snprintf(buf, sizeof(buf), "%d", num);
+						_vid.drawString(buf, x * 16, y * 36 + 8, 0xE7);
+					}
+				}
+				snprintf(name, sizeof(name), "DUMP/level%d_room%02d_grid.bmp", _currentLevel, i);
+				saveBMP(name, _vid._frontLayer, palette, _vid._w, _vid._h);
 			}
 		}
 	}

@@ -119,13 +119,16 @@ struct OggDecoder_impl {
 			case 2:
 				assert((len & 3) == 0);
 				for (int i = 0; i < len / 2; i += 2) {
-					const int16_t s16 = (_readBuf[i] + _readBuf[i + 1]) / 2;
-					*dst = ADDC_S16(*dst, s16);
+					*dst = ADDC_S16(*dst, _readBuf[i]);
+					++dst;
+					*dst = ADDC_S16(*dst, _readBuf[i + 1]);
 					++dst;
 				}
 				break;
 			case 1:
 				for (int i = 0; i < len / 2; ++i) {
+					*dst = ADDC_S16(*dst, _readBuf[i]);
+					++dst;
 					*dst = ADDC_S16(*dst, _readBuf[i]);
 					++dst;
 				}
@@ -187,8 +190,9 @@ struct OggDecoder_impl {
 		if (_decodedSamplesLen != 0) {
 			const int len = MIN(_decodedSamplesLen, samples);
 			for (int i = 0; i < len; ++i) {
-				const int sample = (_decodedSamples[0][i] + _decodedSamples[1][i]) / 2;
-				*dst = ADDC_S16(*dst, ((sample * kMusicVolume) >> 8));
+				*dst = ADDC_S16(*dst, ((_decodedSamples[0][i] * kMusicVolume) >> 8));
+				++dst;
+				*dst = ADDC_S16(*dst, ((_decodedSamples[1][i] * kMusicVolume) >> 8));
 				++dst;
 			}
 			total += len;
@@ -229,8 +233,9 @@ struct OggDecoder_impl {
 				for (int i = 0; i < len; ++i) {
 					const int l = int(outputs[0][i] * 32768 + .5);
 					const int r = int(outputs[1][i] * 32768 + .5);
-					const int sample = (l + r) / 2;
-					*dst = ADDC_S16(*dst, ((sample * kMusicVolume) >> 8));
+					*dst = ADDC_S16(*dst, ((l * kMusicVolume) >> 8));
+					++dst;
+					*dst = ADDC_S16(*dst, ((r * kMusicVolume) >> 8));
 					++dst;
 				}
 				if (count > remain) {
@@ -270,12 +275,15 @@ OggPlayer::~OggPlayer() {
 	_impl = 0;
 }
 
+// https://www.amigaremix.com/remix/191
+static const char *kMenuThemeRemix = "deadly_cookie_-_flashback.ogg";
+
 bool OggPlayer::playTrack(int num) {
 	stopTrack();
 	char buf[16];
 	snprintf(buf, sizeof(buf), "track%02d.ogg", num);
-	if (_impl->load(buf, _fs, _mix->getSampleRate())) {
-		debug(DBG_INFO, "Playing '%s'", buf);
+	if (_impl->load(buf, _fs, _mix->getSampleRate())
+		|| (num == 2 && _impl->load(kMenuThemeRemix, _fs, _mix->getSampleRate()))) {
 		_mix->setPremixHook(mixCallback, this);
 		return true;
 	}
