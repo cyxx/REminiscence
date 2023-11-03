@@ -12,6 +12,8 @@ struct MidiDriver {
 
 	virtual void setInstrumentData(int channel, int num, const void *data) { // fmopl only
 	}
+	virtual void fixExRegisterAddress(bool state) { // fmopl only
+	}
 
 	virtual void noteOff(int channel, int note, int velocity) = 0;
 	virtual void noteOn(int channel, int note, int velocity) = 0;

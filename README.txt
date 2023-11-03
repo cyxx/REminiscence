@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.5.1
+Release version: 0.5.2
 -------------------------------------------------------------------------------
 
 
@@ -15,14 +15,14 @@ game can be found at [1], [2] and [3].
 Data Files:
 -----------
 
-You will need the original files of the PC (DOS or CD), Amiga or Macintosh
-release. Support for Amiga and Macintosh is still experimental.
+You will need the original files of the DOS (floppy or CD), Amiga, Macintosh
+or PC98 release.
 
 For the Macintosh release, the resource fork must be dumped as a file named
 'FLASHBACK.BIN' (MacBinary) or 'FLASHBACK.RSRC' (AppleDouble).
 
-For speech with in-game dialogues, you need to copy the 'VOICE.VCE' file from
-the SegaCD version to the DATA directory.
+For speech with in-game dialogues, you need to copy the 'VOICE.VCE' file
+from the SegaCD version.
 
 The music/ directory of the Amiga version or the .mod fileset from
 unexotica [4] can be used as an alternative to the MIDI tracks from the

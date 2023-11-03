@@ -938,7 +938,7 @@ void SystemStub_SDL::startAudio(AudioCallback callback, void *param) {
 	desired.freq = kAudioHz;
 	desired.format = AUDIO_S16SYS;
 	desired.channels = 2;
-	desired.samples = 2048;
+	desired.samples = 4096;
 	desired.callback = mixAudioS16;
 	desired.userdata = this;
 	if (SDL_OpenAudio(&desired, 0) == 0) {

@@ -45,6 +45,7 @@ static int detectVersion(FileSystem *fs) {
 		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)" },
 		{ "FLASHBACK.BIN", kResourceTypeMac, "Macintosh" },
 		{ "FLASHBACK.RSRC", kResourceTypeMac, "Macintosh" },
+		{ "GLOBAL.PAQ", kResourceTypePC98, "PC98" },
 		{ 0, -1, 0 }
 	};
 	for (int i = 0; table[i].filename; ++i) {
@@ -105,6 +106,7 @@ static void initOptions() {
 	g_options.play_gamesaved_sound = false;
 	g_options.restore_memo_cutscene = true;
 	g_options.order_inventory_original = false;
+	g_options.fix_fmopl_e0_reg = false;
 	// read configuration file
 	struct {
 		const char *name;
@@ -128,6 +130,7 @@ static void initOptions() {
 		{ "play_gamesaved_sound", &g_options.play_gamesaved_sound },
 		{ "restore_memo_cutscene", &g_options.restore_memo_cutscene },
 		{ "order_inventory_original", &g_options.order_inventory_original },
+		{ "fix_fmopl_e0_reg", &g_options.fix_fmopl_e0_reg },
 		{ 0, 0 }
 	};
 	static const char *filename = "rs.cfg";

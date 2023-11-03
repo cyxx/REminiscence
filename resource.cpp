@@ -11,16 +11,20 @@
 #include "unpack.h"
 #include "util.h"
 
+static const bool kCalculateAudioPeak = false;
+
 Resource::Resource(FileSystem *fs, ResourceType ver, Language lang) {
 	memset(this, 0, sizeof(Resource));
 	_fs = fs;
 	_type = ver;
 	_lang = lang;
 	_isDemo = false;
+	_archive = 0;
 	_aba = 0;
 	_mac = 0;
-	_readUint16 = (_type == kResourceTypeDOS) ? READ_LE_UINT16 : READ_BE_UINT16;
-	_readUint32 = (_type == kResourceTypeDOS) ? READ_LE_UINT32 : READ_BE_UINT32;
+	_paq = 0;
+	_readUint16 = (_type == kResourceTypeDOS || _type == kResourceTypePC98) ? READ_LE_UINT16 : READ_BE_UINT16;
+	_readUint32 = (_type == kResourceTypeDOS || _type == kResourceTypePC98) ? READ_LE_UINT32 : READ_BE_UINT32;
 	_scratchBuffer = (uint8_t *)malloc(kScratchBufferSize);
 	if (!_scratchBuffer) {
 		error("Unable to allocate temporary memory buffer");
@@ -54,6 +58,7 @@ Resource::~Resource() {
 	free(_bankData);
 	delete _aba;
 	delete _mac;
+	delete _paq;
 }
 
 static const char *_demoAba = "DEMO_UK.ABA";
@@ -80,6 +85,7 @@ void Resource::init() {
 		} else if (!fileExists("LEVEL2.MAP")) { // fbdemofr (no cutscenes)
 			_isDemo = true;
 		}
+		_archive = _aba;
 		break;
 	case kResourceTypeMac:
 		if (_fs->exists(ResourceMac::FILENAME1)) {
@@ -88,6 +94,11 @@ void Resource::init() {
 			_mac = new ResourceMac(ResourceMac::FILENAME2, _fs);
 		}
 		_mac->load();
+		break;
+	case kResourceTypePC98:
+		_paq = new ResourcePaq(_fs);
+		_paq->open();
+		_archive = _paq;
 		break;
 	}
 }
@@ -109,8 +120,8 @@ void Resource::setLanguage(Language lang) {
 bool Resource::fileExists(const char *filename) {
 	if (_fs->exists(filename)) {
 		return true;
-	} else if (_aba) {
-		return _aba->findEntry(filename) != 0;
+	} else if (_archive) {
+		return _archive->hasEntry(filename);
 	}
 	return false;
 }
@@ -138,13 +149,46 @@ void Resource::load_DEM(const char *filename) {
 		if (_dem) {
 			f.read(_dem, _demLen);
 		}
-	} else if (_aba) {
+	} else if (_archive) {
 		uint32_t size;
-		_dem = _aba->loadEntry(filename, &size);
+		_dem = _archive->loadEntry(filename, &size);
 		if (_dem) {
 			_demLen = size;
 		}
 	}
+}
+
+static void decodeSfxFibonacci(SoundFx *sfx, File &f) {
+	f.seek(sfx->offset);
+	const int len = (sfx->len * 2) - 1;
+	uint8_t *data = (uint8_t *)malloc(len);
+	if (!data) {
+		error("Unable to allocate SoundFx data buffer");
+	}
+	sfx->data = data;
+
+	// Fibonacci-delta decoding
+	static const int8_t codeToDelta[16] = { -34, -21, -13, -8, -5, -3, -2, -1, 0, 1, 2, 3, 5, 8, 13, 21 };
+	int c = (int8_t)f.readByte();
+	*data++ = c;
+	sfx->peak = kCalculateAudioPeak ? ABS(c) : 0;
+
+	for (int j = 1; j < sfx->len; ++j) {
+		const uint8_t d = f.readByte();
+
+		c += codeToDelta[d >> 4];
+		*data++ = CLIP(c, -128, 127);
+		if (kCalculateAudioPeak && ABS(c) > sfx->peak) {
+			sfx->peak = ABS(c);
+		}
+
+		c += codeToDelta[d & 15];
+		*data++ = CLIP(c, -128, 127);
+		if (kCalculateAudioPeak && ABS(c) > sfx->peak) {
+			sfx->peak = ABS(c);
+		}
+	}
+	sfx->len = len;
 }
 
 void Resource::load_FIB(const char *fileName) {
@@ -169,36 +213,7 @@ void Resource::load_FIB(const char *fileName) {
 			if (sfx->len == 0) {
 				continue;
 			}
-			f.seek(sfx->offset);
-			const int len = (sfx->len * 2) - 1;
-			uint8_t *data = (uint8_t *)malloc(len);
-			if (!data) {
-				error("Unable to allocate SoundFx data buffer");
-			}
-			sfx->data = data;
-
-			// Fibonacci-delta decoding
-			static const int8_t codeToDelta[16] = { -34, -21, -13, -8, -5, -3, -2, -1, 0, 1, 2, 3, 5, 8, 13, 21 };
-			int c = (int8_t)f.readByte();
-			*data++ = c;
-			sfx->peak = ABS(c);
-
-			for (int j = 1; j < sfx->len; ++j) {
-				const uint8_t d = f.readByte();
-
-				c += codeToDelta[d >> 4];
-				*data++ = CLIP(c, -128, 127);
-				if (ABS(c) > sfx->peak) {
-					sfx->peak = ABS(c);
-				}
-
-				c += codeToDelta[d & 15];
-				*data++ = CLIP(c, -128, 127);
-				if (ABS(c) > sfx->peak) {
-					sfx->peak = ABS(c);
-				}
-			}
-			sfx->len = len;
+			decodeSfxFibonacci(sfx, f);
 		}
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
@@ -211,10 +226,10 @@ void Resource::load_FIB(const char *fileName) {
 static void normalizeSPL(SoundFx *sfx) {
 	static const int kGain = 2;
 
-	sfx->peak = ABS(sfx->data[0]);
+	sfx->peak = kCalculateAudioPeak ? ABS(sfx->data[0]) : 0;
 	for (int i = 1; i < sfx->len; ++i) {
 		const int8_t sample = sfx->data[i];
-		if (ABS(sample) > sfx->peak) {
+		if (kCalculateAudioPeak && ABS(sample) > sfx->peak) {
 			sfx->peak = ABS(sample);
 		}
 		sfx->data[i] = sample / kGain;
@@ -257,9 +272,9 @@ void Resource::load_MAP_menu(const char *fileName, uint8_t *dstPtr) {
 			error("I/O error when reading '%s'", _entryName);
 		}
 		return;
-	} else if (_aba) {
+	} else if (_archive) {
 		uint32_t size = 0;
-		uint8_t *dat = _aba->loadEntry(_entryName, &size);
+		uint8_t *dat = _archive->loadEntry(_entryName, &size);
 		if (dat) {
 			if (size != kMenuMapSize) {
 				error("Unexpected size %d for '%s'", size, _entryName);
@@ -285,9 +300,9 @@ void Resource::load_PAL_menu(const char *fileName, uint8_t *dstPtr) {
 			error("I/O error when reading '%s'", _entryName);
 		}
 		return;
-	} else if (_aba) {
+	} else if (_archive) {
 		uint32_t size = 0;
-		uint8_t *dat = _aba->loadEntry(_entryName, &size);
+		uint8_t *dat = _archive->loadEntry(_entryName, &size);
 		if (dat) {
 			if (size != kMenuPalSize) {
 				error("Unexpected size %d for '%s'", size, _entryName);
@@ -333,8 +348,8 @@ void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
 		}
-	} else if (_aba) {
-		offData = _aba->loadEntry(_entryName);
+	} else if (_archive) {
+		offData = _archive->loadEntry(_entryName);
 	}
 	if (offData) {
 		const uint8_t *p = offData;
@@ -465,6 +480,8 @@ void Resource::load_CINE() {
 		break;
 	case kResourceTypeMac:
 		MAC_loadCutsceneText();
+		break;
+	case kResourceTypePC98:
 		break;
 	}
 }
@@ -685,9 +702,9 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 			error("I/O error when reading '%s'", _entryName);
 		}
 	} else {
-		if (_aba) {
+		if (_archive) {
 			uint32_t size;
-			uint8_t *dat = _aba->loadEntry(_entryName, &size);
+			uint8_t *dat = _archive->loadEntry(_entryName, &size);
 			if (dat) {
 				switch (objType) {
 				case OT_MBK:
@@ -733,11 +750,20 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 				case OT_TBN:
 					_tbn = dat;
 					break;
+				case OT_SPR:
+					assert(memcmp(dat, "SPP", 3) == 0);
+					_spr1 = (uint8_t *)malloc(size - 12);
+					memcpy(_spr1, dat + 12, size - 12);
+					break;
 				case OT_CMD:
 					_cmd = dat;
 					break;
 				case OT_POL:
 					_pol = dat;
+					break;
+				case OT_SPRM:
+					assert(memcmp(dat, "SPP", 3) == 0);
+					memcpy(_sprm, dat + 12, size - 12);
 					break;
 				case OT_SGD:
 					_sgd = dat;
@@ -1384,6 +1410,7 @@ int Resource::getBankDataSize(uint16_t num) {
 		}
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		if (len & 0x8000) {
 			if (_mbk == _bnq) { // demo .bnq use signed int
 				len = -(int16_t)len;
@@ -1442,6 +1469,55 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 	uint8_t *bankData = _bankDataHead;
 	_bankDataHead += size;
 	return bankData;
+}
+
+void Resource::PC98_loadLevelMap(int level) {
+	char name[16];
+	snprintf(name, sizeof(name), "LEVEL%d.PAQ", level + 1);
+	File f;
+	if (f.open(name, "rb", _fs)) {
+		const int size = f.size();
+		_map = (uint8_t *)malloc(size);
+		if (_map) {
+			f.read(_map, size);
+			debug(DBG_RES, "Loaded MAP file for PC98, %d bytes", size);
+		}
+	}
+}
+
+void Resource::PC98_loadSounds() {
+	File f;
+	if (f.open("SFX.PAQ", "rb", _fs)) {
+		_numSfx = NUM_SFXS;
+		_sfxList = (SoundFx *)calloc(_numSfx, sizeof(SoundFx));
+		if (!_sfxList) {
+			error("Unable to allocate SoundFx table");
+		}
+		int current = 0;
+		int count = 0;
+		do {
+			const uint32_t offset = f.readUint32LE();
+			if (count == 0) {
+				assert((count % 12) == 0);
+				count = offset / 12;
+				assert(count == NUM_SFXS);
+			}
+			const uint32_t compressed   = f.readUint32LE();
+			const uint32_t uncompressed = f.readUint32LE();
+			assert(compressed == uncompressed);
+			SoundFx *sfx = &_sfxList[current++];
+			sfx->offset = offset;
+			sfx->len = uncompressed;
+			sfx->freq = 6000;
+		} while (--count != 0);
+		for (int i = 0; i < _numSfx; ++i) {
+			SoundFx *sfx = &_sfxList[i];
+			if (sfx->len == 0) {
+				continue;
+			}
+			decodeSfxFibonacci(sfx, f);
+		}
+	}
 }
 
 uint8_t *Resource::decodeResourceMacText(const char *name, const char *suffix) {

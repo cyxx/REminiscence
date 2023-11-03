@@ -10,6 +10,7 @@
 #include "intern.h"
 #include "resource_aba.h"
 #include "resource_mac.h"
+#include "resource_paq.h"
 
 struct DecodeBuffer;
 struct File;
@@ -126,8 +127,10 @@ struct Resource {
 	ResourceType _type;
 	Language _lang;
 	bool _isDemo;
+	ResourceArchive *_archive;
 	ResourceAba *_aba;
 	ResourceMac *_mac;
+	ResourcePaq *_paq;
 	uint16_t (*_readUint16)(const void *);
 	uint32_t (*_readUint32)(const void *);
 	bool _hasSeqData;
@@ -192,6 +195,7 @@ struct Resource {
 	bool isDOS()   const { return _type == kResourceTypeDOS; }
 	bool isAmiga() const { return _type == kResourceTypeAmiga; }
 	bool isMac()   const { return _type == kResourceTypeMac; }
+	bool isPC98()  const { return _type == kResourceTypePC98; }
 
 	bool fileExists(const char *filename);
 
@@ -326,6 +330,9 @@ struct Resource {
 	int getBankDataSize(uint16_t num);
 	uint8_t *findBankData(uint16_t num);
 	uint8_t *loadBankData(uint16_t num);
+
+	void PC98_loadLevelMap(int level);
+	void PC98_loadSounds();
 
 	uint8_t *decodeResourceMacText(const char *name, const char *suffix);
 	uint8_t *decodeResourceMacData(const char *name, bool decompressLzss);

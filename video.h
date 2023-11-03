@@ -36,7 +36,7 @@ struct Video {
 
 	int _w, _h;
 	int _layerSize;
-	int _layerScale; // 1 for Amiga/PC, 2 for Macintosh
+	int _layerScale; // 2 for Macintosh (512x448), 1 for other versions (256x224)
 	uint8_t *_frontLayer;
 	uint8_t *_backLayer;
 	uint8_t *_tempLayer;
@@ -65,12 +65,13 @@ struct Video {
 	void setPaletteSlotLE(int palSlot, const uint8_t *palData);
 	void setTextPalette();
 	void setPalette0xF();
-	void PC_decodeLev(int level, int room);
-	void PC_decodeMap(int level, int room);
-	void PC_setLevelPalettes();
-	void PC_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
-	void PC_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst);
-	void PC_decodeSpm(const uint8_t *dataPtr, uint8_t *dstPtr);
+	void DOS_decodeLev(int level, int room);
+	void DOS_decodeMap(int level, int room);
+	void DOS_setLevelPalettes();
+	void DOS_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
+	void DOS_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst);
+	void DOS_decodeSpm(const uint8_t *dataPtr, uint8_t *dstPtr);
+	void PC98_decodeMap(int level, int room);
 	void AMIGA_decodeLev(int level, int room);
 	void AMIGA_decodeSpm(const uint8_t *src, uint8_t *dst);
 	void AMIGA_decodeIcn(const uint8_t *src, int num, uint8_t *dst);
@@ -82,8 +83,8 @@ struct Video {
 	void drawSpriteSub4(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
 	void drawSpriteSub5(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
 	void drawSpriteSub6(const uint8_t *src, uint8_t *dst, int pitch, int h, int w, uint8_t colMask);
-	void PC_drawChar(uint8_t c, int16_t y, int16_t x, bool forceDefaultFont = false);
-	void PC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8_t *src, uint8_t color, uint8_t chr);
+	void DOS_drawChar(uint8_t c, int16_t y, int16_t x, bool forceDefaultFont = false);
+	void DOS_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8_t *src, uint8_t color, uint8_t chr);
 	void AMIGA_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8_t *src, uint8_t color, uint8_t chr);
 	void MAC_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint8_t *src, uint8_t color, uint8_t chr);
 	const char *drawString(const char *str, int16_t x, int16_t y, uint8_t col);

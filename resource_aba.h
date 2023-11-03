@@ -14,7 +14,7 @@ struct ResourceAbaEntry {
 	int fileIndex;
 };
 
-struct ResourceAba {
+struct ResourceAba: ResourceArchive {
 
 	static const int TAG = 0x442E4D2E;
 
@@ -29,7 +29,9 @@ struct ResourceAba {
 
 	void readEntries(const char *aba);
 	const ResourceAbaEntry *findEntry(const char *name) const;
-	uint8_t *loadEntry(const char *name, uint32_t *size = 0);
+
+	virtual bool hasEntry(const char *name) const { return findEntry(name) != 0; }
+	virtual uint8_t *loadEntry(const char *name, uint32_t *size = 0);
 };
 
 #endif // RESOURCE_ABA_H__

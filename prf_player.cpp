@@ -38,11 +38,13 @@ PrfPlayer::PrfPlayer(Mixer *mix, FileSystem *fs, int mode)
 			if (_driver->init() < 0) {
 				warning("Failed to initialize MIDI driver %s", _midiDrivers[i].info->name);
 				_driver = 0;
+			} else {
+				_driver->fixExRegisterAddress(g_options.fix_fmopl_e0_reg);
 			}
 			return;
 		}
 	}
-	fprintf(stdout, "WARNING: no midi driver for mode %d", mode);
+	warning("no midi driver for mode %d", mode);
 }
 
 PrfPlayer::~PrfPlayer() {
@@ -60,22 +62,26 @@ void PrfPlayer::play(int num) {
 		char name[64];
 		snprintf(name, sizeof(name), "%s.prf", (num == 1 && _mode == MODE_MT32) ? "opt" : _names[num]);
 		File f;
-		if (f.open(name, "rb", _fs)) {
+		if (!f.open(name, "rb", _fs)) {
+			debug(DBG_PRF, "Failed to open PRF file '%s'", name);
+		} else {
 			loadPrf(&f);
 			if (_mode == MODE_ADLIB) {
 				for (int i = 0; i < 16; ++i) {
 					memset(_adlibInstrumentData[i], 0, ADLIB_INSTRUMENT_DATA_LEN);
 					if (_prfData.instruments[i][0]) {
 						snprintf(name, sizeof(name), "%s.INS", _prfData.instruments[i]);
-						if (f.open(name, "rb", _fs)) {
-							loadIns(&f, i);
+						if (!f.open(name, "rb", _fs)) {
+							warning("Failed to open INS file '%s'", name);
 						} else {
-							warning("Unable to open '%s'", name);
+							loadIns(&f, i);
 						}
 					}
 				}
 			}
-			if (f.open(_prfData.midi, "rb", _fs)) {
+			if (!f.open(_prfData.midi, "rb", _fs)) {
+				warning("Failed to open MIDI file '%s'", _prfData.midi);
+			} else {
 				_parser.loadMid(&f);
 				play();
 			}

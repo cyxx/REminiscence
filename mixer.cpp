@@ -169,6 +169,8 @@ void Mixer::stopMusic() {
 		default:
 			break;
 		}
+	} else {
+		_musicTrack = -1;
 	}
 }
 
@@ -199,10 +201,9 @@ void Mixer::mix(int16_t *out, int len) {
 					ch->active = false;
 					break;
 				}
-				const int sample8 = ch->chunk.getPCM(cpos) * ch->volume / Mixer::MAX_VOLUME;
-				const int sample16 = S8_to_S16(sample8);
-				out[2 * pos]     = ADDC_S16(out[2 * pos],     sample16);
-				out[2 * pos + 1] = ADDC_S16(out[2 * pos + 1], sample16);
+				const int sample = S8_to_S16(ch->chunk.getPCM(cpos)) * ch->volume / Mixer::MAX_VOLUME;
+				out[2 * pos]     = ADDC_S16(out[2 * pos],     sample);
+				out[2 * pos + 1] = ADDC_S16(out[2 * pos + 1], sample);
 				ch->chunkPos += ch->chunkInc;
 			}
 		}

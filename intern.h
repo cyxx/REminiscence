@@ -38,22 +38,16 @@ inline uint32_t READ_LE_UINT32(const void *ptr) {
 
 inline int16_t ADDC_S16(int a, int b) {
 	a += b;
-	if (a < -32768) {
-		a = -32768;
-	} else if (a > 32767) {
-		a = 32767;
+	if (a <= -32768) {
+		return -32768;
+	} else if (a >= 32767) {
+		return 32767;
 	}
 	return a;
 }
 
-inline int16_t S8_to_S16(int a) {
-	if (a < -128) {
-		return -32768;
-	} else if (a > 127) {
-		return 32767;
-	} else {
-		return ((uint8_t)a) * 257;
-	}
+inline int16_t S8_to_S16(int8_t a) {
+	return ((uint8_t)a) * 0x101;
 }
 
 template<typename T>
@@ -65,9 +59,9 @@ inline void SWAP(T &a, T &b) {
 
 template<typename T>
 inline T CLIP(const T& val, const T& a, const T& b) {
-	if (val < a) {
+	if (val <= a) {
 		return a;
-	} else if (val > b) {
+	} else if (val >= b) {
 		return b;
 	}
 	return val;
@@ -104,6 +98,7 @@ enum ResourceType {
 	kResourceTypeAmiga,
 	kResourceTypeDOS,
 	kResourceTypeMac,
+	kResourceTypePC98,
 };
 
 enum Skill {
@@ -144,6 +139,7 @@ struct Options {
 	bool play_gamesaved_sound;
 	bool restore_memo_cutscene;
 	bool order_inventory_original;
+	bool fix_fmopl_e0_reg;
 };
 
 struct Color {
@@ -291,6 +287,12 @@ struct SoundFx {
 	uint16_t freq;
 	uint8_t *data;
 	int8_t peak;
+};
+
+struct ResourceArchive {
+	virtual ~ResourceArchive() {};
+	virtual bool hasEntry(const char *name) const = 0;
+	virtual uint8_t *loadEntry(const char *name, uint32_t *size = 0) = 0;
 };
 
 extern Options g_options;

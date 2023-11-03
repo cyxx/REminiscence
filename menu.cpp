@@ -74,8 +74,9 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 		}
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		for (; str[len]; ++len) {
-			_vid->PC_drawChar((uint8_t)str[len], y, x + len, true);
+			_vid->DOS_drawChar((uint8_t)str[len], y, x + len, true);
 		}
 		break;
 	case kResourceTypeMac:
@@ -91,11 +92,15 @@ void Menu::loadPicture(const char *prefix) {
 	debug(DBG_MENU, "Menu::loadPicture('%s')", prefix);
 	static const int kPictureW = 256;
 	static const int kPictureH = 224;
-	_res->load_MAP_menu(prefix, _res->_scratchBuffer);
-	for (int i = 0; i < 4; ++i) {
-		for (int y = 0; y < kPictureH; ++y) {
-			for (int x = 0; x < kPictureW / 4; ++x) {
-				_vid->_frontLayer[i + x * 4 + kPictureW * y] = _res->_scratchBuffer[0x3800 * i + x + 64 * y];
+	if (_res->isPC98()) {
+		_res->load_MAP_menu(prefix, _vid->_frontLayer);
+	} else {
+		_res->load_MAP_menu(prefix, _res->_scratchBuffer);
+		for (int i = 0; i < 4; ++i) {
+			for (int y = 0; y < kPictureH; ++y) {
+				for (int x = 0; x < kPictureW / 4; ++x) {
+					_vid->_frontLayer[i + x * 4 + kPictureW * y] = _res->_scratchBuffer[0x3800 * i + x + 64 * y];
+				}
 			}
 		}
 	}
@@ -200,9 +205,9 @@ bool Menu::handlePasswordScreen() {
 		drawString2(_res->getMenuString(LocaleData::LI_17_ENTER_PASSWORD2), 17, 3);
 
 		for (int i = 0; i < len; ++i) {
-			_vid->PC_drawChar((uint8_t)password[i], 21, i + 15);
+			_vid->DOS_drawChar((uint8_t)password[i], 21, i + 15);
 		}
-		_vid->PC_drawChar(0x20, 21, len + 15);
+		_vid->DOS_drawChar(0x20, 21, len + 15);
 
 		_vid->markBlockAsDirty(15 * Video::CHAR_W, 21 * Video::CHAR_H, (len + 1) * Video::CHAR_W, Video::CHAR_H, _vid->_layerScale);
 		_vid->updateScreen();
@@ -508,6 +513,7 @@ const char *Menu::getLevelPassword(int level, int skill) const {
 	case kResourceTypeMac:
 		return _passwordsMac[skill * 8 + level];
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		// default
 		break;
 	}

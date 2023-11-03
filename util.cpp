@@ -16,9 +16,9 @@
 #include "util.h"
 
 
-uint16_t g_debugMask;
+uint32_t g_debugMask;
 
-void debug(uint16_t cm, const char *msg, ...) {
+void debug(uint32_t cm, const char *msg, ...) {
 	char buf[1024];
 	if (cm & g_debugMask) {
 		va_list va;

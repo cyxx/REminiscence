@@ -11,7 +11,7 @@ extern "C" {
 
 static opl3_chip _opl3;
 
-static const int kMusicVolume = 63; // 44;
+static const int kMusicVolume = 48;
 
 /* Two-operator melodic and percussion mode */
 static const uint8_t _adlibOperatorIndexTable[] = { 0, 3, 1, 4, 2, 5, 6, 9, 7, 0xA, 8, 0xB, 0xC, 0xF, 0x10, 0x10, 0xE, 0xE, 0x11, 0x11, 0xD, 0xD };
@@ -32,6 +32,8 @@ static struct {
 static int16_t _adlibChannelPlayingTable[NUM_CHANNELS]; // could be a bitmask
 static int16_t _adlibChannelVolumeTable[NUM_CHANNELS];
 static uint8_t _regBD = 0x20;
+
+static uint8_t _regExAddr = 0xE0;
 
 static const uint8_t *_currentInstrumentData;
 
@@ -60,6 +62,9 @@ struct MidiDriver_adlib: MidiDriver {
 		// fprintf(stdout, "instrument channel:%d num:%d data:%p\n", channel, num, data);
 		assert(data);
 		_currentInstrumentData = (const uint8_t *)data;
+	}
+	virtual void fixExRegisterAddress(bool state) {
+		_regExAddr = state ? 0xE0 : 0xE;
 	}
 
 	virtual void noteOff(int channel, int note, int velocity) {
@@ -207,7 +212,7 @@ struct MidiDriver_adlib: MidiDriver {
 			dx = (READ_LE_UINT16(bx + 4) << 1) | ax;
 			ax = 0xC0 + ((mode != 0) ? hw_channel : channel);
 			writeRegister(ax, dx);
-			writeRegister(0xE0 + modulatorOperator, arg0[2] & 3); /* original writes to 0xE, typo */
+			writeRegister(_regExAddr + modulatorOperator, arg0[2] & 3); /* original writes to 0xE, typo */
 		}
 		// carrier
 		const uint8_t *bx = arg0 + 0x20; // 26 + 6
@@ -232,7 +237,7 @@ struct MidiDriver_adlib: MidiDriver {
 		writeRegister(0x40 + carrierOperator, reg4x);
 		writeRegister(0x60 + carrierOperator, (READ_LE_UINT16(bx + 12) & 15) | (READ_LE_UINT16(bx + 6) << 4));
 		writeRegister(0x80 + carrierOperator, (READ_LE_UINT16(bx + 14) & 15) | (READ_LE_UINT16(bx + 8) << 4));
-		writeRegister(0xE0 + carrierOperator, arg0[3] & 3); /* original writes to 0xE, typo */
+		writeRegister(_regExAddr + carrierOperator, arg0[3] & 3); /* original writes to 0xE, typo */
 	}
 
 	void adlibPercussionKeyOn(int channel, int var6, int note) {
@@ -315,6 +320,7 @@ struct MidiDriver_adlib: MidiDriver {
 	}
 
 	void adlibReset() {
+		_regBD = 0x20;
 		for (int i = 0; i < 6; ++i) {
 			adlibMelodicKeyOff(i, 0);
 		}
@@ -350,7 +356,6 @@ struct MidiDriver_adlib: MidiDriver {
 			writeRegister(0xA0 + i, 0);
 		}
 		writeRegister(0xBD, 0);
-		_regBD = 0x20;
 	}
 
 	void writeRegister(uint8_t port, uint8_t value) {

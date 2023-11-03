@@ -1053,11 +1053,6 @@ void Cutscene::op_handleKeys() {
 		_cmdPtr = getCommandData();
 		n = READ_BE_UINT16(_cmdPtr + n * 2 + 2);
 	}
-	if (_res->isMac()) {
-		_cmdPtr = getCommandData();
-		_baseOffset = READ_BE_UINT16(_cmdPtr + 2 + n * 2);
-		n = 0;
-	}
 	_cmdPtr = _cmdPtrBak = getCommandData() + n + _baseOffset;
 }
 
@@ -1084,19 +1079,16 @@ void Cutscene::mainLoop(uint16_t num) {
 	_hasAlphaColor = false;
 	const uint8_t *p = getCommandData();
 	int offset = 0;
-	if (_res->isMac()) {
-		// const int count = READ_BE_UINT16(p);
-		_baseOffset = READ_BE_UINT16(p + 2 + num * 2);
-	} else {
-		if (num != 0) {
-			offset = READ_BE_UINT16(p + 2 + num * 2);
-		}
-		_baseOffset = (READ_BE_UINT16(p) + 1) * 2;
+	if (num != 0) {
+		offset = READ_BE_UINT16(p + 2 + num * 2);
 	}
+	const int count = READ_BE_UINT16(p);
+	_baseOffset = (count + 1) * 2;
+
 	_varKey = 0;
 	_cmdPtr = _cmdPtrBak = p + _baseOffset + offset;
 	_polPtr = getPolygonData();
-	debug(DBG_CUT, "_baseOffset = %d offset = %d", _baseOffset, offset);
+	debug(DBG_CUT, "_baseOffset = %d offset = %d count = %d", _baseOffset, offset, count);
 
 	_paletteNum = -1;
 	_drawMemoSetShapes = (_id == kCineMemo && g_options.restore_memo_cutscene);
@@ -1151,6 +1143,7 @@ bool Cutscene::load(uint16_t cutName) {
 		}
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		_res->load(name, Resource::OT_CMD);
 		_res->load(name, Resource::OT_POL);
 		break;
@@ -1168,6 +1161,7 @@ void Cutscene::unload() {
 		_res->unload(Resource::OT_CMP);
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		_res->unload(Resource::OT_CMD);
 		_res->unload(Resource::OT_POL);
 		break;

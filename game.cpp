@@ -56,6 +56,9 @@ void Game::run() {
 		_res.MAC_loadClutData();
 		_res.MAC_loadFontData();
 		break;
+	case kResourceTypePC98:
+		// use _font8Jp
+		break;
 	}
 
 	if (!g_options.bypass_protection && !g_options.use_words_protection && (_res.isAmiga() || _res.isDOS())) {
@@ -78,6 +81,7 @@ void Game::run() {
 	playCutscene(0x40);
 	playCutscene(0x0D);
 
+	// global resources
 	switch (_res._type) {
 	case kResourceTypeAmiga:
 		_res.load("ICONE", Resource::OT_ICN, "SPR");
@@ -85,15 +89,31 @@ void Game::run() {
 		_res.load("PERSO", Resource::OT_SPM);
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		_res.load("GLOBAL", Resource::OT_ICN);
 		_res.load("GLOBAL", Resource::OT_SPC);
 		_res.load("PERSO", Resource::OT_SPR);
 		_res.load_SPR_OFF("PERSO", _res._spr1);
-		_res.load_FIB("GLOBAL");
 		break;
 	case kResourceTypeMac:
 		_res.MAC_loadIconData();
 		_res.MAC_loadPersoData();
+		_res.MAC_loadSounds();
+		break;
+	}
+
+	// sound resources
+	switch (_res._type) {
+	case kResourceTypeAmiga:
+		// sounds are loaded per level
+		break;
+	case kResourceTypeDOS:
+		_res.load_FIB("GLOBAL");
+		break;
+	case kResourceTypePC98:
+		_res.PC98_loadSounds();
+		break;
+	case kResourceTypeMac:
 		_res.MAC_loadSounds();
 		break;
 	}
@@ -112,6 +132,7 @@ void Game::run() {
 			_mix.playMusic(1);
 			switch (_res._type) {
 			case kResourceTypeDOS:
+			case kResourceTypePC98:
 				_menu.handleTitleScreen();
 				if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT || _stub->_pi.quit) {
 					_stub->_pi.quit = true;
@@ -673,28 +694,29 @@ bool Game::handleConfigPanel() {
 		}
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		// top-left rounded corner
-		_vid.PC_drawChar(0x81, y, x, kUseDefaultFont);
+		_vid.DOS_drawChar(0x81, y, x, kUseDefaultFont);
 		// top-right rounded corner
-		_vid.PC_drawChar(0x82, y, x + w, kUseDefaultFont);
+		_vid.DOS_drawChar(0x82, y, x + w, kUseDefaultFont);
 		// bottom-left rounded corner
-		_vid.PC_drawChar(0x83, y + h, x, kUseDefaultFont);
+		_vid.DOS_drawChar(0x83, y + h, x, kUseDefaultFont);
 		// bottom-right rounded corner
-		_vid.PC_drawChar(0x84, y + h, x + w, kUseDefaultFont);
+		_vid.DOS_drawChar(0x84, y + h, x + w, kUseDefaultFont);
 		// horizontal lines
 		for (int i = 1; i < w; ++i) {
-			_vid.PC_drawChar(0x85, y, x + i, kUseDefaultFont);
-			_vid.PC_drawChar(0x88, y + h, x + i, kUseDefaultFont);
+			_vid.DOS_drawChar(0x85, y, x + i, kUseDefaultFont);
+			_vid.DOS_drawChar(0x88, y + h, x + i, kUseDefaultFont);
 		}
 		for (int j = 1; j < h; ++j) {
 			_vid._charTransparentColor = 0xFF;
 			// left vertical line
-			_vid.PC_drawChar(0x86, y + j, x, kUseDefaultFont);
+			_vid.DOS_drawChar(0x86, y + j, x, kUseDefaultFont);
 			// right vertical line
-			_vid.PC_drawChar(0x87, y + j, x + w, kUseDefaultFont);
+			_vid.DOS_drawChar(0x87, y + j, x + w, kUseDefaultFont);
 			_vid._charTransparentColor = 0xE2;
 			for (int i = 1; i < w; ++i) {
-				_vid.PC_drawChar(0x20, y + j, x + i, kUseDefaultFont);
+				_vid.DOS_drawChar(0x20, y + j, x + i, kUseDefaultFont);
 			}
 		}
 		break;
@@ -1101,6 +1123,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 		switch (_res._type) {
 		case kResourceTypeAmiga:
 		case kResourceTypeDOS:
+		case kResourceTypePC98:
 			assert(pge->anim_number < 1287);
 			dataPtr = _res._sprData[pge->anim_number];
 			if (dataPtr == 0) {
@@ -1119,6 +1142,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 			h = dataPtr[2] & 0x7F;
 			break;
 		case kResourceTypeDOS:
+		case kResourceTypePC98:
 			w = dataPtr[2];
 			h = dataPtr[3];
 			dataPtr += 4;
@@ -1154,6 +1178,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 		switch (_res._type) {
 		case kResourceTypeAmiga:
 		case kResourceTypeDOS:
+		case kResourceTypePC98:
 			assert(pge->anim_number < _res._numSpc);
 			dataPtr = _res._spc + READ_BE_UINT16(_res._spc + pge->anim_number * 2);
 			break;
@@ -1203,8 +1228,9 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 					drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
 					break;
 				case kResourceTypeDOS:
+				case kResourceTypePC98:
 					if (!(state->dataPtr[-2] & 0x80)) {
-						_vid.PC_decodeSpm(state->dataPtr, _res._scratchBuffer);
+						_vid.DOS_decodeSpm(state->dataPtr, _res._scratchBuffer);
 						drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
 					} else {
 						drawCharacter(state->dataPtr, state->x, state->y, state->h, state->w, pge->flags);
@@ -1227,6 +1253,7 @@ void Game::drawPiege(AnimBufferState *state) {
 	switch (_res._type) {
 	case kResourceTypeAmiga:
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		drawObject(state->dataPtr, state->x, state->y, pge->flags);
 		break;
 	case kResourceTypeMac:
@@ -1268,6 +1295,7 @@ void Game::drawObject(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flag
 		dataPtr += 9;
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		count = dataPtr[5];
 		dataPtr += 6;
 		break;
@@ -1306,7 +1334,8 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 		_vid.AMIGA_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
 		break;
 	case kResourceTypeDOS:
-		_vid.PC_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
+	case kResourceTypePC98:
+		_vid.DOS_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
 		break;
 	case kResourceTypeMac:
 		assert(0); // different graphics format
@@ -1519,7 +1548,8 @@ int Game::loadMonsterSprites(LivePGE *pge) {
 				}
 			}
 			break;
-		case kResourceTypeDOS: {
+		case kResourceTypeDOS:
+		case kResourceTypePC98: {
 				const char *name = _monsterNames[0][_curMonsterNum];
 				_res.load(name, Resource::OT_SPRM);
 				_res.load_SPR_OFF(name, _res._sprm);
@@ -1592,21 +1622,21 @@ void Game::loadLevelMap() {
 		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
 			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
 			if (leftRoom >= 0 && hasLevelMap(_currentLevel, leftRoom) && !isMetro(_currentLevel, leftRoom)) {
-				_vid.PC_decodeMap(_currentLevel, leftRoom);
+				_vid.DOS_decodeMap(_currentLevel, leftRoom);
 				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
 			} else {
 				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
 			}
 			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
 			if (rightRoom >= 0 && hasLevelMap(_currentLevel, rightRoom) && !isMetro(_currentLevel, rightRoom)) {
-				_vid.PC_decodeMap(_currentLevel, rightRoom);
+				_vid.DOS_decodeMap(_currentLevel, rightRoom);
 				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
 			} else {
 				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
 			}
 			widescreenUpdated = true;
 		}
-		_vid.PC_decodeMap(_currentLevel, _currentRoom);
+		_vid.DOS_decodeMap(_currentLevel, _currentRoom);
 		break;
 	case kResourceTypeMac:
 		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
@@ -1627,6 +1657,9 @@ void Game::loadLevelMap() {
 			widescreenUpdated = true;
 		}
 		_vid.MAC_decodeMap(_currentLevel, _currentRoom);
+		break;
+	case kResourceTypePC98:
+		_vid.PC98_decodeMap(_currentLevel, _currentRoom);
 		break;
 	}
 	if (!widescreenUpdated) {
@@ -1691,11 +1724,14 @@ void Game::loadLevelData() {
 		}
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypePC98:
 		_res.load(lvl->name, Resource::OT_MBK);
 		_res.load(lvl->name, Resource::OT_CT);
 		_res.load(lvl->name, Resource::OT_PAL);
 		_res.load(lvl->name, Resource::OT_RP);
-		if (_res._isDemo || g_options.use_tile_data || _res._aba) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
+		if (_res.isPC98()) {
+			_res.PC98_loadLevelMap(_currentLevel);
+		} else if (_res._isDemo || g_options.use_tile_data || _res._aba) { // use .BNQ/.LEV/(.SGD) instead of .MAP (PC demo)
 			if (_currentLevel == 0) {
 				_res.load(lvl->name, Resource::OT_SGD);
 			}
@@ -1833,7 +1869,8 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 		}
 		break;
 	case kResourceTypeDOS:
-		_vid.PC_decodeIcn(_res._icn, iconNum, buf);
+	case kResourceTypePC98:
+		_vid.DOS_decodeIcn(_res._icn, iconNum, buf);
 		break;
 	case kResourceTypeMac:
 		switch (iconNum) {
@@ -1919,7 +1956,8 @@ void Game::handleInventory() {
 			static const int icon_spr_h = 16;
 			switch (_res._type) {
 			case kResourceTypeAmiga:
-			case kResourceTypeDOS: {
+			case kResourceTypeDOS:
+			case kResourceTypePC98: {
 					// draw inventory background
 					int icon_num = 31;
 					for (int y = 140; y < 140 + 5 * icon_spr_h; y += icon_spr_h) {
