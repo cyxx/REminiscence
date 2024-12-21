@@ -75,6 +75,7 @@ void Menu::drawString2(const char *str, int16_t y, int16_t x) {
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
+	case kResourceTypeSegaMD:
 		for (; str[len]; ++len) {
 			_vid->DOS_drawChar((uint8_t)str[len], y, x + len, true);
 		}
@@ -113,11 +114,7 @@ void Menu::loadPicture(const char *prefix) {
 void Menu::handleInfoScreen() {
 	debug(DBG_MENU, "Menu::handleInfoScreen()");
 	_vid->fadeOut();
-	if (_res->_lang == LANG_FR) {
-		loadPicture("instru_f");
-	} else {
-		loadPicture("instru_e");
-	}
+	loadPicture((_res->_lang == LANG_FR) ? "instru_f" : "instru_e");
 	_vid->fullRefresh();
 	_vid->updateScreen();
 	do {
@@ -136,20 +133,15 @@ void Menu::handleInfoScreen() {
 
 void Menu::handleSkillScreen() {
 	debug(DBG_MENU, "Menu::handleSkillScreen()");
-	static const uint8_t colors[3][3] = {
-		{ 2, 3, 3 }, // easy
-		{ 3, 2, 3 }, // normal
-		{ 3, 3, 2 }  // expert
-	};
 	_vid->fadeOut();
 	loadPicture("menu3");
 	_vid->fullRefresh();
 	drawString(_res->getMenuString(LocaleData::LI_12_SKILL_LEVEL), 12, 4, 3);
 	int currentSkill = _skill;
 	do {
-		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   15, 14, colors[currentSkill][0]);
-		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 17, 14, colors[currentSkill][1]);
-		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 19, 14, colors[currentSkill][2]);
+		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   15, 14, (currentSkill == 0) ? 2 : 3);
+		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 17, 14, (currentSkill == 1) ? 2 : 3);
+		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 19, 14, (currentSkill == 2) ? 2 : 3);
 
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
@@ -208,8 +200,8 @@ bool Menu::handlePasswordScreen() {
 			_vid->DOS_drawChar((uint8_t)password[i], 21, i + 15);
 		}
 		_vid->DOS_drawChar(0x20, 21, len + 15);
-
 		_vid->markBlockAsDirty(15 * Video::CHAR_W, 21 * Video::CHAR_H, (len + 1) * Video::CHAR_W, Video::CHAR_H, _vid->_layerScale);
+
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
 		_stub->processEvents();
@@ -259,15 +251,13 @@ bool Menu::handleLevelScreen() {
 	int currentSkill = _skill;
 	int currentLevel = _level;
 	do {
-		for (int i = 0; i < 7; ++i) {
-			drawString(_levelNames[i], 7 + i * 2, 4, (currentLevel == i) ? 2 : 3);
+		for (int i = 0; i < LEVELS_COUNT; ++i) {
+			drawString(_levelNames[i], 5 + i * 2, 4, (currentLevel == i) ? 2 : 3);
 		}
-		_vid->markBlockAsDirty(4 * Video::CHAR_W, 7 * Video::CHAR_H, 192, 7 * Video::CHAR_H, _vid->_layerScale);
 
 		drawString(_res->getMenuString(LocaleData::LI_13_EASY),   23,  4, (currentSkill == 0) ? 2 : 3);
 		drawString(_res->getMenuString(LocaleData::LI_14_NORMAL), 23, 14, (currentSkill == 1) ? 2 : 3);
 		drawString(_res->getMenuString(LocaleData::LI_15_EXPERT), 23, 24, (currentSkill == 2) ? 2 : 3);
-		_vid->markBlockAsDirty(4 * Video::CHAR_W, 23 * Video::CHAR_H, 192, Video::CHAR_H, _vid->_layerScale);
 
 		_vid->updateScreen();
 		_stub->sleep(EVENTS_DELAY);
@@ -278,12 +268,12 @@ bool Menu::handleLevelScreen() {
 			if (currentLevel != 0) {
 				--currentLevel;
 			} else {
-				currentLevel = 6;
+				currentLevel = LEVELS_COUNT - 1;
 			}
 		}
 		if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
 			_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-			if (currentLevel != 6) {
+			if (currentLevel != LEVELS_COUNT - 1) {
 				++currentLevel;
 			} else {
 				currentLevel = 0;
@@ -511,11 +501,13 @@ const char *Menu::getLevelPassword(int level, int skill) const {
 		}
 		break;
 	case kResourceTypeMac:
-		return _passwordsMac[skill * 8 + level];
+		return _passwordsMac[skill * LEVELS_COUNT + level];
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
 		// default
 		break;
+	case kResourceTypeSegaMD:
+		break;
 	}
-	return _passwordsDOS[skill * 8 + level];
+	return _passwordsDOS[skill * LEVELS_COUNT + level];
 }

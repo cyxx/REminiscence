@@ -4,6 +4,7 @@
  */
 
 #include <SDL.h>
+#include <sys/time.h>
 #include "scaler.h"
 #include "screenshot.h"
 #include "systemstub.h"
@@ -138,7 +139,6 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int 
 			_joystick = SDL_JoystickOpen(kJoystickIndex);
 		}
 	}
-	_screenshot = 1;
 }
 
 void SystemStub_SDL::destroy() {
@@ -778,10 +778,12 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 				}
 				break;
 			case SDLK_s: {
-					char name[32];
-					snprintf(name, sizeof(name), "screenshot-%03d.bmp", _screenshot);
+					struct timeval tv;
+					gettimeofday(&tv, 0);
+					const long timestamp = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+					char name[64];
+					snprintf(name, sizeof(name), "screenshot-%ld.bmp", timestamp);
 					saveBMP(name, (const uint8_t *)_screenBuffer, 0, _screenW, _screenH);
-					++_screenshot;
 					debug(DBG_INFO, "Written '%s'", name);
 				}
 				break;

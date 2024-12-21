@@ -50,7 +50,7 @@ struct SeqPlayer {
 		kSoundPreloadSize = 4
 	};
 
-	static const char *_namesTable[];
+	static const char *const _namesTable[];
 
 	struct SoundBufferQueue {
 		int16_t *data;

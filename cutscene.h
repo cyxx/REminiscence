@@ -47,16 +47,14 @@ struct Cutscene {
 	};
 
 	static const OpcodeStub _opcodeTable[];
-	static const char *_namesTableDOS[];
+	static const char *const _namesTableDOS[];
 	static const uint16_t _offsetsTableDOS[];
 	static const uint16_t _offsetsTableAmiga[];
 	static const uint8_t _amigaDemoOffsetsTable[];
 	static const uint8_t _ssiOffsetsTable[];
-	static const uint16_t _cosTable[];
-	static const uint16_t _sinTable[];
 	static const uint8_t _creditsDataDOS[];
 	static const uint8_t _creditsDataAmiga[];
-	static const uint16_t _creditsCutSeq[];
+	static const uint8_t _creditsCutSeq[];
 	static const uint8_t _musicTableDOS[];
 	static const uint8_t _musicTableAmiga[];
 	static const uint8_t _protectionShapeData[];
@@ -116,6 +114,7 @@ struct Cutscene {
 	int _creditsTextIndex; /* MAC has the credits data in a resource */
 	int _creditsTextLen;
 	uint8_t *_frontPage, *_backPage, *_auxPage;
+	int _paletteNum;
 
 	Cutscene(Resource *res, SystemStub *stub, Video *vid);
 

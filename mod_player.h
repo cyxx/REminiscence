@@ -16,7 +16,7 @@ struct ModPlayer_impl;
 struct ModPlayer {
 
 	static const uint16_t _periodTable[];
-	static const char *_names[];
+	static const char *const _names[];
 	static const int _namesCount;
 
 	bool _isAmiga;

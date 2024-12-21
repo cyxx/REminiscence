@@ -45,11 +45,11 @@ struct LocaleData {
 		LI_NUM
 	};
 
-	static const char *_textsTableFR[];
-	static const char *_textsTableEN[];
-	static const char *_textsTableDE[];
-	static const char *_textsTableSP[];
-	static const char *_textsTableIT[];
+	static const char *const _textsTableFR[];
+	static const char *const _textsTableEN[];
+	static const char *const _textsTableDE[];
+	static const char *const _textsTableSP[];
+	static const char *const _textsTableIT[];
 
 	static const uint8_t _stringsTableFR[];
 	static const uint8_t _stringsTableEN[];
@@ -71,7 +71,7 @@ struct LocaleData {
 };
 
 struct Resource {
-	typedef void (Resource::*LoadStub)(File *);
+	typedef void (Resource::*LoadProc)(File *);
 
 	enum ObjectType {
 		OT_MBK,
@@ -108,6 +108,7 @@ struct Resource {
 		NUM_SFXS = 66,
 		NUM_BANK_BUFFERS = 50,
 		NUM_CUTSCENE_TEXTS = 117,
+		NUM_OBJECTS = 230,
 		NUM_SPRITES = 1287
 	};
 
@@ -119,7 +120,7 @@ struct Resource {
 
 	static const uint16_t _voicesOffsetsTable[];
 	static const uint32_t _spmOffsetsTable[];
-	static const char *_splNames[];
+	static const char *const _splNames[];
 	static const uint8_t _gameSavedSoundData[];
 	static const uint16_t _gameSavedSoundLen;
 
@@ -167,7 +168,7 @@ struct Resource {
 	uint8_t *_cineStrings[NUM_CUTSCENE_TEXTS];
 	uint8_t *_cine_off;
 	uint8_t *_cine_txt;
-	const char **_textsTable;
+	const char *const *_textsTable;
 	const uint8_t *_stringsTable;
 	uint8_t *_bankData;
 	uint8_t *_bankDataHead;
@@ -196,6 +197,7 @@ struct Resource {
 	bool isAmiga() const { return _type == kResourceTypeAmiga; }
 	bool isMac()   const { return _type == kResourceTypeMac; }
 	bool isPC98()  const { return _type == kResourceTypePC98; }
+	bool isSega()  const { return _type == kResourceTypeSegaMD; }
 
 	bool fileExists(const char *filename);
 
@@ -206,7 +208,7 @@ struct Resource {
 	void load_MAP_menu(const char *fileName, uint8_t *dstPtr);
 	void load_PAL_menu(const char *fileName, uint8_t *dstPtr);
 	void load_CMP_menu(const char *fileName);
-	void load_SPR_OFF(const char *fileName, uint8_t *sprData);
+	void load_SPR_OFF(const char *fileName, uint8_t *sprData, const char *ext = "OFF");
 	void load_CINE();
 	void free_CINE();
 	void load_TEXT();

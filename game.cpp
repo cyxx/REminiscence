@@ -59,9 +59,12 @@ void Game::run() {
 	case kResourceTypePC98:
 		// use _font8Jp
 		break;
+	case kResourceTypeSegaMD:
+		_res.load("FONT8", Resource::OT_FNT);
+		break;
 	}
 
-	if (!g_options.bypass_protection && !g_options.use_words_protection && (_res.isAmiga() || _res.isDOS())) {
+	if (!g_options.bypass_protection && !g_options.use_words_protection && g_features->has_copy_protection) {
 		while (!handleProtectionScreenShape()) {
 			if (_stub->_pi.quit) {
 				return;
@@ -100,6 +103,14 @@ void Game::run() {
 		_res.MAC_loadPersoData();
 		_res.MAC_loadSounds();
 		break;
+	case kResourceTypeSegaMD:
+		_res.load("GLOBAL", Resource::OT_ANI);
+		_res.load("GLOBAL", Resource::OT_ICN);
+		_res.load("GLOBAL", Resource::OT_OBJ);
+		_res.load("GLOBAL", Resource::OT_SPC);
+		_res.load("GLOBAL", Resource::OT_SPR);
+		_res.load_SPR_OFF("GLOBAL", _res._spr1, "TAB");
+		break;
 	}
 
 	// sound resources
@@ -116,6 +127,8 @@ void Game::run() {
 	case kResourceTypeMac:
 		_res.MAC_loadSounds();
 		break;
+	case kResourceTypeSegaMD:
+		break;
 	}
 
 	if (!g_options.bypass_protection && g_options.use_words_protection && _res.isDOS()) {
@@ -126,7 +139,7 @@ void Game::run() {
 		}
 	}
 
-	bool presentMenu = ((_res._type != kResourceTypeDOS) || _res.fileExists("MENU1.MAP"));
+	bool presentMenu = (_res._type != kResourceTypeDOS) || _res.fileExists("MENU1.MAP");
 	while (!_stub->_pi.quit) {
 		if (presentMenu) {
 			_mix.playMusic(1);
@@ -161,6 +174,8 @@ void Game::run() {
 				break;
 			case kResourceTypeMac:
 				displayTitleScreenMac(Menu::kMacTitleScreen_Flashback);
+				break;
+			case kResourceTypeSegaMD:
 				break;
 			}
 			_mix.stopMusic();
@@ -448,12 +463,12 @@ void Game::mainLoop() {
 		return;
 	}
 	if (_loadMap) {
-		if (_currentRoom == 0xFF || !hasLevelMap(_currentLevel, _pgeLive[0].room_location)) {
+		if (_currentRoom == 0xFF || !hasLevelRoom(_currentLevel, _pgeLive[0].room_location)) {
 			_cut._id = 6;
 			_deathCutsceneCounter = 1;
 		} else {
 			_currentRoom = _pgeLive[0].room_location;
-			loadLevelMap();
+			loadLevelRoom();
 			_loadMap = false;
 			_vid.fullRefresh();
 		}
@@ -579,7 +594,7 @@ void Game::playCutscene(int id) {
 		}
 		_cut.play();
 		if (id == 0xD && !_cut._interrupted) {
-			if (!_res.isAmiga()) {
+			if (g_features->has_extended_intro) {
 				_cut._id = 0x4A; // second part of the introduction cutscene
 				_cut.play();
 			}
@@ -687,6 +702,7 @@ bool Game::handleConfigPanel() {
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
+	case kResourceTypeSegaMD:
 		for (int i = 0; i < h; ++i) {
 			for (int j = 0; j < w; ++j) {
 				_vid.fillRect(Video::CHAR_W * (x + j), Video::CHAR_H * (y + i), Video::CHAR_W, Video::CHAR_H, 0xE2);
@@ -1124,6 +1140,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 		case kResourceTypeAmiga:
 		case kResourceTypeDOS:
 		case kResourceTypePC98:
+		case kResourceTypeSegaMD:
 			assert(pge->anim_number < 1287);
 			dataPtr = _res._sprData[pge->anim_number];
 			if (dataPtr == 0) {
@@ -1148,6 +1165,10 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 			dataPtr += 4;
 			break;
 		case kResourceTypeMac:
+			break;
+		case kResourceTypeSegaMD:
+			w = 32;
+			h = 24 * 2;
 			break;
 		}
 		int16_t ypos = dy + pge->pos_y - dh + 2;
@@ -1179,6 +1200,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 		case kResourceTypeAmiga:
 		case kResourceTypeDOS:
 		case kResourceTypePC98:
+		case kResourceTypeSegaMD:
 			assert(pge->anim_number < _res._numSpc);
 			dataPtr = _res._spc + READ_BE_UINT16(_res._spc + pge->anim_number * 2);
 			break;
@@ -1239,6 +1261,10 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 				case kResourceTypeMac:
 					drawPiege(state);
 					break;
+				case kResourceTypeSegaMD:
+					_vid.SEGA_decodeSpm(state->dataPtr, _res._scratchBuffer);
+					drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
+					break;
 				}
 			} else {
 				drawPiege(state);
@@ -1254,6 +1280,7 @@ void Game::drawPiege(AnimBufferState *state) {
 	case kResourceTypeAmiga:
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
+	case kResourceTypeSegaMD:
 		drawObject(state->dataPtr, state->x, state->y, pge->flags);
 		break;
 	case kResourceTypeMac:
@@ -1296,6 +1323,7 @@ void Game::drawObject(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flag
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
+	case kResourceTypeSegaMD:
 		count = dataPtr[5];
 		dataPtr += 6;
 		break;
@@ -1326,8 +1354,8 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 		sprite_flags ^= 0x10;
 	}
 
-	uint8_t sprite_h = (((sprite_flags >> 0) & 3) + 1) * 8;
-	uint8_t sprite_w = (((sprite_flags >> 2) & 3) + 1) * 8;
+	const uint8_t sprite_h = (((sprite_flags >> 0) & 3) + 1) * 8;
+	const uint8_t sprite_w = (((sprite_flags >> 2) & 3) + 1) * 8;
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
@@ -1340,6 +1368,9 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 	case kResourceTypeMac:
 		assert(0); // different graphics format
 		break;
+	case kResourceTypeSegaMD:
+		_vid.SEGA_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
+		break;
 	}
 
 	src = _res._scratchBuffer;
@@ -1347,10 +1378,10 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 	int16_t sprite_clipped_w;
 	if (sprite_x >= 0) {
 		sprite_clipped_w = sprite_x + sprite_w;
-		if (sprite_clipped_w < 256) {
+		if (sprite_clipped_w < Video::GAMESCREEN_W) {
 			sprite_clipped_w = sprite_w;
 		} else {
-			sprite_clipped_w = 256 - sprite_x;
+			sprite_clipped_w = Video::GAMESCREEN_W - sprite_x;
 			if (sprite_flags & 0x10) {
 				sprite_mirror_x = true;
 				src += sprite_w - 1;
@@ -1373,11 +1404,11 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 
 	int16_t sprite_clipped_h;
 	if (sprite_y >= 0) {
-		sprite_clipped_h = 224 - sprite_h;
+		sprite_clipped_h = Video::GAMESCREEN_H - sprite_h;
 		if (sprite_y < sprite_clipped_h) {
 			sprite_clipped_h = sprite_h;
 		} else {
-			sprite_clipped_h = 224 - sprite_y;
+			sprite_clipped_h = Video::GAMESCREEN_H - sprite_y;
 		}
 	} else {
 		sprite_clipped_h = sprite_h + sprite_y;
@@ -1392,8 +1423,8 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 		src += sprite_w - 1;
 	}
 
-	uint32_t dst_offset = 256 * sprite_y + sprite_x;
-	uint8_t sprite_col_mask = (flags & 0x60) >> 1;
+	const uint32_t dst_offset = Video::GAMESCREEN_W * sprite_y + sprite_x;
+	const uint8_t sprite_col_mask = (flags & 0x60) >> 1;
 
 	if (_eraseBackground) {
 		if (!(sprite_flags & 0x10)) {
@@ -1494,8 +1525,8 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 		}
 	}
 
-	uint32_t dst_offset = 256 * pos_y + pos_x;
-	uint8_t sprite_col_mask = ((flags & 0x60) == 0x60) ? 0x50 : 0x40;
+	const uint32_t dst_offset = 256 * pos_y + pos_x;
+	const uint8_t sprite_col_mask = ((flags & 0x60) == 0x60) ? 0x50 : 0x40;
 
 	debug(DBG_GAME, "dst_offset=0x%X src_offset=%ld", dst_offset, src - dataPtr);
 
@@ -1539,10 +1570,10 @@ int Game::loadMonsterSprites(LivePGE *pge) {
 	if (_curMonsterNum != mList[1]) {
 		_curMonsterNum = mList[1];
 		switch (_res._type) {
-		case kResourceTypeAmiga: {
+		case kResourceTypeAmiga:
+		case kResourceTypeSegaMD: {
 				_res.load(_monsterNames[1][_curMonsterNum], Resource::OT_SPM);
-				static const uint8_t tab[4] = { 0, 8, 0, 8 };
-				const int offset = _vid._mapPalSlot3 * 16 + tab[_curMonsterNum];
+				const int offset = _vid._mapPalSlot3 * 16 + (_curMonsterNum & 1) * 8;
 				for (int i = 0; i < 8; ++i) {
 					_vid.setPaletteColorBE(0x50 + i, offset + i);
 				}
@@ -1571,7 +1602,7 @@ int Game::loadMonsterSprites(LivePGE *pge) {
 	return 0xFFFF;
 }
 
-bool Game::hasLevelMap(int level, int room) const {
+bool Game::hasLevelRoom(int level, int room) const {
 	if (_res._type == kResourceTypeMac) {
 		return _res.MAC_hasLevelMap(level, room);
 	}
@@ -1587,15 +1618,12 @@ static bool isMetro(int level, int room) {
 	return level == 1 && (room == 0 || room == 13 || room == 38 || room == 51);
 }
 
-void Game::loadLevelMap() {
-	debug(DBG_GAME, "Game::loadLevelMap() room=%d", _currentRoom);
-	bool widescreenUpdated = false;
-	_currentIcon = 0xFF;
+void Game::loadLevelRoomHelper(int level, int room) {
 	switch (_res._type) {
 	case kResourceTypeAmiga:
-		if (_currentLevel == 1) {
+		if (level == 1) {
 			int num = 0;
-			switch (_currentRoom) {
+			switch (room) {
 			case 14:
 			case 19:
 			case 52:
@@ -1616,52 +1644,50 @@ void Game::loadLevelMap() {
 				_res._levNum = num;
 			}
 		}
-		_vid.AMIGA_decodeLev(_currentLevel, _currentRoom);
+		_vid.AMIGA_decodeLev(level, room);
 		break;
 	case kResourceTypeDOS:
-		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
-			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
-			if (leftRoom >= 0 && hasLevelMap(_currentLevel, leftRoom) && !isMetro(_currentLevel, leftRoom)) {
-				_vid.DOS_decodeMap(_currentLevel, leftRoom);
-				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
-			} else {
-				_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
-			}
-			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
-			if (rightRoom >= 0 && hasLevelMap(_currentLevel, rightRoom) && !isMetro(_currentLevel, rightRoom)) {
-				_vid.DOS_decodeMap(_currentLevel, rightRoom);
-				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
-			} else {
-				_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
-			}
-			widescreenUpdated = true;
+		if (_res._map) {
+			_vid.DOS_decodeMap(level, room);
+		} else {
+			assert(_res._lev);
+			_vid.DOS_decodeLev(level, room);
 		}
-		_vid.DOS_decodeMap(_currentLevel, _currentRoom);
 		break;
 	case kResourceTypeMac:
-		if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
-			const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
-			if (leftRoom >= 0 && hasLevelMap(_currentLevel, leftRoom)) {
-				_vid.MAC_decodeMap(_currentLevel, leftRoom);
-				_stub->copyWidescreenLeft(_vid._w, _vid._h, _vid._backLayer);
-			} else {
-				_stub->copyWidescreenLeft(_vid._w, _vid._h, 0);
-			}
-			const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
-			if (rightRoom >= 0 && hasLevelMap(_currentLevel, rightRoom)) {
-				_vid.MAC_decodeMap(_currentLevel, rightRoom);
-				_stub->copyWidescreenRight(_vid._w, _vid._h, _vid._backLayer);
-			} else {
-				_stub->copyWidescreenRight(_vid._w, _vid._h, 0);
-			}
-			widescreenUpdated = true;
-		}
-		_vid.MAC_decodeMap(_currentLevel, _currentRoom);
+		_vid.MAC_decodeMap(level, room);
 		break;
 	case kResourceTypePC98:
-		_vid.PC98_decodeMap(_currentLevel, _currentRoom);
+		_vid.PC98_decodeMap(level, room);
+		break;
+	case kResourceTypeSegaMD:
+		_vid.AMIGA_decodeLev(level, room);
 		break;
 	}
+}
+
+void Game::loadLevelRoom() {
+	debug(DBG_GAME, "Game::loadLevelRoom() room=%d", _currentRoom);
+	bool widescreenUpdated = false;
+	_currentIcon = 0xFF;
+	if (_stub->hasWidescreen() && _widescreenMode == kWidescreenAdjacentRooms) {
+		const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
+		if (leftRoom >= 0 && hasLevelRoom(_currentLevel, leftRoom) && !isMetro(_currentLevel, leftRoom)) {
+			loadLevelRoomHelper(_currentLevel, leftRoom);
+			_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+		} else {
+			_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+		}
+		const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
+		if (rightRoom >= 0 && hasLevelRoom(_currentLevel, rightRoom) && !isMetro(_currentLevel, rightRoom)) {
+			loadLevelRoomHelper(_currentLevel, rightRoom);
+			_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+		} else {
+			_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+		}
+		widescreenUpdated = true;
+	}
+	loadLevelRoomHelper(_currentLevel, _currentRoom);
 	if (!widescreenUpdated) {
 		_vid.updateWidescreen();
 	}
@@ -1715,7 +1741,7 @@ void Game::loadLevelData() {
 		_res.load(lvl->nameAmiga, Resource::OT_ANI);
 		_res.load(lvl->nameAmiga, Resource::OT_TBN);
 		{
-			char name[8];
+			char name[32];
 			snprintf(name, sizeof(name), "level%d", lvl->sound);
 			_res.load(name, Resource::OT_SPL);
 		}
@@ -1725,6 +1751,7 @@ void Game::loadLevelData() {
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
+	case kResourceTypeSegaMD:
 		_res.load(lvl->name, Resource::OT_MBK);
 		_res.load(lvl->name, Resource::OT_CT);
 		_res.load(lvl->name, Resource::OT_PAL);
@@ -1737,12 +1764,19 @@ void Game::loadLevelData() {
 			}
 			_res.load(lvl->name, Resource::OT_LEV);
 			_res.load(lvl->name, Resource::OT_BNQ);
+		} else if (_res.isSega()) {
+			if (_currentLevel == 0) {
+				_res.load(lvl->name, Resource::OT_SGD);
+			}
+			_res.load(lvl->name, Resource::OT_LEV);
 		} else {
 			_res.load(lvl->name, Resource::OT_MAP);
 		}
 		_res.load(lvl->name2, Resource::OT_PGE);
-		_res.load(lvl->name2, Resource::OT_OBJ);
-		_res.load(lvl->name2, Resource::OT_ANI);
+		if (!_res.isSega()) {
+			_res.load(lvl->name2, Resource::OT_OBJ);
+			_res.load(lvl->name2, Resource::OT_ANI);
+		}
 		_res.load(lvl->name2, Resource::OT_TBN);
 		break;
 	case kResourceTypeMac:
@@ -1752,9 +1786,9 @@ void Game::loadLevelData() {
 	}
 	if (0) {
 		for (int i = 0; i < 64; ++i) {
-			if (hasLevelMap(_currentLevel, i)) {
+			if (hasLevelRoom(_currentLevel, i)) {
 				_currentRoom = i;
-				loadLevelMap();
+				loadLevelRoom();
 				uint8_t palette[256 * 3];
 				_stub->getPalette(palette, 256);
 				char name[64];
@@ -1776,7 +1810,7 @@ void Game::loadLevelData() {
 		}
 	}
 
-	_cut._id = lvl->cutscene_id;
+	_cut._id = (int8_t)lvl->cutscene_id;
 
 	_curMonsterNum = 0xFFFF;
 	_curMonsterFrame = 0;
@@ -1797,7 +1831,7 @@ void Game::loadLevelData() {
 	}
 
 	if (_demoBin != -1) {
-		_cut._id = -1;
+		_cut._id = 0xFFFF;
 		if (_demoInputs[_demoBin].room != 255) {
 			_pgeLive[0].room_location = _demoInputs[_demoBin].room;
 			_pgeLive[0].pos_x = _demoInputs[_demoBin].x;
@@ -1886,12 +1920,16 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 		}
 		_vid.MAC_drawSprite(x, y, _res._icn, iconNum, false, true);
 		return;
+	case kResourceTypeSegaMD:
+		_vid.SEGA_decodeIcn(_res._icn, iconNum, buf);
+		break;
 	}
 	_vid.drawSpriteSub1(buf, _vid._frontLayer + x + y * _vid._w, 16, 16, 16, colMask << 4);
 	_vid.markBlockAsDirty(x, y, 16, 16, _vid._layerScale);
 }
 
 void Game::playSound(uint8_t num, uint8_t softVol) {
+	debug(DBG_GAME, "playSound num:%d volume:%d", num, softVol);
 	if (num < _res._numSfx) {
 		SoundFx *sfx = &_res._sfxList[num];
 		if (sfx->data) {
@@ -1925,7 +1963,7 @@ void Game::changeLevel() {
 	_vid.fadeOut();
 	clearStateRewind();
 	loadLevelData();
-	loadLevelMap();
+	loadLevelRoom();
 	_vid.setPalette0xF();
 	_vid.setTextPalette();
 	_vid.fullRefresh();
@@ -1982,6 +2020,8 @@ void Game::handleInventory() {
 				break;
 			case kResourceTypeMac:
 				drawIcon(31, 56, 140, 0xF);
+				break;
+			case kResourceTypeSegaMD:
 				break;
 			}
 			if (!display_score) {

@@ -25,6 +25,7 @@ Cutscene::Cutscene(Resource *res, SystemStub *stub, Video *vid)
 	: _res(res), _stub(stub), _vid(vid) {
 	_patchedOffsetsTable = 0;
 	memset(_palBuf, 0, sizeof(_palBuf));
+	_paletteNum = -1;
 }
 
 const uint8_t *Cutscene::getCommandData() const {
@@ -65,7 +66,7 @@ void Cutscene::updatePalette() {
 		const uint8_t *p = _palBuf;
 		for (int i = 0; i < 32; ++i) {
 			const uint16_t color = READ_BE_UINT16(p); p += 2;
-			Color c = Video::AMIGA_convertColor(color);
+			Color c = Video::AMIGA_convertColor(color, _res->isSega());
 			_stub->setPaletteEntry(0xC0 + i, &c);
 		}
 		_newPal = false;
@@ -80,7 +81,7 @@ void Cutscene::updateScreen() {
 	_stub->updateScreen(0);
 }
 
-#if 0
+#if 1
 #define SIN(a) (int16_t)(sin(a * M_PI / 180) * 256)
 #define COS(a) (int16_t)(cos(a * M_PI / 180) * 256)
 #else
@@ -92,7 +93,7 @@ void Cutscene::updateScreen() {
   cos(60)  table: 128, math: 127
   cos(120) table:-127, math:-128
   cos(240) table:-128, math:-127
-  sin(330) table: 221, math:-127
+  sin(330) table:-128, math:-127
 */
 
 /*
@@ -117,17 +118,17 @@ void Cutscene::setRotationTransform(uint16_t a, uint16_t b, uint16_t c) { // ide
 	_rotMat[3] = (-sin_c * cos_a) >> 8;
 }
 
-static bool isNewLineChar(uint8_t chr, Resource *res) {
-	const uint8_t nl = (res->_lang == LANG_JP) ? 0xD1 : 0x7C;
-	return chr == nl;
+static uint8_t getNewLineChar(const Resource *res) {
+	return (res->_lang == LANG_JP) ? 0xD1 : '|';
 }
 
 uint16_t Cutscene::findTextSeparators(const uint8_t *p, int len) {
+	const uint8_t newLineChar = getNewLineChar(_res);
 	uint8_t *q = _textSep;
 	uint16_t ret = 0;
 	uint16_t pos = 0;
 	for (int i = 0; i < len && p[i] != 0xA; ++i) {
-		if (isNewLineChar(p[i], _res)) {
+		if (p[i] == newLineChar) {
 			*q++ = pos;
 			if (pos > ret) {
 				ret = pos;
@@ -172,8 +173,9 @@ void Cutscene::drawText(int16_t x, int16_t y, const uint8_t *p, uint16_t color, 
 	if (textJustify != kTextJustifyLeft) {
 		xPos += ((lastSep - *sep++) / 2) * Video::CHAR_W;
 	}
+	const uint8_t newLineChar = getNewLineChar(_res);
 	for (int i = 0; i < len && p[i] != 0xA; ++i) {
-		if (isNewLineChar(p[i], _res)) {
+		if (p[i] == newLineChar) {
 			yPos += Video::CHAR_H;
 			xPos = x;
 			if (textJustify != kTextJustifyLeft) {
@@ -434,8 +436,6 @@ void Cutscene::op_drawShape() {
 		memcpy(_auxPage, _backPage, _vid->_layerSize);
 	}
 }
-
-static int _paletteNum = -1;
 
 void Cutscene::op_setPalette() {
 	debug(DBG_CUT, "Cutscene::op_setPalette()");
@@ -930,7 +930,7 @@ static int findSetPaletteColor(const uint16_t color, const uint16_t *paletteBuff
 		const int dr = ((color >> 8) & 15) - ((paletteBuffer[l] >> 8) & 15);
 		const int dg = ((color >> 4) & 15) - ((paletteBuffer[l] >> 4) & 15);
 		const int db =  (color       & 15) -  (paletteBuffer[l]       & 15);
-		const int sum = dr * dr + dg * dg + db * db;
+		const int sum = 30 * dr * dr + 59 * dg * dg + 11 * db * db;
 		if (index < 0 || sum < currentSum) {
 			currentSum = sum;
 			index = l;
@@ -1115,7 +1115,8 @@ void Cutscene::mainLoop(uint16_t num) {
 
 bool Cutscene::load(uint16_t cutName) {
 	assert(cutName != 0xFFFF);
-	const char *name = _namesTableDOS[cutName & 0xFF];
+	cutName &= 0xFF;
+	const char *name = _namesTableDOS[cutName];
 	switch (_res->_type) {
 	case kResourceTypeAmiga:
 		if (cutName == 7) {
@@ -1142,6 +1143,11 @@ bool Cutscene::load(uint16_t cutName) {
 			}
 		}
 		break;
+	case kResourceTypeSegaMD:
+		if (cutName == 7) {
+			name = "INTRO";
+		}
+		/* fall-through */
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
 		_res->load(name, Resource::OT_CMD);
@@ -1162,6 +1168,7 @@ void Cutscene::unload() {
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
+	case kResourceTypeSegaMD:
 		_res->unload(Resource::OT_CMD);
 		_res->unload(Resource::OT_POL);
 		break;
@@ -1207,10 +1214,10 @@ void Cutscene::playCredits() {
 	_creditsKeepText = false;
 	_creditsTextCounter = 0;
 	_interrupted = false;
-	const uint16_t *cut_seq = _creditsCutSeq;
+	const uint8_t *cut_seq = _creditsCutSeq;
 	while (!_stub->_pi.quit && !_interrupted) {
-		uint16_t cut_id = *cut_seq++;
-		if (cut_id == 0xFFFF) {
+		const uint8_t cut_id = *cut_seq++;
+		if (cut_id == 0xFF) {
 			break;
 		}
 		prepare();

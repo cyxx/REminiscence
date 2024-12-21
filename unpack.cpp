@@ -198,7 +198,7 @@ static int decode_bs(UnpackCtx *ctx, const uint8_t *src, int size) {
 		size -= count2;
 	}
 	const int read = bs->src - src;
-	//printf("end %ld bytes, out %d\n", bs->src - src, _dstOffset);
+	debug(DBG_UNPACK, "end %d bytes, out %d", read, ctx->dstOffset);
 	return read;
 }
 

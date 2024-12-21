@@ -1,12 +1,15 @@
 
 #include "screenshot.h"
 #include "file.h"
+#include "util.h"
 
 static const uint16_t TAG_BM = 0x4D42;
 
 void saveBMP(const char *filename, const uint8_t *bits, const uint8_t *pal, int w, int h) {
 	File f;
-	if (f.open(filename, "wb", ".")) {
+	if (!f.open(filename, "wb", ".")) {
+		warning("Failed to open '%s' for writing", filename);
+	} else {
 		const int paletteSize = pal ? 4 * 256 : 0;
 		const int bitsCount = pal ? 8 : 32;
 		const int alignWidth = ((w * bitsCount / 8) + 3) & ~3;

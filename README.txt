@@ -1,6 +1,6 @@
 
 REminiscence README
-Release version: 0.5.2
+Release version: 0.5.3
 -------------------------------------------------------------------------------
 
 
@@ -60,7 +60,7 @@ The widescreen option accepts the modes below:
     adjacent   draw left and right rooms bitmap
     mirror     mirror the current room bitmap
     blur       blur and stretch the current room bitmap
-    cdi        use bitmaps from the CD-i release ('flashp?.bob' files)
+    cdi        use bitmaps from the Philips CD-i release ('flashp?.bob' files)
 
 In-game keys:
 

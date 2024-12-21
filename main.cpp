@@ -29,29 +29,40 @@ static const char *USAGE =
 	"  --mididriver=MIDI Driver (adlib, mt32)\n"
 ;
 
+static const Features kFeaturesAmiga     = { false /* extended_intro */, true  /* bigendian */, 1, true  /* copy_protection */ };
+static const Features kFeaturesDOS       = { true  /* extended_intro */, false /* bigendian */, 1, true  /* copy_protection */ };
+static const Features kFeaturesMacintosh = { true  /* extended_intro */, true  /* bigendian */, 2, false /* copy_protection */ };
+static const Features kFeaturesPC98      = { true  /* extended_intro */, false /* bigendian */, 1, false /* copy_protection */ };
+static const Features kFeaturesSega      = { false /* extended_intro */, true  /* bigendian */, 1, false /* copy_protection */ };
+
+const Features *g_features;
+
 static int detectVersion(FileSystem *fs) {
 	static const struct {
 		const char *filename;
 		int type;
 		const char *name;
+		const Features *features;
 	} table[] = {
-		{ "DEMO_UK.ABA", kResourceTypeDOS, "DOS (Demo)" },
-		{ "GLOB_FR.ABA", kResourceTypeDOS, "DOS" },
-		{ "INTRO.SEQ", kResourceTypeDOS, "DOS CD" },
-		{ "MENU1SSI.MAP", kResourceTypeDOS, "DOS SSI" },
-		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS" },
-		{ "LEVEL1.BNQ", kResourceTypeDOS, "DOS (Demo)" },
-		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga" },
-		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)" },
-		{ "FLASHBACK.BIN", kResourceTypeMac, "Macintosh" },
-		{ "FLASHBACK.RSRC", kResourceTypeMac, "Macintosh" },
-		{ "GLOBAL.PAQ", kResourceTypePC98, "PC98" },
-		{ 0, -1, 0 }
+		{ "DEMO_UK.ABA", kResourceTypeDOS, "DOS (Demo)", &kFeaturesDOS },
+		{ "GLOB_FR.ABA", kResourceTypeDOS, "DOS", &kFeaturesDOS },
+		{ "INTRO.SEQ", kResourceTypeDOS, "DOS CD", &kFeaturesDOS },
+		{ "MENU1SSI.MAP", kResourceTypeDOS, "DOS SSI", &kFeaturesDOS },
+		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS", &kFeaturesDOS },
+		{ "LEVEL1.BNQ", kResourceTypeDOS, "DOS (Demo)", &kFeaturesDOS },
+		{ "PRESENT.LEV", kResourceTypeSegaMD, "Sega Megadrive", &kFeaturesSega },
+		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga", &kFeaturesAmiga },
+		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)", &kFeaturesAmiga },
+		{ "FLASHBACK.BIN", kResourceTypeMac, "Macintosh", &kFeaturesMacintosh },
+		{ "FLASHBACK.RSRC", kResourceTypeMac, "Macintosh", &kFeaturesMacintosh },
+		{ "GLOBAL.PAQ", kResourceTypePC98, "PC98", &kFeaturesPC98 },
+		{ 0, -1, 0, 0 }
 	};
 	for (int i = 0; table[i].filename; ++i) {
 		File f;
 		if (f.open(table[i].filename, "rb", fs)) {
 			debug(DBG_INFO, "Detected %s version", table[i].name);
+			g_features = table[i].features;
 			return table[i].type;
 		}
 	}
@@ -80,7 +91,7 @@ static Language detectLanguage(FileSystem *fs) {
 			return table[i].language;
 		}
 	}
-	warning("Unable to detect language, defaults to English");
+	warning("Unable to detect language, using English");
 	return LANG_EN;
 }
 
@@ -193,7 +204,7 @@ static WidescreenMode parseWidescreen(const char *mode) {
 			return modes[i].mode;
 		}
 	}
-	warning("Unhandled widecreen mode '%s', defaults to 16:9 blur", mode);
+	warning("Unhandled widecreen mode '%s', using 16:9 blur", mode);
 	return kWidescreenBlur;
 }
 
@@ -208,6 +219,7 @@ int main(int argc, char *argv[]) {
 	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
 	int midiDriver = MODE_ADLIB;
+	g_debugMask = DBG_INFO; // DBG_CUT | DBG_VIDEO | DBG_RES | DBG_MENU | DBG_PGE | DBG_GAME | DBG_UNPACK | DBG_COL | DBG_MOD | DBG_SFX | DBG_FILE;
 	if (argc == 2) {
 		// data path as the only command line argument
 		struct stat st;
@@ -227,6 +239,7 @@ int main(int argc, char *argv[]) {
 			{ "autosave",   no_argument,       0, 8 },
 			{ "cheats",     required_argument, 0, 9 },
 			{ "mididriver", required_argument, 0, 10 },
+			{ "debug",      required_argument, 0, 11 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -305,19 +318,22 @@ int main(int argc, char *argv[]) {
 				}
 			}
 			break;
+		case 11:
+			g_debugMask |= atoi(optarg);
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
 		}
 	}
 	initOptions();
-	g_debugMask = DBG_INFO; // DBG_CUT | DBG_VIDEO | DBG_RES | DBG_MENU | DBG_PGE | DBG_GAME | DBG_UNPACK | DBG_COL | DBG_MOD | DBG_SFX | DBG_FILE;
 	FileSystem fs(dataPath);
 	const int version = detectVersion(&fs);
 	if (version == -1) {
 		error("Unable to find data files, check that all required files are present");
 		return -1;
 	}
+	assert(g_features);
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave, midiDriver, cheats);

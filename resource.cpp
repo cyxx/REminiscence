@@ -23,8 +23,8 @@ Resource::Resource(FileSystem *fs, ResourceType ver, Language lang) {
 	_aba = 0;
 	_mac = 0;
 	_paq = 0;
-	_readUint16 = (_type == kResourceTypeDOS || _type == kResourceTypePC98) ? READ_LE_UINT16 : READ_BE_UINT16;
-	_readUint32 = (_type == kResourceTypeDOS || _type == kResourceTypePC98) ? READ_LE_UINT32 : READ_BE_UINT32;
+	_readUint16 = g_features->has_bigendian_data ? READ_BE_UINT16 : READ_LE_UINT16;
+	_readUint32 = g_features->has_bigendian_data ? READ_BE_UINT32 : READ_LE_UINT32;
 	_scratchBuffer = (uint8_t *)malloc(kScratchBufferSize);
 	if (!_scratchBuffer) {
 		error("Unable to allocate temporary memory buffer");
@@ -100,6 +100,8 @@ void Resource::init() {
 		_paq->open();
 		_archive = _paq;
 		break;
+	case kResourceTypeSegaMD:
+		break;
 	}
 }
 
@@ -135,8 +137,10 @@ void Resource::clearLevelRes() {
 	_levNum = -1;
 	free(_sgd); _sgd = 0;
 	free(_bnq); _bnq = 0;
-	free(_ani); _ani = 0;
-	free_OBJ();
+	if (_type != kResourceTypeSegaMD) {
+		free(_ani); _ani = 0;
+		free_OBJ();
+	}
 }
 
 void Resource::load_DEM(const char *filename) {
@@ -333,9 +337,9 @@ void Resource::load_CMP_menu(const char *fileName) {
 	error("Cannot load '%s'", fileName);
 }
 
-void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
+void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData, const char *ext) {
 	debug(DBG_RES, "Resource::load_SPR_OFF('%s')", fileName);
-	snprintf(_entryName, sizeof(_entryName), "%s.OFF", fileName);
+	snprintf(_entryName, sizeof(_entryName), "%s.%s", fileName, ext);
 	uint8_t *offData = 0;
 	File f;
 	if (f.open(_entryName, "rb", _fs)) {
@@ -353,16 +357,21 @@ void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData) {
 	}
 	if (offData) {
 		const uint8_t *p = offData;
-		uint16_t pos;
-		while ((pos = READ_LE_UINT16(p)) != 0xFFFF) {
-			assert(pos < NUM_SPRITES);
-			uint32_t off = READ_LE_UINT32(p + 2);
-			if (off == 0xFFFFFFFF) {
-				_sprData[pos] = 0;
-			} else {
-				_sprData[pos] = sprData + off;
+		if (_type == kResourceTypeSegaMD) {
+			for (int i = 0; i < NUM_SPRITES; ++i, p += 4) {
+				const int32_t offset = READ_BE_UINT32(p);
+				_sprData[i] = (offset == -1) ? 0 : sprData + offset;
 			}
-			p += 6;
+		} else {
+			for (uint16_t pos; (pos = READ_LE_UINT16(p)) != 0xFFFF; p += 6) {
+				assert(pos < NUM_SPRITES);
+				const uint32_t off = READ_LE_UINT32(p + 2);
+				if (off == 0xFFFFFFFF) {
+					_sprData[pos] = 0;
+				} else {
+					_sprData[pos] = sprData + off;
+				}
+			}
 		}
 		free(offData);
 		return;
@@ -427,6 +436,7 @@ void Resource::load_CINE() {
 		}
 		break;
 	case kResourceTypeDOS:
+	case kResourceTypeSegaMD:
 		if (_cine_off == 0) {
 			snprintf(_entryName, sizeof(_entryName), "%sCINE.BIN", prefix);
 			if (!fileExists(_entryName)) {
@@ -586,106 +596,106 @@ void Resource::unload(int objType) {
 
 void Resource::load(const char *objName, int objType, const char *ext) {
 	debug(DBG_RES, "Resource::load('%s', %d)", objName, objType);
-	LoadStub loadStub = 0;
+	LoadProc loadProc = 0;
 	switch (objType) {
 	case OT_MBK:
 		snprintf(_entryName, sizeof(_entryName), "%s.MBK", objName);
-		loadStub = &Resource::load_MBK;
+		loadProc = &Resource::load_MBK;
 		break;
 	case OT_PGE:
 		snprintf(_entryName, sizeof(_entryName), "%s.PGE", objName);
-		loadStub = &Resource::load_PGE;
+		loadProc = &Resource::load_PGE;
 		break;
 	case OT_PAL:
 		snprintf(_entryName, sizeof(_entryName), "%s.PAL", objName);
-		loadStub = &Resource::load_PAL;
+		loadProc = &Resource::load_PAL;
 		break;
 	case OT_CT:
 		snprintf(_entryName, sizeof(_entryName), "%s.CT", objName);
-		loadStub = &Resource::load_CT;
+		loadProc = &Resource::load_CT;
 		break;
 	case OT_MAP:
 		snprintf(_entryName, sizeof(_entryName), "%s.MAP", objName);
-		loadStub = &Resource::load_MAP;
+		loadProc = &Resource::load_MAP;
 		break;
 	case OT_SPC:
 		snprintf(_entryName, sizeof(_entryName), "%s.SPC", objName);
-		loadStub = &Resource::load_SPC;
+		loadProc = &Resource::load_SPC;
 		break;
 	case OT_RP:
 		snprintf(_entryName, sizeof(_entryName), "%s.RP", objName);
-		loadStub = &Resource::load_RP;
+		loadProc = &Resource::load_RP;
 		break;
 	case OT_RPC:
 		snprintf(_entryName, sizeof(_entryName), "%s.RPC", objName);
-		loadStub = &Resource::load_RP;
+		loadProc = &Resource::load_RP;
 		break;
 	case OT_SPR:
 		snprintf(_entryName, sizeof(_entryName), "%s.SPR", objName);
-		loadStub = &Resource::load_SPR;
+		loadProc = &Resource::load_SPR;
 		break;
 	case OT_SPRM:
 		snprintf(_entryName, sizeof(_entryName), "%s.SPR", objName);
-		loadStub = &Resource::load_SPRM;
+		loadProc = &Resource::load_SPRM;
 		break;
 	case OT_ICN:
 		snprintf(_entryName, sizeof(_entryName), "%s.ICN", objName);
-		loadStub = &Resource::load_ICN;
+		loadProc = &Resource::load_ICN;
 		break;
 	case OT_FNT:
 		snprintf(_entryName, sizeof(_entryName), "%s.FNT", objName);
-		loadStub = &Resource::load_FNT;
+		loadProc = &Resource::load_FNT;
 		break;
 	case OT_OBJ:
 		snprintf(_entryName, sizeof(_entryName), "%s.OBJ", objName);
-		loadStub = &Resource::load_OBJ;
+		loadProc = &Resource::load_OBJ;
 		break;
 	case OT_ANI:
 		snprintf(_entryName, sizeof(_entryName), "%s.ANI", objName);
-		loadStub = &Resource::load_ANI;
+		loadProc = &Resource::load_ANI;
 		break;
 	case OT_TBN:
 		snprintf(_entryName, sizeof(_entryName), "%s.%s", objName, getTextBin(_lang, _type));
 		if (!_fs->exists(_entryName)) {
 			snprintf(_entryName, sizeof(_entryName), "%s.TBN", objName);
 		}
-		loadStub = &Resource::load_TBN;
+		loadProc = &Resource::load_TBN;
 		break;
 	case OT_CMD:
 		snprintf(_entryName, sizeof(_entryName), "%s.CMD", objName);
-		loadStub = &Resource::load_CMD;
+		loadProc = &Resource::load_CMD;
 		break;
 	case OT_POL:
 		snprintf(_entryName, sizeof(_entryName), "%s.POL", objName);
-		loadStub = &Resource::load_POL;
+		loadProc = &Resource::load_POL;
 		break;
 	case OT_CMP:
 		snprintf(_entryName, sizeof(_entryName), "%s.CMP", objName);
-		loadStub = &Resource::load_CMP;
+		loadProc = &Resource::load_CMP;
 		break;
 	case OT_OBC:
 		snprintf(_entryName, sizeof(_entryName), "%s.OBC", objName);
-		loadStub = &Resource::load_OBC;
+		loadProc = &Resource::load_OBC;
 		break;
 	case OT_SPL:
 		snprintf(_entryName, sizeof(_entryName), "%s.SPL", objName);
-		loadStub = &Resource::load_SPL;
+		loadProc = &Resource::load_SPL;
 		break;
 	case OT_LEV:
 		snprintf(_entryName, sizeof(_entryName), "%s.LEV", objName);
-		loadStub = &Resource::load_LEV;
+		loadProc = &Resource::load_LEV;
 		break;
 	case OT_SGD:
 		snprintf(_entryName, sizeof(_entryName), "%s.SGD", objName);
-		loadStub = &Resource::load_SGD;
+		loadProc = &Resource::load_SGD;
 		break;
 	case OT_BNQ:
 		snprintf(_entryName, sizeof(_entryName), "%s.BNQ", objName);
-		loadStub = &Resource::load_BNQ;
+		loadProc = &Resource::load_BNQ;
 		break;
 	case OT_SPM:
 		snprintf(_entryName, sizeof(_entryName), "%s.SPM", objName);
-		loadStub = &Resource::load_SPM;
+		loadProc = &Resource::load_SPM;
 		break;
 	default:
 		error("Unimplemented Resource::load() type %d", objType);
@@ -696,8 +706,8 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 	}
 	File f;
 	if (f.open(_entryName, "rb", _fs)) {
-		assert(loadStub);
-		(this->*loadStub)(&f);
+		assert(loadProc);
+		(this->*loadProc)(&f);
 		if (f.ioErr()) {
 			error("I/O error when reading '%s'", _entryName);
 		}
@@ -741,7 +751,7 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 					break;
 				case OT_OBJ:
 					_numObjectNodes = READ_LE_UINT16(dat);
-					assert(_numObjectNodes == 230);
+					assert(_numObjectNodes == NUM_OBJECTS);
 					decodeOBJ(dat + 2, size - 2);
 					break;
 				case OT_ANI:
@@ -905,69 +915,19 @@ void Resource::load_MAP(File *f) {
 
 void Resource::load_OBJ(File *f) {
 	debug(DBG_RES, "Resource::load_OBJ()");
-	if (_type == kResourceTypeAmiga) { // demo has uncompressed objects data
-		const int size = f->size();
-		uint8_t *buf = (uint8_t *)malloc(size);
-		if (!buf) {
-			error("Unable to allocate OBJ buffer");
-		} else {
-			f->read(buf, size);
+	const int size = f->size();
+	uint8_t *buf = (uint8_t *)malloc(size);
+	if (!buf) {
+		error("Unable to allocate OBJ temporary buffer");
+	} else {
+		f->read(buf, size);
+		if (_type == kResourceTypeAmiga || _type == kResourceTypeSegaMD) {
 			decodeOBJ(buf, size);
+		} else {
+			assert(_readUint16(buf) == NUM_OBJECTS);
+			decodeOBJ(buf + 2, size - 2);
 		}
-		return;
-	}
-	_numObjectNodes = f->readUint16LE();
-	assert(_numObjectNodes < 255);
-	uint32_t offsets[256];
-	for (int i = 0; i < _numObjectNodes; ++i) {
-		offsets[i] = f->readUint32LE();
-	}
-	offsets[_numObjectNodes] = f->size() - 2;
-	int numObjectsCount = 0;
-	uint16_t objectsCount[256];
-	for (int i = 0; i < _numObjectNodes; ++i) {
-		int diff = offsets[i + 1] - offsets[i];
-		if (diff != 0) {
-			objectsCount[numObjectsCount] = (diff - 2) / 0x12;
-			debug(DBG_RES, "i=%d objectsCount[numObjectsCount]=%d", i, objectsCount[numObjectsCount]);
-			++numObjectsCount;
-		}
-	}
-	uint32_t prevOffset = 0;
-	ObjectNode *prevNode = 0;
-	int iObj = 0;
-	for (int i = 0; i < _numObjectNodes; ++i) {
-		if (prevOffset != offsets[i]) {
-			ObjectNode *on = (ObjectNode *)malloc(sizeof(ObjectNode));
-			if (!on) {
-				error("Unable to allocate ObjectNode num=%d", i);
-			}
-			f->seek(offsets[i] + 2);
-			on->num_objects = f->readUint16LE();
-			debug(DBG_RES, "count=%d", on->num_objects, objectsCount[iObj]);
-			assert(on->num_objects == objectsCount[iObj]);
-			on->objects = (Object *)malloc(sizeof(Object) * on->num_objects);
-			for (int j = 0; j < on->num_objects; ++j) {
-				Object *obj = &on->objects[j];
-				obj->type = f->readUint16LE();
-				obj->dx = f->readByte();
-				obj->dy = f->readByte();
-				obj->init_obj_type = f->readUint16LE();
-				obj->opcode2 = f->readByte();
-				obj->opcode1 = f->readByte();
-				obj->flags = f->readByte();
-				obj->opcode3 = f->readByte();
-				obj->init_obj_number = f->readUint16LE();
-				obj->opcode_arg1 = f->readUint16LE();
-				obj->opcode_arg2 = f->readUint16LE();
-				obj->opcode_arg3 = f->readUint16LE();
-				debug(DBG_RES, "obj_node=%d obj=%d op1=0x%X op2=0x%X op3=0x%X", i, j, obj->opcode2, obj->opcode1, obj->opcode3);
-			}
-			++iObj;
-			prevOffset = offsets[i];
-			prevNode = on;
-		}
-		_objectNodesMap[i] = prevNode;
+		free(buf);
 	}
 }
 
@@ -977,9 +937,9 @@ void Resource::free_OBJ() {
 	for (int i = 0; i < _numObjectNodes; ++i) {
 		if (_objectNodesMap[i] != prevNode) {
 			ObjectNode *curNode = _objectNodesMap[i];
+			prevNode = curNode;
 			free(curNode->objects);
 			free(curNode);
-			prevNode = curNode;
 		}
 		_objectNodesMap[i] = 0;
 	}
@@ -1010,9 +970,10 @@ void Resource::load_OBC(File *f) {
 void Resource::decodeOBJ(const uint8_t *tmp, int size) {
 	uint32_t offsets[256];
 	int tmpOffset = 0;
-	_numObjectNodes = 230;
+	_numObjectNodes = NUM_OBJECTS;
 	if (_type == kResourceTypeMac) {
 		_numObjectNodes = _readUint16(tmp);
+		/* offsets start from &tmp[0] with Macintosh, &tmp[2] with DOS */
 		tmpOffset += 2;
 	}
 	for (int i = 0; i < _numObjectNodes; ++i) {
@@ -1067,45 +1028,14 @@ void Resource::decodeOBJ(const uint8_t *tmp, int size) {
 
 void Resource::load_PGE(File *f) {
 	debug(DBG_RES, "Resource::load_PGE()");
-	if (_type == kResourceTypeAmiga) {
-		const int size = f->size();
-		uint8_t *tmp = (uint8_t *)malloc(size);
-		if (!tmp) {
-			error("Unable to allocate PGE temporary buffer");
-		}
-		f->read(tmp, size);
-		decodePGE(tmp, size);
-		free(tmp);
-		return;
+	const int size = f->size();
+	uint8_t *tmp = (uint8_t *)malloc(size);
+	if (!tmp) {
+		error("Unable to allocate PGE temporary buffer");
 	}
-	_pgeNum = f->readUint16LE();
-	memset(_pgeInit, 0, sizeof(_pgeInit));
-	debug(DBG_RES, "_pgeNum=%d", _pgeNum);
-	assert(_pgeNum <= ARRAYSIZE(_pgeInit));
-	for (uint16_t i = 0; i < _pgeNum; ++i) {
-		InitPGE *pge = &_pgeInit[i];
-		pge->type = f->readUint16LE();
-		pge->pos_x = f->readUint16LE();
-		pge->pos_y = f->readUint16LE();
-		pge->obj_node_number = f->readUint16LE();
-		pge->life = f->readUint16LE();
-		for (int lc = 0; lc < 4; ++lc) {
-			pge->data[lc] = f->readUint16LE();
-		}
-		pge->object_type = f->readByte();
-		pge->init_room = f->readByte();
-		pge->room_location = f->readByte();
-		pge->init_flags = f->readByte();
-		pge->colliding_icon_num = f->readByte();
-		pge->icon_num = f->readByte();
-		pge->object_id = f->readByte();
-		pge->skill = f->readByte();
-		pge->mirror_x = f->readByte();
-		pge->flags = f->readByte();
-		pge->collision_data_len = f->readByte();
-		f->readByte();
-		pge->text_num = f->readUint16LE();
-	}
+	f->read(tmp, size);
+	decodePGE(tmp, size);
+	free(tmp);
 }
 
 void Resource::decodePGE(const uint8_t *p, int size) {
@@ -1321,7 +1251,7 @@ void Resource::load_LEV(File *f) {
 
 void Resource::load_SGD(File *f) {
 	const int len = f->size();
-	if (_type == kResourceTypeDOS) {
+	if (_type == kResourceTypeDOS || _type == kResourceTypeSegaMD) {
 		_sgd = (uint8_t *)malloc(len);
 		if (!_sgd) {
 			error("Unable to allocate SGD buffer");
@@ -1422,6 +1352,9 @@ int Resource::getBankDataSize(uint16_t num) {
 	case kResourceTypeMac:
 		assert(0); // different graphics format
 		break;
+	case kResourceTypeSegaMD:
+		assert((len & 0x8000) == 0);
+		break;
 	}
 	return len * 32;
 }
@@ -1456,14 +1389,18 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 	assert(_bankBuffersCount < (int)ARRAYSIZE(_bankBuffers));
 	_bankBuffers[_bankBuffersCount].entryNum = num;
 	_bankBuffers[_bankBuffersCount].ptr = _bankDataHead;
+	++_bankBuffersCount;
 	const uint8_t *data = _mbk + dataOffset;
-	if (READ_BE_UINT16(ptr + 4) & 0x8000) {
+	const int count = READ_BE_UINT16(ptr + 4);
+	if (count & 0x8000) {
 		memcpy(_bankDataHead, data, size);
 	} else {
 		assert(dataOffset > 4);
 		assert(size == (int)READ_BE_UINT32(data - 4));
 		if (!bytekiller_unpack(_bankDataHead, _bankDataTail - _bankDataHead, data, 0)) {
 			error("Bad CRC for bank data %d", num);
+		} else if (count * 32 != size) {
+			warning("Unexpected decompressed size %d for bank data, count %d", size, count);
 		}
 	}
 	uint8_t *bankData = _bankDataHead;
@@ -1472,7 +1409,7 @@ uint8_t *Resource::loadBankData(uint16_t num) {
 }
 
 void Resource::PC98_loadLevelMap(int level) {
-	char name[16];
+	char name[32];
 	snprintf(name, sizeof(name), "LEVEL%d.PAQ", level + 1);
 	File f;
 	if (f.open(name, "rb", _fs)) {
@@ -1628,7 +1565,7 @@ void Resource::MAC_loadMonsterData(const char *name, Color *clut) {
 	static const struct {
 		const char *id;
 		const char *name;
-		int index;
+		uint8_t index;
 	} data[] = {
 		{ "junky", "Junky", 0x32 },
 		{ "mercenai", "Mercenary", 0x34 },
@@ -1675,7 +1612,7 @@ void Resource::MAC_unloadLevelData() {
 	_str = 0;
 }
 
-static const int _macLevelColorOffsets[] = { 24, 28, 36, 40, 44 }; // red palette: 32
+static const uint8_t _macLevelColorOffsets[] = { 24, 28, 36, 40, 44 }; // red palette: 32
 static const char *_macLevelNumbers[] = { "1", "2", "3", "4-1", "4-2", "5-1", "5-2" };
 
 void Resource::MAC_loadLevelData(int level) {
@@ -1695,7 +1632,7 @@ void Resource::MAC_loadLevelData(int level) {
 	// .OBJ
 	snprintf(name, sizeof(name), "Level %s conditions", _macLevelNumbers[level]);
 	ptr = decodeResourceMacData(name, true);
-	assert(READ_BE_UINT16(ptr) == 0xE6);
+	assert(READ_BE_UINT16(ptr) == NUM_OBJECTS);
 	decodeOBJ(ptr, _resourceMacDataSize);
 	free(ptr);
 
@@ -1828,7 +1765,7 @@ void Resource::MAC_loadCreditsText() {
 
 void Resource::MAC_loadSounds() {
 	static const int8_t table[NUM_SFXS] = {
-		0, -1,  1,  2,  3,  4, -1,  5,  6,  7,  8,  9, 10, 11, -1, 12,
+		 0, -1,  1,  2,  3,  4, -1,  5,  6,  7,  8,  9, 10, 11, -1, 12,
 		13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, 26, 27,
 		28, -1, 29, -1, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
 		42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, -1, 53, 54, 55, 56,

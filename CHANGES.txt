@@ -1,3 +1,7 @@
+* release 0.5.3
+	- added initial support for Sega data files
+	- added widescreen mode for Amiga and PC98
+
 * release 0.5.2
 	- added initial support for PC98 data files
 	- added configuration to fix Adlib 0xE0 writes

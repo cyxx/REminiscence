@@ -33,17 +33,17 @@ uint8_t *decodeLzss(File &f, uint32_t &decodedSize) {
 	return dst;
 }
 
-static void setPixel(int x, int y, int w, int h, uint8_t color, DecodeBuffer *buf) {
+static bool yclip(int& y, DecodeBuffer *buf) {
 	y += buf->y;
-	if (y >= 0 && y < buf->h) {
-		if (buf->xflip) {
-			x = w - 1 - x;
-		}
-		x += buf->x;
-		if (x >= 0 && x < buf->w) {
-			buf->setPixel(buf, x, y, color);
-		}
+	return (y >= 0 && y < buf->h);
+}
+
+static bool xclip(int& x, int w, DecodeBuffer *buf) {
+	if (buf->xflip) {
+		x = w - 1 - x;
 	}
+	x += buf->x;
+	return (x >= 0 && x < buf->w);
 }
 
 void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
@@ -73,7 +73,11 @@ void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 					window[cursor] = color;
 					++cursor;
 					cursor &= kMask;
-					setPixel(x, y, w, h, color, buf);
+					int y_clip = y;
+					int x_clip = x;
+					if (yclip(y_clip, buf) && xclip(x_clip, w, buf)) {
+						buf->setPixel(buf, x_clip, y_clip, color);
+					}
 					continue;
 				}
 				offset = READ_BE_UINT16(src); src += 2;
@@ -85,7 +89,11 @@ void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 			offset &= kMask;
 			window[cursor++] = color;
 			cursor &= kMask;
-			setPixel(x, y, w, h, color, buf);
+			int y_clip = y;
+			int x_clip = x;
+			if (yclip(y_clip, buf) && xclip(x_clip, w, buf)) {
+				buf->setPixel(buf, x_clip, y_clip, color);
+			}
 			--count;
 		}
 	}
@@ -134,15 +142,30 @@ void decodeC211(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 				if (count == 1) {
 					return;
 				}
-				const uint8_t color = *src++;
-				for (int i = 0; i < count; ++i) {
-					setPixel(x++, y, w, h, color, buf);
+				int y_clip = y;
+				if (yclip(y_clip, buf)) {
+					const uint8_t color = *src;
+					for (int i = 0; i < count; ++i) {
+						int x_clip = x + i;
+						if (xclip(x_clip, w, buf)) {
+							buf->setPixel(buf, x_clip, y_clip, color);
+						}
+					}
 				}
+				++src;
 			} else {
-				for (int i = 0; i < count; ++i) {
-					setPixel(x++, y, w, h, *src++, buf);
+				int y_clip = y;
+				if (yclip(y_clip, buf)) {
+					for (int i = 0; i < count; ++i) {
+						int x_clip = x + i;
+						if (xclip(x_clip, w, buf)) {
+							buf->setPixel(buf, x_clip, y_clip, src[i]);
+						}
+					}
 				}
+				src += count;
 			}
+			x += count;
 		}
 	}
 }

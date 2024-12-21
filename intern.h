@@ -99,6 +99,7 @@ enum ResourceType {
 	kResourceTypeDOS,
 	kResourceTypeMac,
 	kResourceTypePC98,
+	kResourceTypeSegaMD,
 };
 
 enum Skill {
@@ -142,6 +143,13 @@ struct Options {
 	bool fix_fmopl_e0_reg;
 };
 
+struct Features {
+	bool has_extended_intro;
+	bool has_bigendian_data;
+	int resolution_scale;
+	bool has_copy_protection;
+};
+
 struct Color {
 	uint8_t r;
 	uint8_t g;
@@ -155,16 +163,16 @@ struct Point {
 
 struct Demo {
 	const char *name;
-	int level;
-	int room;
-	int x, y;
+	uint8_t level;
+	uint8_t room;
+	uint8_t x, y;
 };
 
 struct Level {
 	const char *name;
 	const char *name2;
 	const char *nameAmiga;
-	uint16_t cutscene_id;
+	uint8_t cutscene_id;
 	uint8_t sound;
 	uint8_t track;
 };
@@ -295,6 +303,7 @@ struct ResourceArchive {
 	virtual uint8_t *loadEntry(const char *name, uint32_t *size = 0) = 0;
 };
 
+extern const Features *g_features;
 extern Options g_options;
 extern const char *g_caption;
 

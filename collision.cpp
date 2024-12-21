@@ -200,7 +200,7 @@ LivePGE *Game::col_findPiege(LivePGE *pge, uint16_t arg2) {
 	return 0;
 }
 
-uint8_t Game::col_findCurrentCollidingObject(LivePGE *pge, uint8_t n1, uint8_t n2, uint8_t n3, LivePGE **pge_out) {
+uint8_t Game::col_findCurrentCollidingObject(LivePGE *pge, uint8_t objectType1, uint8_t objectType2, uint8_t objectType3, LivePGE **pge_out) {
 	if (pge_out) {
 		*pge_out = pge;
 	}
@@ -211,9 +211,9 @@ uint8_t Game::col_findCurrentCollidingObject(LivePGE *pge, uint8_t n1, uint8_t n
 			if (pge_out) {
 				*pge_out = col_pge;
 			}
-			if (col_pge->init_PGE->object_type == n1 ||
-				col_pge->init_PGE->object_type == n2 ||
-				col_pge->init_PGE->object_type == n3) {
+			if (col_pge->init_PGE->object_type == objectType1 ||
+				col_pge->init_PGE->object_type == objectType2 ||
+				col_pge->init_PGE->object_type == objectType3) {
 				return col_pge->init_PGE->colliding_icon_num;
 			} else {
 				cs = cs->prev_slot;
@@ -223,7 +223,7 @@ uint8_t Game::col_findCurrentCollidingObject(LivePGE *pge, uint8_t n1, uint8_t n
 	return 0;
 }
 
-int16_t Game::col_detectHit(LivePGE *pge, int16_t arg2, int16_t arg4, col_Callback1 callback1, col_Callback2 callback2, int16_t argA, int16_t argC) {
+int16_t Game::col_detectHit(LivePGE *pge, int16_t msgNum, int16_t objectType, col_Callback1 callback1, col_Callback2 callback2, int16_t argA, int16_t argC) {
 	debug(DBG_COL, "col_detectHit()");
 	int16_t pos_dx, pos_dy, var8, varA;
 	int16_t collision_score = 0;
@@ -270,11 +270,11 @@ int16_t Game::col_detectHit(LivePGE *pge, int16_t arg2, int16_t arg4, col_Callba
 			if (slot >= 0) {
 				CollisionSlot *cs = _col_slotsTable[slot];
 				while (cs) {
-					collision_score += (this->*callback1)(cs->live_pge, pge, arg2, arg4);
+					collision_score += (this->*callback1)(cs->live_pge, pge, msgNum, objectType);
 					cs = cs->prev_slot;
 				}
 			}
-			if ((this->*callback2)(pge, var8, varA, arg2) != 0) {
+			if ((this->*callback2)(pge, var8, varA, msgNum) != 0) {
 				break;
 			}
 			grid_pos_x += pos_dx;
@@ -289,7 +289,7 @@ int16_t Game::col_detectHit(LivePGE *pge, int16_t arg2, int16_t arg4, col_Callba
 	}
 }
 
-int Game::col_detectHitCallback1(LivePGE *pge, int16_t dy, int16_t unk1, int16_t unk2) {
+int Game::col_detectHitCallback1(LivePGE *pge, int16_t dy, int16_t unk1, int16_t msgNum) {
 	if (col_getGridData(pge, 1, dy) != 0) {
 		return 1;
 	} else {
@@ -297,15 +297,15 @@ int Game::col_detectHitCallback1(LivePGE *pge, int16_t dy, int16_t unk1, int16_t
 	}
 }
 
-int Game::col_detectHitCallback6(LivePGE *pge, int16_t dy, int16_t unk1, int16_t unk2) {
+int Game::col_detectHitCallback6(LivePGE *pge, int16_t dy, int16_t unk1, int16_t msgNum) {
 	return 0;
 }
 
-int Game::col_detectHitCallback2(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int16_t unk2) {
+int Game::col_detectHitCallback2(LivePGE *pge1, LivePGE *pge2, int16_t msgNum, int16_t objectType) {
 	if (pge1 != pge2 && (pge1->flags & 4)) {
-		if (pge1->init_PGE->object_type == unk2) {
+		if (pge1->init_PGE->object_type == objectType) {
 			if ((pge1->flags & 1) == (pge2->flags & 1)) {
-				if (col_detectHitCallbackHelper(pge1, unk1) == 0) {
+				if (col_detectHitCallbackHelper(pge1, msgNum) == 0) {
 					return 1;
 				}
 			}
@@ -314,11 +314,11 @@ int Game::col_detectHitCallback2(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int
 	return 0;
 }
 
-int Game::col_detectHitCallback3(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int16_t unk2) {
+int Game::col_detectHitCallback3(LivePGE *pge1, LivePGE *pge2, int16_t msgNum, int16_t objectType) {
 	if (pge1 != pge2 && (pge1->flags & 4)) {
-		if (pge1->init_PGE->object_type == unk2) {
+		if (pge1->init_PGE->object_type == objectType) {
 			if ((pge1->flags & 1) != (pge2->flags & 1)) {
-				if (col_detectHitCallbackHelper(pge1, unk1) == 0) {
+				if (col_detectHitCallbackHelper(pge1, msgNum) == 0) {
 					return 1;
 				}
 			}
@@ -327,12 +327,12 @@ int Game::col_detectHitCallback3(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int
 	return 0;
 }
 
-int Game::col_detectHitCallback4(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int16_t unk2) {
+int Game::col_detectHitCallback4(LivePGE *pge1, LivePGE *pge2, int16_t msgNum, int16_t objectType) {
 	if (pge1 != pge2 && (pge1->flags & 4)) {
-		if (pge1->init_PGE->object_type == unk2) {
+		if (pge1->init_PGE->object_type == objectType) {
 			if ((pge1->flags & 1) != (pge2->flags & 1)) {
-				if (col_detectHitCallbackHelper(pge1, unk1) == 0) {
-					pge_sendMessage(pge2->index, pge1->index, unk1);
+				if (col_detectHitCallbackHelper(pge1, msgNum) == 0) {
+					pge_sendMessage(pge2->index, pge1->index, msgNum);
 					return 1;
 				}
 			}
@@ -341,12 +341,12 @@ int Game::col_detectHitCallback4(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int
 	return 0;
 }
 
-int Game::col_detectHitCallback5(LivePGE *pge1, LivePGE *pge2, int16_t unk1, int16_t unk2) {
+int Game::col_detectHitCallback5(LivePGE *pge1, LivePGE *pge2, int16_t msgNum, int16_t objectType) {
 	if (pge1 != pge2 && (pge1->flags & 4)) {
-		if (pge1->init_PGE->object_type == unk2) {
+		if (pge1->init_PGE->object_type == objectType) {
 			if ((pge1->flags & 1) == (pge2->flags & 1)) {
-				if (col_detectHitCallbackHelper(pge1, unk1) == 0) {
-					pge_sendMessage(pge2->index, pge1->index, unk1);
+				if (col_detectHitCallbackHelper(pge1, msgNum) == 0) {
+					pge_sendMessage(pge2->index, pge1->index, msgNum);
 					return 1;
 				}
 			}
@@ -362,7 +362,7 @@ int Game::col_detectHitCallbackHelper(LivePGE *pge, int16_t msgNum) {
 	Object *obj = &on->objects[pge->first_obj_number];
 	int i = pge->first_obj_number;
 	while (pge->obj_type == obj->type && on->num_objects > i) {
-		if (obj->opcode2 == 0x6B) { // pge_isToggleable
+		if (obj->opcode2 == 0x6B) { // pge_op_isMessageReceived
 			if (obj->opcode_arg2 == 0) {
 				if (msgNum == 1 || msgNum == 2) return 0xFFFF;
 			}
@@ -373,7 +373,7 @@ int Game::col_detectHitCallbackHelper(LivePGE *pge, int16_t msgNum) {
 			if (obj->opcode_arg2 == msgNum) return 0xFFFF;
 		}
 
-		if (obj->opcode1 == 0x6B) { // pge_isToggleable
+		if (obj->opcode1 == 0x6B) { // pge_op_isMessageReceived
 			if (obj->opcode_arg1 == 0) {
 				if (msgNum == 1 || msgNum == 2) return 0xFFFF;
 			}

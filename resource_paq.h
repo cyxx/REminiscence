@@ -14,7 +14,7 @@ struct ResourcePaqEntry {
 
 struct ResourcePaq: ResourceArchive {
 
-	static const char *_names[];
+	static const char *const _names[];
 	static const int _namesCount;
 	static const ResourcePaqEntry _entries[];
 	static const int _entriesCount;

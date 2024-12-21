@@ -74,7 +74,7 @@ struct FileSystem;
 struct Mixer;
 
 struct PrfPlayer {
-	static const char *_names[];
+	static const char *const _names[];
 	static const int _namesCount;
 
 	PrfPlayer(Mixer *mix, FileSystem *fs, int mode);

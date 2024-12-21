@@ -5,6 +5,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/stat.h>
 #include "file.h"
 #include "fs.h"
 #include "util.h"
@@ -46,7 +47,13 @@ struct StdioFile : File_impl {
 	uint32_t size() {
 		uint32_t sz = 0;
 		if (_fp) {
-			int pos = ftell(_fp);
+			const int f = fileno(_fp);
+			struct stat st;
+			if (fstat(f, &st) == 0) {
+				return st.st_size;
+			}
+			warning("Failed to stat() fileno %d", f);
+			const int pos = ftell(_fp);
 			fseek(_fp, 0, SEEK_END);
 			sz = ftell(_fp);
 			fseek(_fp, pos, SEEK_SET);
@@ -426,7 +433,9 @@ void dumpFile(const char *filename, const uint8_t *p, int size) {
 	char path[MAXPATHLEN];
 	snprintf(path, sizeof(path), "DUMP/%s", filename);
 	FILE *fp = fopen(filename, "wb");
-	if (fp) {
+	if (!fp) {
+		warning("Failed to open '%s' for writing", path);
+	} else {
 		const int count = fwrite(p, 1, size, fp);
 		if (count != size) {
 			warning("Failed to write %d bytes (expected %d)", count, size);

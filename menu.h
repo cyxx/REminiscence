@@ -40,6 +40,7 @@ struct Menu {
 	};
 
 	enum {
+		LEVELS_COUNT = 8,
 		EVENTS_DELAY = 80
 	};
 
@@ -48,11 +49,11 @@ struct Menu {
 		int opt;
 	};
 
-	static const char *_levelNames[];
-	static const char *_passwordsDOS[];
-	static const char *_passwordsFrAmiga[];
-	static const char *_passwordsEnAmiga[];
-	static const char *_passwordsMac[];
+	static const char *const _levelNames[];
+	static const char *const _passwordsDOS[];
+	static const char *const _passwordsFrAmiga[];
+	static const char *const _passwordsEnAmiga[];
+	static const char *const _passwordsMac[];
 
 	static const uint8_t _flagEn16x12[];
 	static const uint8_t _flagFr16x12[];

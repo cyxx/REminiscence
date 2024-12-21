@@ -18,6 +18,7 @@
 
 uint32_t g_debugMask;
 
+#ifndef NDEBUG
 void debug(uint32_t cm, const char *msg, ...) {
 	char buf[1024];
 	if (cm & g_debugMask) {
@@ -32,6 +33,7 @@ void debug(uint32_t cm, const char *msg, ...) {
 #endif
 	}
 }
+#endif
 
 void error(const char *msg, ...) {
 	char buf[1024];
