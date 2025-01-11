@@ -356,7 +356,7 @@ int Game::col_detectHitCallback5(LivePGE *pge1, LivePGE *pge2, int16_t msgNum, i
 }
 
 int Game::col_detectHitCallbackHelper(LivePGE *pge, int16_t msgNum) {
-	InitPGE *init_pge = pge->init_PGE;
+	const InitPGE *init_pge = pge->init_PGE;
 	assert(init_pge->obj_node_number < _res._numObjectNodes);
 	ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 	Object *obj = &on->objects[pge->first_obj_number];

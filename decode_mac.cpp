@@ -33,19 +33,6 @@ uint8_t *decodeLzss(File &f, uint32_t &decodedSize) {
 	return dst;
 }
 
-static bool yclip(int& y, DecodeBuffer *buf) {
-	y += buf->y;
-	return (y >= 0 && y < buf->h);
-}
-
-static bool xclip(int& x, int w, DecodeBuffer *buf) {
-	if (buf->xflip) {
-		x = w - 1 - x;
-	}
-	x += buf->x;
-	return (x >= 0 && x < buf->w);
-}
-
 void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 	static const int kBits = 12;
 	static const int kMask = (1 << kBits) - 1;
@@ -55,7 +42,8 @@ void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 	int offset = 0;
 	uint8_t window[(1 << kBits)];
 
-	for (int y = 0; y < h; ++y) {
+	uint8_t *dst = buf->clip_buf ? buf->clip_buf : buf->ptr;
+	for (int y = 0; y < h; ++y, dst += w) {
 		for (int x = 0; x < w; ++x) {
 			if (count == 0) {
 				int carry = bits & 1;
@@ -70,14 +58,9 @@ void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 				}
 				if (!carry) {
 					const uint8_t color = *src++;
-					window[cursor] = color;
-					++cursor;
+					window[cursor++] = color;
 					cursor &= kMask;
-					int y_clip = y;
-					int x_clip = x;
-					if (yclip(y_clip, buf) && xclip(x_clip, w, buf)) {
-						buf->setPixel(buf, x_clip, y_clip, color);
-					}
+					dst[x] = color;
 					continue;
 				}
 				offset = READ_BE_UINT16(src); src += 2;
@@ -89,11 +72,7 @@ void decodeC103(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 			offset &= kMask;
 			window[cursor++] = color;
 			cursor &= kMask;
-			int y_clip = y;
-			int x_clip = x;
-			if (yclip(y_clip, buf) && xclip(x_clip, w, buf)) {
-				buf->setPixel(buf, x_clip, y_clip, color);
-			}
+			dst[x] = color;
 			--count;
 		}
 	}
@@ -104,14 +83,14 @@ void decodeC211(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 		const uint8_t *ptr;
 		int repeatCount;
 	} stack[512];
-	int y = 0;
 	int x = 0;
 	int sp = 0;
 
+	uint8_t *dst = buf->clip_buf ? buf->clip_buf : buf->ptr;
 	while (1) {
 		const uint8_t code = *src++;
 		if ((code & 0x80) != 0) {
-			++y;
+			dst += w;
 			x = 0;
 		}
 		int count = code & 0x1F;
@@ -142,27 +121,10 @@ void decodeC211(const uint8_t *src, int w, int h, DecodeBuffer *buf) {
 				if (count == 1) {
 					return;
 				}
-				int y_clip = y;
-				if (yclip(y_clip, buf)) {
-					const uint8_t color = *src;
-					for (int i = 0; i < count; ++i) {
-						int x_clip = x + i;
-						if (xclip(x_clip, w, buf)) {
-							buf->setPixel(buf, x_clip, y_clip, color);
-						}
-					}
-				}
-				++src;
+				const uint8_t color = *src++;
+				memset(dst + x, color, count);
 			} else {
-				int y_clip = y;
-				if (yclip(y_clip, buf)) {
-					for (int i = 0; i < count; ++i) {
-						int x_clip = x + i;
-						if (xclip(x_clip, w, buf)) {
-							buf->setPixel(buf, x_clip, y_clip, src[i]);
-						}
-					}
-				}
+				memcpy(dst + x, src, count);
 				src += count;
 			}
 			x += count;

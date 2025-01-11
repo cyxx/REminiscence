@@ -54,6 +54,7 @@ struct Menu {
 	static const char *const _passwordsFrAmiga[];
 	static const char *const _passwordsEnAmiga[];
 	static const char *const _passwordsMac[];
+	static const char *const _passwordsSega[];
 
 	static const uint8_t _flagEn16x12[];
 	static const uint8_t _flagFr16x12[];
@@ -81,9 +82,10 @@ struct Menu {
 
 	Menu(Resource *res, SystemStub *stub, Video *vid);
 
-	void drawString(const char *str, int16_t y, int16_t x, uint8_t color);
+	void drawString(const char *str, int16_t y, int16_t x, uint8_t colorConfig);
 	void drawString2(const char *str, int16_t y, int16_t x);
 	void loadPicture(const char *prefix);
+	void displayTitleScreenMac(int num);
 
 	void handleInfoScreen();
 	void handleSkillScreen();

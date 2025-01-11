@@ -99,7 +99,7 @@ enum ResourceType {
 	kResourceTypeDOS,
 	kResourceTypeMac,
 	kResourceTypePC98,
-	kResourceTypeSegaMD,
+	kResourceTypeSega,
 };
 
 enum Skill {
@@ -215,7 +215,7 @@ struct LivePGE {
 	uint8_t index;
 	uint16_t first_obj_number;
 	LivePGE *next_PGE_in_room;
-	InitPGE *init_PGE;
+	const InitPGE *init_PGE;
 };
 
 struct MessagePGE {
@@ -285,7 +285,7 @@ struct CollisionSlot2 {
 
 struct InventoryItem {
 	uint8_t icon_num;
-	InitPGE *init_pge;
+	const InitPGE *init_pge;
 	LivePGE *live_pge;
 };
 

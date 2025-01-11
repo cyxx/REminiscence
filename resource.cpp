@@ -100,7 +100,7 @@ void Resource::init() {
 		_paq->open();
 		_archive = _paq;
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		break;
 	}
 }
@@ -137,7 +137,7 @@ void Resource::clearLevelRes() {
 	_levNum = -1;
 	free(_sgd); _sgd = 0;
 	free(_bnq); _bnq = 0;
-	if (_type != kResourceTypeSegaMD) {
+	if (_type != kResourceTypeSega) {
 		free(_ani); _ani = 0;
 		free_OBJ();
 	}
@@ -357,7 +357,7 @@ void Resource::load_SPR_OFF(const char *fileName, uint8_t *sprData, const char *
 	}
 	if (offData) {
 		const uint8_t *p = offData;
-		if (_type == kResourceTypeSegaMD) {
+		if (_type == kResourceTypeSega) {
 			for (int i = 0; i < NUM_SPRITES; ++i, p += 4) {
 				const int32_t offset = READ_BE_UINT32(p);
 				_sprData[i] = (offset == -1) ? 0 : sprData + offset;
@@ -436,7 +436,7 @@ void Resource::load_CINE() {
 		}
 		break;
 	case kResourceTypeDOS:
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		if (_cine_off == 0) {
 			snprintf(_entryName, sizeof(_entryName), "%sCINE.BIN", prefix);
 			if (!fileExists(_entryName)) {
@@ -552,6 +552,30 @@ void Resource::load_TEXT() {
 void Resource::free_TEXT() {
 	_stringsTable = 0;
 	_textsTable = 0;
+}
+
+void Resource::load_CreditsCrd() {
+	if (!_credits) {
+		static const char *kName = "CREDITS.CRD"; // 25th anniversary edition
+		File f;
+		if (f.open(kName, "rb", _fs)) {
+			const int len = f.size();
+			_credits = (uint8_t *)malloc(len);
+			if (_credits) {
+				f.read(_credits, len);
+				if (f.ioErr()) {
+					warning("I/O error when reading '%s'", kName);
+					free(_credits);
+					_credits = 0;
+				}
+			}
+		}
+	}
+}
+
+void Resource::free_CreditsCrd() {
+	free(_credits);
+	_credits = 0;
 }
 
 static const char *getTextBin(Language lang, ResourceType type) {
@@ -803,7 +827,7 @@ void Resource::load(const char *objName, int objType, const char *ext) {
 
 void Resource::load_CT(File *pf) {
 	debug(DBG_RES, "Resource::load_CT()");
-	int len = pf->size();
+	const int len = pf->size();
 	uint8_t *tmp = (uint8_t *)malloc(len);
 	if (!tmp) {
 		error("Unable to allocate CT buffer");
@@ -818,7 +842,7 @@ void Resource::load_CT(File *pf) {
 
 void Resource::load_FNT(File *f) {
 	debug(DBG_RES, "Resource::load_FNT()");
-	int len = f->size();
+	const int len = f->size();
 	_fnt = (uint8_t *)malloc(len);
 	if (!_fnt) {
 		error("Unable to allocate FNT buffer");
@@ -829,7 +853,7 @@ void Resource::load_FNT(File *f) {
 
 void Resource::load_MBK(File *f) {
 	debug(DBG_RES, "Resource::load_MBK()");
-	int len = f->size();
+	const int len = f->size();
 	_mbk = (uint8_t *)malloc(len);
 	if (!_mbk) {
 		error("Unable to allocate MBK buffer");
@@ -840,7 +864,7 @@ void Resource::load_MBK(File *f) {
 
 void Resource::load_ICN(File *f) {
 	debug(DBG_RES, "Resource::load_ICN()");
-	int len = f->size();
+	const int len = f->size();
 	if (_icnLen == 0) {
 		_icn = (uint8_t *)malloc(len);
 	} else {
@@ -856,7 +880,7 @@ void Resource::load_ICN(File *f) {
 
 void Resource::load_SPR(File *f) {
 	debug(DBG_RES, "Resource::load_SPR()");
-	int len = f->size() - 12;
+	const int len = f->size() - 12;
 	_spr1 = (uint8_t *)malloc(len);
 	if (!_spr1) {
 		error("Unable to allocate SPR1 buffer");
@@ -881,7 +905,7 @@ void Resource::load_RP(File *f) {
 
 void Resource::load_SPC(File *f) {
 	debug(DBG_RES, "Resource::load_SPC()");
-	int len = f->size();
+	const int len = f->size();
 	_spc = (uint8_t *)malloc(len);
 	if (!_spc) {
 		error("Unable to allocate SPC buffer");
@@ -893,7 +917,7 @@ void Resource::load_SPC(File *f) {
 
 void Resource::load_PAL(File *f) {
 	debug(DBG_RES, "Resource::load_PAL()");
-	int len = f->size();
+	const int len = f->size();
 	_pal = (uint8_t *)malloc(len);
 	if (!_pal) {
 		error("Unable to allocate PAL buffer");
@@ -904,7 +928,7 @@ void Resource::load_PAL(File *f) {
 
 void Resource::load_MAP(File *f) {
 	debug(DBG_RES, "Resource::load_MAP()");
-	int len = f->size();
+	const int len = f->size();
 	_map = (uint8_t *)malloc(len);
 	if (!_map) {
 		error("Unable to allocate MAP buffer");
@@ -921,7 +945,7 @@ void Resource::load_OBJ(File *f) {
 		error("Unable to allocate OBJ temporary buffer");
 	} else {
 		f->read(buf, size);
-		if (_type == kResourceTypeAmiga || _type == kResourceTypeSegaMD) {
+		if (_type == kResourceTypeAmiga || _type == kResourceTypeSega) {
 			decodeOBJ(buf, size);
 		} else {
 			assert(_readUint16(buf) == NUM_OBJECTS);
@@ -1082,7 +1106,7 @@ void Resource::load_ANI(File *f) {
 
 void Resource::load_TBN(File *f) {
 	debug(DBG_RES, "Resource::load_TBN()");
-	int len = f->size();
+	const int len = f->size();
 	_tbn = (uint8_t *)malloc(len);
 	if (!_tbn) {
 		error("Unable to allocate TBN buffer");
@@ -1094,7 +1118,7 @@ void Resource::load_TBN(File *f) {
 void Resource::load_CMD(File *pf) {
 	debug(DBG_RES, "Resource::load_CMD()");
 	free(_cmd);
-	int len = pf->size();
+	const int len = pf->size();
 	_cmd = (uint8_t *)malloc(len);
 	if (!_cmd) {
 		error("Unable to allocate CMD buffer");
@@ -1106,7 +1130,7 @@ void Resource::load_CMD(File *pf) {
 void Resource::load_POL(File *pf) {
 	debug(DBG_RES, "Resource::load_POL()");
 	free(_pol);
-	int len = pf->size();
+	const int len = pf->size();
 	_pol = (uint8_t *)malloc(len);
 	if (!_pol) {
 		error("Unable to allocate POL buffer");
@@ -1118,7 +1142,7 @@ void Resource::load_POL(File *pf) {
 void Resource::load_CMP(File *pf) {
 	free(_pol);
 	free(_cmd);
-	int len = pf->size();
+	const int len = pf->size();
 	uint8_t *tmp = (uint8_t *)malloc(len);
 	if (!tmp) {
 		error("Unable to allocate CMP buffer");
@@ -1251,7 +1275,7 @@ void Resource::load_LEV(File *f) {
 
 void Resource::load_SGD(File *f) {
 	const int len = f->size();
-	if (_type == kResourceTypeDOS || _type == kResourceTypeSegaMD) {
+	if (_type == kResourceTypeDOS || _type == kResourceTypeSega) {
 		_sgd = (uint8_t *)malloc(len);
 		if (!_sgd) {
 			error("Unable to allocate SGD buffer");
@@ -1352,7 +1376,7 @@ int Resource::getBankDataSize(uint16_t num) {
 	case kResourceTypeMac:
 		assert(0); // different graphics format
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		assert((len & 0x8000) == 0);
 		break;
 	}
@@ -1518,6 +1542,45 @@ void Resource::MAC_decodeImageData(const uint8_t *ptr, int i, DecodeBuffer *dst)
 		ptr = basePtr + offset;
 		const int w = READ_BE_UINT16(ptr); ptr += 2;
 		const int h = READ_BE_UINT16(ptr); ptr += 2;
+
+		dst->orig_w = w;
+		dst->orig_h = h;
+		dst->clip_x = 0;
+		dst->clip_y = 0;
+		dst->clip_w = w;
+		dst->clip_h = h;
+
+		bool clipping = false;
+		if (dst->dst_x < 0) {
+			dst->clip_w += dst->dst_x;
+			dst->clip_x = -dst->dst_x;
+			dst->dst_x = 0;
+			clipping = true;
+		}
+		if (dst->dst_y < 0) {
+			dst->clip_h += dst->dst_y;
+			dst->clip_y = -dst->dst_y;
+			dst->dst_y = 0;
+			clipping = true;
+		}
+		if (dst->dst_x + dst->clip_w > dst->dst_w) {
+			dst->clip_w = dst->dst_w - dst->dst_x;
+			clipping = true;
+		}
+		if (dst->dst_y + dst->clip_h > dst->dst_h) {
+			dst->clip_h = dst->dst_h - dst->dst_y;
+			clipping = true;
+		}
+
+		if (clipping || !dst->ptr) {
+			const int size = w * h;
+			if (size > kScratchBufferSize) {
+				warning("Need %d bytes (current %d) for clipping image buffer", size, kScratchBufferSize);
+				return;
+			}
+			dst->clip_buf = _scratchBuffer;
+			memset(dst->clip_buf, 0, size);
+		}
 		switch (sig) {
 		case 0xC211:
 			decodeC211(ptr + 4, w, h, dst);
@@ -1667,6 +1730,7 @@ void Resource::MAC_clearClut16(Color *clut, uint8_t dest) {
 }
 
 void Resource::MAC_copyClut16(Color *clut, uint8_t dest, uint8_t src) {
+	assert(src * 16 < _clutSize);
 	memcpy(&clut[dest * 16], &_clut[src * 16], 16 * sizeof(Color));
 }
 
@@ -1760,7 +1824,9 @@ void Resource::MAC_loadCutsceneText() {
 }
 
 void Resource::MAC_loadCreditsText() {
-	_credits = decodeResourceMacText("Credit", "strings");
+	if (!_credits) {
+		_credits = decodeResourceMacText("Credit", "strings");
+	}
 }
 
 void Resource::MAC_loadSounds() {
@@ -1779,6 +1845,7 @@ void Resource::MAC_loadSounds() {
 	static const int kHeaderSize = 0x24;
 	const int soundType = _mac->_sndIndex;
 	assert(soundType != -1);
+	static const int kGain = 2;
 	for (int i = 0; i < NUM_SFXS; ++i) {
 		const int num = table[i];
 		if (num != -1) {
@@ -1794,7 +1861,7 @@ void Resource::MAC_loadSounds() {
 			if (p) {
 				_mac->_f.read(p, dataSize);
 				for (int j = 0; j < dataSize; ++j) {
-					p[j] ^= 0x80;
+					p[j] = ((int8_t)(p[j] ^ 0x80)) / kGain;
 				}
 				_sfxList[i].len = READ_BE_UINT32(buf + 0x12);
 				_sfxList[i].freq = READ_BE_UINT16(buf + 0x16);

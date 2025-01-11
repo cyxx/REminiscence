@@ -59,7 +59,7 @@ void Game::pge_loadForCurrentLevel(uint16_t idx) {
 	debug(DBG_PGE, "Game::pge_loadForCurrentLevel() idx=%d", idx);
 
 	LivePGE *live_pge = &_pgeLive[idx];
-	InitPGE *init_pge = &_res._pgeInit[idx];
+	const InitPGE *init_pge = &_res._pgeInit[idx];
 
 	live_pge->init_PGE = init_pge;
 	live_pge->obj_type = init_pge->type;
@@ -123,7 +123,7 @@ void Game::pge_process(LivePGE *pge) {
 	}
 	const uint8_t *anim_data = _res.getAniData(pge->obj_type);
 	if (_res._readUint16(anim_data) <= pge->anim_seq) {
-		InitPGE *init_pge = pge->init_PGE;
+		const InitPGE *init_pge = pge->init_PGE;
 		assert(init_pge->obj_node_number < _res._numObjectNodes);
 		ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 		Object *obj = &on->objects[pge->first_obj_number];
@@ -160,7 +160,7 @@ void Game::pge_process(LivePGE *pge) {
 }
 
 void Game::pge_setupNextAnimFrame(LivePGE *pge, MessagePGE *le) {
-	InitPGE *init_pge = pge->init_PGE;
+	const InitPGE *init_pge = pge->init_PGE;
 	assert(init_pge->obj_node_number < _res._numObjectNodes);
 	ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 	Object *obj = &on->objects[pge->first_obj_number];
@@ -262,7 +262,7 @@ void Game::pge_setupAnim(LivePGE *pge) {
 	}
 }
 
-int Game::pge_execute(LivePGE *live_pge, InitPGE *init_pge, const Object *obj) {
+int Game::pge_execute(LivePGE *live_pge, const InitPGE *init_pge, const Object *obj) {
 	debug(DBG_PGE, "Game::pge_execute() pge_num=%ld op1=0x%X op2=0x%X op3=0x%X", live_pge - &_pgeLive[0], obj->opcode1, obj->opcode2, obj->opcode3);
 	pge_OpcodeProc op;
 	ObjectOpcodeArgs args;
@@ -398,7 +398,7 @@ void Game::pge_setupDefaultAnim(LivePGE *pge) {
 }
 
 uint16_t Game::pge_processOBJ(LivePGE *pge) {
-	InitPGE *init_pge = pge->init_PGE;
+	const InitPGE *init_pge = pge->init_PGE;
 	assert(init_pge->obj_node_number < _res._numObjectNodes);
 	ObjectNode *on = _res._objectNodesMap[init_pge->obj_node_number];
 	Object *obj = &on->objects[pge->first_obj_number];
@@ -416,7 +416,7 @@ uint16_t Game::pge_processOBJ(LivePGE *pge) {
 	return 0;
 }
 
-void Game::pge_setupOtherPieges(LivePGE *pge, InitPGE *init_pge) {
+void Game::pge_setupOtherPieges(LivePGE *pge, const InitPGE *init_pge) {
 	const int8_t *room_ct_data = 0;
 	if (pge->pos_x <= -10) {
 		pge->pos_x += 256;
@@ -1273,7 +1273,7 @@ int Game::pge_op_incLife(ObjectOpcodeArgs *args) {
 
 int Game::pge_op_setPiegeDefaultAnim(ObjectOpcodeArgs *args) {
 	assert(args->a >= 0 && args->a < 4);
-	InitPGE *init_pge = args->pge->init_PGE;
+	const InitPGE *init_pge = args->pge->init_PGE;
 	args->pge->room_location = init_pge->data[args->a];
 	if (init_pge->object_type == 1) {
 		_loadMap = true;
@@ -1884,7 +1884,7 @@ int Game::pge_op_setPiegePosModX(ObjectOpcodeArgs *args) {
 // taxi and teleporter
 int Game::pge_op_changeRoom(ObjectOpcodeArgs *args) {
 	// pge_op_protectionScreen
-	InitPGE *init_pge_1 = args->pge->init_PGE;
+	const InitPGE *init_pge_1 = args->pge->init_PGE;
 	const int16_t _ax = init_pge_1->data[args->a];
 	if (_ax == 0 && !g_options.bypass_protection && !g_options.use_words_protection && g_features->has_copy_protection) {
 		if (!handleProtectionScreenShape()) {
@@ -1904,7 +1904,7 @@ int Game::pge_op_changeRoom(ObjectOpcodeArgs *args) {
 		live_pge_2->pos_y = live_pge_1->pos_y;
 		live_pge_2->room_location = live_pge_1->room_location;
 		pge_addToCurrentRoomList(live_pge_2, room);
-		InitPGE *init_pge_2 = live_pge_2->init_PGE;
+		const InitPGE *init_pge_2 = live_pge_2->init_PGE;
 		init_pge_1 = live_pge_1->init_PGE;
 		if (init_pge_2->obj_node_number == init_pge_1->obj_node_number) {
 			live_pge_2->flags &= ~1;

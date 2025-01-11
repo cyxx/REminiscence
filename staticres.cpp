@@ -837,7 +837,7 @@ const uint8_t Game::_monsterListLevel5_2[] = {
 	0xB0, 3, 0xD7, 3, 0xD8, 3, 0xFF
 };
 
-const uint8_t * const Game::_monsterListLevels[] = {
+const uint8_t *const Game::_monsterListLevels[] = {
 	_monsterListLevel1,
 	_monsterListLevel2,
 	_monsterListLevel3,
@@ -3860,6 +3860,12 @@ const char *const Menu::_passwordsMac[] = {
 	"QUENCH",  "GHOST",  "LEGEND", "SPHERE",  "BULLET", "DISRUPT", "TRAUMA", "OPAQUE", // easy
 	"HICK",    "FRGO",   "JERK",   "KOIK",    "KIMO",   "LEDUX",   "MORDO",  "OPAQUE", // normal
 	"CURIOUS", "IMPACT", "LETHAL", "PERSIST", "MORTAL", "VERDICT", "KNIGHT", "OPAQUE", // hard
+};
+
+const char *const Menu::_passwordsSega[] = {
+	"PIXEL",  "BETSY", "PANCHO", "STUDIO", "TOHO",   "AKANE",  "INCBIN", "CYGNUS", // easy
+	"FALCON", "DATA",  "MILORD", "QUICKY", "BIJOU",  "BUBBLE", "CLIP",   "CYGNUS", // normal
+	"CLIO",   "ACRTC", "BLOB",   "STUN",   "MIMOLO", "HECTOR", "KALIMA", "CYGNUS", // hard
 };
 
 const uint8_t Video::_conradPal1[] = {

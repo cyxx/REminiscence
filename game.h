@@ -113,7 +113,6 @@ struct Game {
 
 	void run();
 	void displayTitleScreenAmiga();
-	void displayTitleScreenMac(int num);
 	void resetGameState();
 	void mainLoop();
 	void updateTiming();
@@ -178,11 +177,11 @@ struct Game {
 	void pge_setupNextAnimFrame(LivePGE *pge, MessagePGE *le);
 	void pge_playAnimSound(LivePGE *pge, uint16_t arg2);
 	void pge_setupAnim(LivePGE *pge);
-	int pge_execute(LivePGE *live_pge, InitPGE *init_pge, const Object *obj);
+	int pge_execute(LivePGE *live_pge, const InitPGE *init_pge, const Object *obj);
 	void pge_prepare();
 	void pge_setupDefaultAnim(LivePGE *pge);
 	uint16_t pge_processOBJ(LivePGE *pge);
-	void pge_setupOtherPieges(LivePGE *pge, InitPGE *init_pge);
+	void pge_setupOtherPieges(LivePGE *pge, const InitPGE *init_pge);
 	void pge_addToCurrentRoomList(LivePGE *pge, uint8_t room);
 	void pge_getInput();
 	int pge_op_isInpUp(ObjectOpcodeArgs *args);

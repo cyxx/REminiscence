@@ -50,7 +50,7 @@ static int detectVersion(FileSystem *fs) {
 		{ "MENU1SSI.MAP", kResourceTypeDOS, "DOS SSI", &kFeaturesDOS },
 		{ "LEVEL1.MAP", kResourceTypeDOS, "DOS", &kFeaturesDOS },
 		{ "LEVEL1.BNQ", kResourceTypeDOS, "DOS (Demo)", &kFeaturesDOS },
-		{ "PRESENT.LEV", kResourceTypeSegaMD, "Sega Megadrive", &kFeaturesSega },
+		{ "PRESENT.LEV", kResourceTypeSega, "Sega Megadrive", &kFeaturesSega },
 		{ "LEVEL1.LEV", kResourceTypeAmiga, "Amiga", &kFeaturesAmiga },
 		{ "DEMO.LEV", kResourceTypeAmiga, "Amiga (Demo)", &kFeaturesAmiga },
 		{ "FLASHBACK.BIN", kResourceTypeMac, "Macintosh", &kFeaturesMacintosh },
@@ -61,7 +61,7 @@ static int detectVersion(FileSystem *fs) {
 	for (int i = 0; table[i].filename; ++i) {
 		File f;
 		if (f.open(table[i].filename, "rb", fs)) {
-			debug(DBG_INFO, "Detected %s version", table[i].name);
+			info("Detected %s version", table[i].name);
 			g_features = table[i].features;
 			return table[i].type;
 		}
@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
 	ScalerParameters scalerParameters = ScalerParameters::defaults();
 	int forcedLanguage = -1;
 	int midiDriver = MODE_ADLIB;
-	g_debugMask = DBG_INFO; // DBG_CUT | DBG_VIDEO | DBG_RES | DBG_MENU | DBG_PGE | DBG_GAME | DBG_UNPACK | DBG_COL | DBG_MOD | DBG_SFX | DBG_FILE;
+	g_debugMask = 0; // DBG_CUT | DBG_VIDEO | DBG_RES | DBG_MENU | DBG_PGE | DBG_GAME | DBG_UNPACK | DBG_COL | DBG_MOD | DBG_SFX | DBG_FILE;
 	if (argc == 2) {
 		// data path as the only command line argument
 		struct stat st;

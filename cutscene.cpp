@@ -1051,7 +1051,14 @@ void Cutscene::op_handleKeys() {
 		_varKey = 0;
 		--n;
 		_cmdPtr = getCommandData();
-		n = READ_BE_UINT16(_cmdPtr + n * 2 + 2);
+		n = READ_BE_UINT16(_cmdPtr + 2 + n * 2);
+		if (_res->isMac()) {
+			const int count = READ_BE_UINT16(_cmdPtr);
+			assert(n < count);
+			_cmdPtr += n;
+			_cmdPtrBak = _cmdPtr;
+			return;
+		}
 	}
 	_cmdPtr = _cmdPtrBak = getCommandData() + n + _baseOffset;
 }
@@ -1078,15 +1085,32 @@ void Cutscene::mainLoop(uint16_t num) {
 	_newPal = false;
 	_hasAlphaColor = false;
 	const uint8_t *p = getCommandData();
-	int offset = 0;
-	if (num != 0) {
-		offset = READ_BE_UINT16(p + 2 + num * 2);
-	}
 	const int count = READ_BE_UINT16(p);
+	int offset = 0;
 	_baseOffset = (count + 1) * 2;
-
+	if (_res->isMac()) {
+		_vid->_charShadowColor = 0xE0;
+		assert(num < count);
+		offset = READ_BE_UINT16(p + 2 + num * 2);
+		assert(offset >= _baseOffset);
+	} else {
+		if (num != 0) {
+			offset = READ_BE_UINT16(p + 2 + num * 2);
+		} else if (count != 0) {
+			const int startOffset = READ_BE_UINT16(p + 2);
+			if (startOffset != 0) {
+				warning("startOffset %d count %d num %d", startOffset, count, num);
+			}
+		}
+		p += _baseOffset;
+	}
+#if 0
+	for (int i = 0; i < count; ++i) {
+		fprintf(stdout, "cutscene start point %d offset 0x%x, base 0x%x\n", i, READ_BE_UINT16(p + 2 + i * 2), (count + 1) * 2);
+	}
+#endif
 	_varKey = 0;
-	_cmdPtr = _cmdPtrBak = p + _baseOffset + offset;
+	_cmdPtr = _cmdPtrBak = p + offset;
 	_polPtr = getPolygonData();
 	debug(DBG_CUT, "_baseOffset = %d offset = %d count = %d", _baseOffset, offset, count);
 
@@ -1117,6 +1141,7 @@ bool Cutscene::load(uint16_t cutName) {
 	assert(cutName != 0xFFFF);
 	cutName &= 0xFF;
 	const char *name = _namesTableDOS[cutName];
+	debug(DBG_CUT, "Cutscene::load name:'%s'", name);
 	switch (_res->_type) {
 	case kResourceTypeAmiga:
 		if (cutName == 7) {
@@ -1143,7 +1168,7 @@ bool Cutscene::load(uint16_t cutName) {
 			}
 		}
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		if (cutName == 7) {
 			name = "INTRO";
 		}
@@ -1168,7 +1193,7 @@ void Cutscene::unload() {
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_res->unload(Resource::OT_CMD);
 		_res->unload(Resource::OT_POL);
 		break;
@@ -1205,7 +1230,11 @@ void Cutscene::playCredits() {
 		_creditsTextIndex = 0;
 		_creditsTextLen = 0;
 	} else {
-		_textCurPtr = _res->isAmiga() ? _creditsDataAmiga : _creditsDataDOS;
+		_res->load_CreditsCrd();
+		_textCurPtr = _res->_credits;
+		if (!_textCurPtr) {
+			_textCurPtr = _res->isAmiga() ? _creditsDataAmiga : _creditsDataDOS;
+		}
 	}
 	_textBuf[0] = 0xA;
 	_textCurBuf = _textBuf;

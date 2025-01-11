@@ -197,7 +197,7 @@ struct Resource {
 	bool isAmiga() const { return _type == kResourceTypeAmiga; }
 	bool isMac()   const { return _type == kResourceTypeMac; }
 	bool isPC98()  const { return _type == kResourceTypePC98; }
-	bool isSega()  const { return _type == kResourceTypeSegaMD; }
+	bool isSega()  const { return _type == kResourceTypeSega; }
 
 	bool fileExists(const char *filename);
 
@@ -213,6 +213,8 @@ struct Resource {
 	void free_CINE();
 	void load_TEXT();
 	void free_TEXT();
+	void load_CreditsCrd();
+	void free_CreditsCrd();
 	void unload(int objType);
 	void load(const char *objName, int objType, const char *ext = 0);
 	void load_CT(File *pf);

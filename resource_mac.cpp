@@ -28,7 +28,7 @@ ResourceMac::~ResourceMac() {
 void ResourceMac::load() {
 	const uint32_t sig = _f.readUint32BE();
 	if (sig == 0x00051607) { // AppleDouble
-		debug(DBG_INFO, "Load Macintosh data from AppleDouble");
+		info("Load Macintosh data from AppleDouble");
 		_f.seek(24);
 		const int count = _f.readUint16BE();
 		for (int i = 0; i < count; ++i) {
@@ -41,7 +41,7 @@ void ResourceMac::load() {
 			}
 		}
 	} else { // MacBinary
-		debug(DBG_INFO, "Load Macintosh data from MacBinary");
+		info("Load Macintosh data from MacBinary");
 		_f.seek(83);
 		uint32_t dataSize = _f.readUint32BE();
 		uint32_t resourceOffset = 128 + ((dataSize + 127) & ~127);

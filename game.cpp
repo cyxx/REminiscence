@@ -5,7 +5,6 @@
  */
 
 #include <time.h>
-#include "decode_mac.h"
 #include "file.h"
 #include "fs.h"
 #include "game.h"
@@ -59,7 +58,7 @@ void Game::run() {
 	case kResourceTypePC98:
 		// use _font8Jp
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_res.load("FONT8", Resource::OT_FNT);
 		break;
 	}
@@ -76,9 +75,9 @@ void Game::run() {
 	_mix._mod._isAmiga = _res.isAmiga();
 
 	if (_res.isMac()) {
-		displayTitleScreenMac(Menu::kMacTitleScreen_MacPlay);
+		_menu.displayTitleScreenMac(Menu::kMacTitleScreen_MacPlay);
 		if (!_stub->_pi.quit) {
-			displayTitleScreenMac(Menu::kMacTitleScreen_Presage);
+			_menu.displayTitleScreenMac(Menu::kMacTitleScreen_Presage);
 		}
 	}
 	playCutscene(0x40);
@@ -103,7 +102,7 @@ void Game::run() {
 		_res.MAC_loadPersoData();
 		_res.MAC_loadSounds();
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_res.load("GLOBAL", Resource::OT_ANI);
 		_res.load("GLOBAL", Resource::OT_ICN);
 		_res.load("GLOBAL", Resource::OT_OBJ);
@@ -127,7 +126,7 @@ void Game::run() {
 	case kResourceTypeMac:
 		_res.MAC_loadSounds();
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		break;
 	}
 
@@ -139,47 +138,47 @@ void Game::run() {
 		}
 	}
 
-	bool presentMenu = (_res._type != kResourceTypeDOS) || _res.fileExists("MENU1.MAP");
 	while (!_stub->_pi.quit) {
-		if (presentMenu) {
-			_mix.playMusic(1);
-			switch (_res._type) {
-			case kResourceTypeDOS:
-			case kResourceTypePC98:
-				_menu.handleTitleScreen();
-				if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT || _stub->_pi.quit) {
-					_stub->_pi.quit = true;
-					break;
-				}
-				if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_DEMO) {
-					_demoBin = (_demoBin + 1) % ARRAYSIZE(_demoInputs);
-					const char *fn = _demoInputs[_demoBin].name;
-					debug(DBG_DEMO, "Loading inputs from '%s'", fn);
-					_res.load_DEM(fn);
-					if (_res._demLen == 0) {
-						continue;
-					}
-					_skillLevel = kSkillNormal;
-					_currentLevel = _demoInputs[_demoBin].level;
-					_randSeed = 0;
-				} else {
-					_demoBin = -1;
-					_skillLevel = _menu._skill;
-					_currentLevel = _menu._level;
-				}
-				break;
-			case kResourceTypeAmiga:
-				displayTitleScreenAmiga();
-				_stub->setScreenSize(Video::GAMESCREEN_W, Video::GAMESCREEN_H);
-				break;
-			case kResourceTypeMac:
-				displayTitleScreenMac(Menu::kMacTitleScreen_Flashback);
-				break;
-			case kResourceTypeSegaMD:
+		_mix.playMusic(1);
+		switch (_res._type) {
+		case kResourceTypeDOS:
+			if (!_res.fileExists("MENU1.MAP")) {
+				// fbdemofr (no menus)
 				break;
 			}
-			_mix.stopMusic();
+			/* fall-through */
+		case kResourceTypePC98:
+		case kResourceTypeMac:
+			_menu.handleTitleScreen();
+			if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_QUIT || _stub->_pi.quit) {
+				_stub->_pi.quit = true;
+				break;
+			}
+			if (_menu._selectedOption == Menu::MENU_OPTION_ITEM_DEMO) {
+				_demoBin = (_demoBin + 1) % ARRAYSIZE(_demoInputs);
+				const char *fn = _demoInputs[_demoBin].name;
+				debug(DBG_DEMO, "Loading inputs from '%s'", fn);
+				_res.load_DEM(fn);
+				if (_res._demLen == 0) {
+					continue;
+				}
+				_skillLevel = kSkillNormal;
+				_currentLevel = _demoInputs[_demoBin].level;
+				_randSeed = 0;
+			} else {
+				_demoBin = -1;
+				_skillLevel = _menu._skill;
+				_currentLevel = _menu._level;
+			}
+			break;
+		case kResourceTypeAmiga:
+			displayTitleScreenAmiga();
+			_stub->setScreenSize(Video::GAMESCREEN_W, Video::GAMESCREEN_H);
+			break;
+		case kResourceTypeSega:
+			break;
 		}
+		_mix.stopMusic();
 		if (_stub->_pi.quit) {
 			break;
 		}
@@ -259,7 +258,7 @@ void Game::displayTitleScreenAmiga() {
 		} else {
 			static const uint8_t selectedColor = 0xE4;
 			static const uint8_t defaultColor = 0xE8;
-			for (int i = 0; i < 7; ++i) {
+			for (int i = 0; i < Menu::LEVELS_COUNT; ++i) {
 				const char *str = Menu::_levelNames[i];
 				const uint8_t color = (_currentLevel == i) ? selectedColor : defaultColor;
 				const int x = 24;
@@ -276,7 +275,7 @@ void Game::displayTitleScreenAmiga() {
 			}
 			if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
 				_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-				if (_currentLevel < 6) {
+				if (_currentLevel < Menu::LEVELS_COUNT - 1) {
 					++_currentLevel;
 				}
 			}
@@ -294,95 +293,6 @@ void Game::displayTitleScreenAmiga() {
 		_stub->sleep(30);
 	}
 	free(buf);
-}
-
-void Game::displayTitleScreenMac(int num) {
-	const int w = 512;
-	int h = 384;
-	int clutBaseColor = 0;
-	switch (num) {
-	case Menu::kMacTitleScreen_MacPlay:
-		break;
-	case Menu::kMacTitleScreen_Presage:
-		clutBaseColor = 12;
-		break;
-	case Menu::kMacTitleScreen_Flashback:
-	case Menu::kMacTitleScreen_LeftEye:
-	case Menu::kMacTitleScreen_RightEye:
-		h = 448;
-		break;
-	case Menu::kMacTitleScreen_Controls:
-		break;
-	}
-	DecodeBuffer buf;
-	memset(&buf, 0, sizeof(buf));
-	buf.ptr = _vid._frontLayer;
-	buf.pitch = buf.w = _vid._w;
-	buf.h = _vid._h;
-	buf.x = (_vid._w - w) / 2;
-	buf.y = (_vid._h - h) / 2;
-	buf.setPixel = Video::MAC_setPixel;
-	memset(_vid._frontLayer, 0, _vid._layerSize);
-	_res.MAC_loadTitleImage(num, &buf);
-	for (int i = 0; i < 12; ++i) {
-		Color palette[16];
-		_res.MAC_copyClut16(palette, 0, clutBaseColor + i);
-		const int basePaletteColor = i * 16;
-		for (int j = 0; j < 16; ++j) {
-			_stub->setPaletteEntry(basePaletteColor + j, &palette[j]);
-		}
-	}
-	if (num == Menu::kMacTitleScreen_MacPlay) {
-		Color palette[16];
-		_res.MAC_copyClut16(palette, 0, 56);
-		for (int i = 12; i < 16; ++i) {
-			const int basePaletteColor = i * 16;
-			for (int j = 0; j < 16; ++j) {
-				_stub->setPaletteEntry(basePaletteColor + j, &palette[j]);
-			}
-		}
-	} else if (num == Menu::kMacTitleScreen_Presage) {
-		Color c;
-		c.r = c.g = c.b = 0;
-		_stub->setPaletteEntry(0, &c);
-	} else if (num == Menu::kMacTitleScreen_Flashback) {
-		_vid.setTextPalette();
-		_vid._charShadowColor = 0xE0;
-	}
-	_stub->copyRect(0, 0, _vid._w, _vid._h, _vid._frontLayer, _vid._w);
-	_stub->updateScreen(0);
-	while (1) {
-		if (num == Menu::kMacTitleScreen_Flashback) {
-			static const uint8_t selectedColor = 0xE4;
-			static const uint8_t defaultColor = 0xE8;
-			for (int i = 0; i < 7; ++i) {
-				const char *str = Menu::_levelNames[i];
-				_vid.drawString(str, 24, 24 + i * 16, (_currentLevel == i) ? selectedColor : defaultColor);
-			}
-			if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
-				_stub->_pi.dirMask &= ~PlayerInput::DIR_UP;
-				if (_currentLevel > 0) {
-					--_currentLevel;
-				}
-			}
-			if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
-				_stub->_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-				if (_currentLevel < 6) {
-					++_currentLevel;
-				}
-			}
-			_vid.updateScreen();
-		}
-		_stub->processEvents();
-		if (_stub->_pi.quit) {
-			break;
-		}
-		if (_stub->_pi.enter) {
-			_stub->_pi.enter = false;
-			break;
-		}
-		_stub->sleep(30);
-	}
 }
 
 void Game::resetGameState() {
@@ -643,7 +553,7 @@ void Game::inp_handleSpecialKeys() {
 		int8_t slot = _stateSlot + _stub->_pi.stateSlot;
 		if (slot >= 1 && slot < 100) {
 			_stateSlot = slot;
-			debug(DBG_INFO, "Current game state slot is %d", _stateSlot);
+			info("Current game state slot is %d", _stateSlot);
 		}
 		_stub->_pi.stateSlot = 0;
 	}
@@ -651,7 +561,7 @@ void Game::inp_handleSpecialKeys() {
 		if (_rewindLen != 0) {
 			loadStateRewind();
 		} else {
-			debug(DBG_INFO, "Rewind buffer is empty");
+			info("Rewind buffer is empty");
 		}
 		_stub->_pi.rewind = false;
 	}
@@ -702,7 +612,7 @@ bool Game::handleConfigPanel() {
 
 	switch (_res._type) {
 	case kResourceTypeAmiga:
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		for (int i = 0; i < h; ++i) {
 			for (int j = 0; j < w; ++j) {
 				_vid.fillRect(Video::CHAR_W * (x + j), Video::CHAR_H * (y + i), Video::CHAR_W, Video::CHAR_H, 0xE2);
@@ -968,7 +878,7 @@ void Game::drawStoryTexts() {
 					textSegmentsCount = *str++;
 				}
 				int len = *str++;
-				if (*str == '@') {
+				if (*str == '@' /* Floppy version */ || *str == '~' /* CD version */) {
 					switch (str[1]) {
 					case '1':
 						textColor = 0xE9;
@@ -984,7 +894,7 @@ void Game::drawStoryTexts() {
 					len -= 2;
 				}
 				for (; len > 0; yPos += 8) {
-					const uint8_t *next = (const uint8_t *)memchr(str, 0x7C, len);
+					const uint8_t *next = (const uint8_t *)memchr(str, '|', len);
 					if (!next) {
 						_vid.drawStringLen((const char *)str, len, (176 - len * Video::CHAR_W) / 2, yPos, textColor);
 						// point 'str' to beginning of next text segment
@@ -1140,7 +1050,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 		case kResourceTypeAmiga:
 		case kResourceTypeDOS:
 		case kResourceTypePC98:
-		case kResourceTypeSegaMD:
+		case kResourceTypeSega:
 			assert(pge->anim_number < 1287);
 			dataPtr = _res._sprData[pge->anim_number];
 			if (dataPtr == 0) {
@@ -1166,7 +1076,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 			break;
 		case kResourceTypeMac:
 			break;
-		case kResourceTypeSegaMD:
+		case kResourceTypeSega:
 			w = 32;
 			h = 24 * 2;
 			break;
@@ -1200,7 +1110,7 @@ void Game::prepareAnimsHelper(LivePGE *pge, int16_t dx, int16_t dy) {
 		case kResourceTypeAmiga:
 		case kResourceTypeDOS:
 		case kResourceTypePC98:
-		case kResourceTypeSegaMD:
+		case kResourceTypeSega:
 			assert(pge->anim_number < _res._numSpc);
 			dataPtr = _res._spc + READ_BE_UINT16(_res._spc + pge->anim_number * 2);
 			break;
@@ -1261,7 +1171,7 @@ void Game::drawAnimBuffer(uint8_t stateNum, AnimBufferState *state) {
 				case kResourceTypeMac:
 					drawPiege(state);
 					break;
-				case kResourceTypeSegaMD:
+				case kResourceTypeSega:
 					_vid.SEGA_decodeSpm(state->dataPtr, _res._scratchBuffer);
 					drawCharacter(_res._scratchBuffer, state->x, state->y, state->h, state->w, pge->flags);
 					break;
@@ -1280,7 +1190,7 @@ void Game::drawPiege(AnimBufferState *state) {
 	case kResourceTypeAmiga:
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		drawObject(state->dataPtr, state->x, state->y, pge->flags);
 		break;
 	case kResourceTypeMac:
@@ -1323,7 +1233,7 @@ void Game::drawObject(const uint8_t *dataPtr, int16_t x, int16_t y, uint8_t flag
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		count = dataPtr[5];
 		dataPtr += 6;
 		break;
@@ -1368,7 +1278,7 @@ void Game::drawObjectFrame(const uint8_t *bankDataPtr, const uint8_t *dataPtr, i
 	case kResourceTypeMac:
 		assert(0); // different graphics format
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_vid.SEGA_decodeSpc(src, sprite_w, sprite_h, _res._scratchBuffer);
 		break;
 	}
@@ -1454,7 +1364,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 	uint16_t sprite_w = b;
 
 	const uint8_t *src = dataPtr;
-	bool var14 = false;
+	bool sprite_mirror_x = false;
 
 	int16_t sprite_clipped_w;
 	if (pos_x >= 0) {
@@ -1463,7 +1373,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 		} else {
 			sprite_clipped_w = 256 - pos_x;
 			if (flags & 2) {
-				var14 = true;
+				sprite_mirror_x = true;
 				if (sprite_mirror_y) {
 					src += (sprite_w - 1) * sprite_h;
 				} else {
@@ -1482,13 +1392,13 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 				pos_x = 0;
 			}
 		} else {
-			var14 = true;
+			sprite_mirror_x = true;
 			if (sprite_mirror_y) {
 				src += sprite_h * (pos_x + sprite_w - 1);
 				pos_x = 0;
 			} else {
 				src += pos_x + sprite_w - 1;
-				var14 = true;
+				sprite_mirror_x = true;
 				pos_x = 0;
 			}
 		}
@@ -1517,7 +1427,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 		return;
 	}
 
-	if (!var14 && (flags & 2)) {
+	if (!sprite_mirror_x && (flags & 2)) {
 		if (sprite_mirror_y) {
 			src += sprite_h * (sprite_w - 1);
 		} else {
@@ -1548,7 +1458,7 @@ void Game::drawCharacter(const uint8_t *dataPtr, int16_t pos_x, int16_t pos_y, u
 
 int Game::loadMonsterSprites(LivePGE *pge) {
 	debug(DBG_GAME, "Game::loadMonsterSprites()");
-	InitPGE *init_pge = pge->init_PGE;
+	const InitPGE *init_pge = pge->init_PGE;
 	if (init_pge->obj_node_number != 0x49 && init_pge->object_type != 10) {
 		return 0xFFFF;
 	}
@@ -1571,7 +1481,7 @@ int Game::loadMonsterSprites(LivePGE *pge) {
 		_curMonsterNum = mList[1];
 		switch (_res._type) {
 		case kResourceTypeAmiga:
-		case kResourceTypeSegaMD: {
+		case kResourceTypeSega: {
 				_res.load(_monsterNames[1][_curMonsterNum], Resource::OT_SPM);
 				const int offset = _vid._mapPalSlot3 * 16 + (_curMonsterNum & 1) * 8;
 				for (int i = 0; i < 8; ++i) {
@@ -1660,7 +1570,7 @@ void Game::loadLevelRoomHelper(int level, int room) {
 	case kResourceTypePC98:
 		_vid.PC98_decodeMap(level, room);
 		break;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_vid.AMIGA_decodeLev(level, room);
 		break;
 	}
@@ -1674,16 +1584,16 @@ void Game::loadLevelRoom() {
 		const int leftRoom = _res._ctData[CT_LEFT_ROOM + _currentRoom];
 		if (leftRoom >= 0 && hasLevelRoom(_currentLevel, leftRoom) && !isMetro(_currentLevel, leftRoom)) {
 			loadLevelRoomHelper(_currentLevel, leftRoom);
-			_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+			_stub->copyWidescreenLeft(_vid._w, _vid._h, _vid._backLayer);
 		} else {
-			_stub->copyWidescreenLeft(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+			_stub->copyWidescreenLeft(_vid._w, _vid._h, 0);
 		}
 		const int rightRoom = _res._ctData[CT_RIGHT_ROOM + _currentRoom];
 		if (rightRoom >= 0 && hasLevelRoom(_currentLevel, rightRoom) && !isMetro(_currentLevel, rightRoom)) {
 			loadLevelRoomHelper(_currentLevel, rightRoom);
-			_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, _vid._backLayer);
+			_stub->copyWidescreenRight(_vid._w, _vid._h, _vid._backLayer);
 		} else {
-			_stub->copyWidescreenRight(Video::GAMESCREEN_W, Video::GAMESCREEN_H, 0);
+			_stub->copyWidescreenRight(_vid._w, _vid._h, 0);
 		}
 		widescreenUpdated = true;
 	}
@@ -1751,7 +1661,7 @@ void Game::loadLevelData() {
 		break;
 	case kResourceTypeDOS:
 	case kResourceTypePC98:
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_res.load(lvl->name, Resource::OT_MBK);
 		_res.load(lvl->name, Resource::OT_CT);
 		_res.load(lvl->name, Resource::OT_PAL);
@@ -1920,7 +1830,7 @@ void Game::drawIcon(uint8_t iconNum, int16_t x, int16_t y, uint8_t colMask) {
 		}
 		_vid.MAC_drawSprite(x, y, _res._icn, iconNum, false, true);
 		return;
-	case kResourceTypeSegaMD:
+	case kResourceTypeSega:
 		_vid.SEGA_decodeIcn(_res._icn, iconNum, buf);
 		break;
 	}
@@ -2021,7 +1931,7 @@ void Game::handleInventory() {
 			case kResourceTypeMac:
 				drawIcon(31, 56, 140, 0xF);
 				break;
-			case kResourceTypeSegaMD:
+			case kResourceTypeSega:
 				break;
 			}
 			if (!display_score) {
@@ -2181,7 +2091,7 @@ bool Game::saveGameState(uint8_t slot) {
 		if (f.ioErr()) {
 			warning("I/O error when saving game state");
 		} else {
-			debug(DBG_INFO, "Saved state to slot %d", slot);
+			info("Saved state to slot %d", slot);
 			success = true;
 		}
 	}
@@ -2215,7 +2125,7 @@ bool Game::loadGameState(uint8_t slot) {
 				if (f.ioErr()) {
 					warning("I/O error when loading game state");
 				} else {
-					debug(DBG_INFO, "Loaded state from slot %d", slot);
+					info("Loaded state from slot %d", slot);
 					success = true;
 				}
 			}
@@ -2366,7 +2276,7 @@ void Game::loadState(File *f, int version) {
 }
 
 void Game::clearStateRewind() {
-	// debug(DBG_INFO, "Clear rewind state (count %d)", _rewindLen);
+	// info("Clear rewind state (count %d)", _rewindLen);
 	for (int i = 0; i < _rewindLen; ++i) {
 		int ptr = _rewindPtr - i;
 		if (ptr < 0) {
@@ -2391,7 +2301,7 @@ bool Game::saveStateRewind() {
 	if (_rewindLen < kRewindSize) {
 		++_rewindLen;
 	}
-	// debug(DBG_INFO, "Save state for rewind (index %d, count %d, size %d)", _rewindPtr, _rewindLen, f.size());
+	// info("Save state for rewind (index %d, count %d, size %d)", _rewindPtr, _rewindLen, f.size());
 	return !f.ioErr();
 }
 
@@ -2408,7 +2318,7 @@ bool Game::loadStateRewind() {
 	if (_rewindLen > 0) {
 		--_rewindLen;
 	}
-	// debug(DBG_INFO, "Rewind state (index %d, count %d, size %d)", ptr, _rewindLen, f.size());
+	// info("Rewind state (index %d, count %d, size %d)", ptr, _rewindLen, f.size());
 	return !f.ioErr();
 }
 

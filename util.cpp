@@ -63,3 +63,15 @@ void warning(const char *msg, ...) {
 #endif
 }
 
+void info(const char *msg, ...) {
+	char buf[1024];
+	va_list va;
+	va_start(va, msg);
+	vsprintf(buf, msg, va);
+	va_end(va);
+	fprintf(stdout, "%s\n", buf);
+	fflush(stdout);
+#ifdef __ANDROID__
+	__android_log_print(ANDROID_LOG_INFO, LOG_TAG, "%s", buf);
+#endif
+}

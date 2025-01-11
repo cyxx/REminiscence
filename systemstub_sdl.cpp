@@ -535,8 +535,9 @@ void SystemStub_SDL::updateScreen(int shakeOffset) {
 		SDL_Rect r;
 		r.y = shakeOffset * _scaleFactor;
 		SDL_RenderGetLogicalSize(_renderer, &r.w, &r.h);
-		r.x = (r.w - _texW) / 2;
-		r.w = _texW;
+		const int w = _screenW * _scaleFactor;
+		r.x = (r.w - w) / 2;
+		r.w = w;
 		SDL_RenderCopy(_renderer, _texture, &_texRect, &r);
 	} else {
 		if (_fadeOnUpdateScreen) {
@@ -784,7 +785,7 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 					char name[64];
 					snprintf(name, sizeof(name), "screenshot-%ld.bmp", timestamp);
 					saveBMP(name, (const uint8_t *)_screenBuffer, 0, _screenW, _screenH);
-					debug(DBG_INFO, "Written '%s'", name);
+					info("Written '%s'", name);
 				}
 				break;
 			case SDLK_x:
@@ -814,7 +815,7 @@ void SystemStub_SDL::processEvent(const SDL_Event &ev, bool &paused) {
 				break;
 			case SDLK_g:
 				_pi.dbgMask ^= PlayerInput::DF_AUTOZOOM;
-				debug(DBG_INFO, "Auto zoom %s", (_pi.dbgMask & PlayerInput::DF_AUTOZOOM) ? "enabled" : "disabled");
+				info("Auto zoom %s", (_pi.dbgMask & PlayerInput::DF_AUTOZOOM) ? "enabled" : "disabled");
 				break;
 			case SDLK_KP_PLUS:
 			case SDLK_PAGEUP:
