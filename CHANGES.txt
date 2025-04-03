@@ -1,3 +1,7 @@
+* release 0.5.5
+	- added 'DEMO' inputs with Macintosh version
+	- fixed some cutscene graphical glitches
+
 * release 0.5.4
 	- added options menu with Macintosh version
 	- fixed cutscenes crashes with Macintosh data files

@@ -26,6 +26,7 @@ struct Graphics {
 	void drawSegment(uint8_t color, bool hasAlpha, int16_t ys, const Point *pts, uint8_t numPts);
 	void drawPolygonOutline(uint8_t color, const Point *pts, uint8_t numPts);
 	void drawPolygon(uint8_t color, bool hasAlpha, const Point *pts, uint8_t numPts);
+	void floodFill(uint8_t color, const Point *pts, uint8_t numPts);
 };
 
 #endif // GRAPHICS_H__

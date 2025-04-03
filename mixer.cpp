@@ -38,27 +38,25 @@ void Mixer::setPremixHook(PremixHook premixHook, void *userData) {
 void Mixer::play(const uint8_t *data, uint32_t len, uint16_t freq, uint8_t volume) {
 	debug(DBG_SND, "Mixer::play(%d, %d)", freq, volume);
 	LockAudioStack las(_stub);
-	MixerChannel *ch = 0;
 	for (int i = 0; i < NUM_CHANNELS; ++i) {
-		MixerChannel *cur = &_channels[i];
-		if (cur->active) {
-			if (cur->chunk.data == data) {
-				cur->chunkPos = 0;
-				cur->volume = volume;
-				return;
-			}
-		} else {
-			ch = cur;
-			break;
+		MixerChannel *ch = &_channels[i];
+		if (ch->active && ch->soundData == data) { // repeat sound
+			ch->soundPos = 0;
+			ch->volume = volume;
+			return;
 		}
 	}
-	if (ch) {
-		ch->active = true;
-		ch->volume = volume;
-		ch->chunk.data = data;
-		ch->chunk.len = len;
-		ch->chunkPos = 0;
-		ch->chunkInc = (freq << FRAC_BITS) / _stub->getOutputSampleRate();
+	for (int i = 0; i < NUM_CHANNELS; ++i) {
+		MixerChannel *ch = &_channels[i];
+		if (!ch->active) { // start sound
+			ch->active = true;
+			ch->volume = volume;
+			ch->soundData = data;
+			ch->soundSize = len;
+			ch->soundPos = 0;
+			ch->soundInc = (freq << FRAC_BITS) / _stub->getOutputSampleRate();
+			return;
+		}
 	}
 }
 
@@ -67,7 +65,7 @@ bool Mixer::isPlaying(const uint8_t *data) const {
 	LockAudioStack las(_stub);
 	for (int i = 0; i < NUM_CHANNELS; ++i) {
 		const MixerChannel *ch = &_channels[i];
-		if (ch->active && ch->chunk.data == data) {
+		if (ch->active && ch->soundData == data) {
 			return true;
 		}
 	}
@@ -185,15 +183,16 @@ void Mixer::mix(int16_t *out, int len) {
 		MixerChannel *ch = &_channels[i];
 		if (ch->active) {
 			for (int pos = 0; pos < len; ++pos) {
-				const uint32_t cpos = ch->chunkPos >> FRAC_BITS;
-				if (cpos >= ch->chunk.len) {
+				const uint32_t sPos = ch->soundPos >> FRAC_BITS;
+				if (sPos >= ch->soundSize) {
 					ch->active = false;
 					break;
 				}
-				const int sample = S8_to_S16(ch->chunk.getPCM(cpos)) * ch->volume / Mixer::MAX_VOLUME;
+				const int8_t s8 = ch->soundData[sPos];
+				const int sample = S8_to_S16(s8) * ch->volume / Mixer::MAX_VOLUME;
 				out[2 * pos]     = ADDC_S16(out[2 * pos],     sample);
 				out[2 * pos + 1] = ADDC_S16(out[2 * pos + 1], sample);
-				ch->chunkPos += ch->chunkInc;
+				ch->soundPos += ch->soundInc;
 			}
 		}
 	}

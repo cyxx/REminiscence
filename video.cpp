@@ -271,10 +271,10 @@ void Video::DOS_decodeMap(int level, int room) {
 			memcpy(_frontLayer + i * kPlaneSize, _res->_scratchBuffer, kPlaneSize);
 		}
 	} else {
-		for (int i = 0; i < 4; ++i) {
+		for (int i = 0; i < 4; ++i, p += kPlaneSize) {
 			for (int y = 0; y < GAMESCREEN_H; ++y) {
 				for (int x = 0; x < 64; ++x) {
-					_frontLayer[i + x * 4 + GAMESCREEN_W * y] = p[kPlaneSize * i + x + 64 * y];
+					_frontLayer[i + x * 4 + GAMESCREEN_W * y] = p[x + 64 * y];
 				}
 			}
 		}
@@ -380,49 +380,22 @@ static void AMIGA_planar16(uint8_t *dst, int w, int h, int depth, const uint8_t 
 }
 
 static void AMIGA_planar8(uint8_t *dst, int w, int h, const uint8_t *src) {
-	assert(w == 8);
+	assert((w & 7) == 0);
 	for (int y = 0; y < h; ++y) {
-		for (int i = 0; i < 8; ++i) {
-			int color = 0;
-			const int mask = 1 << (7 - i);
-			for (int bit = 0; bit < 4; ++bit) {
-				if (src[bit] & mask) {
-					color |= 1 << bit;
+		for (int x = 0; x < w / 8; ++x) {
+			for (int i = 0; i < 8; ++i) {
+				int color = 0;
+				const int mask = 1 << (7 - i);
+				for (int bit = 0; bit < 4; ++bit) {
+					if (src[bit] & mask) {
+						color |= 1 << bit;
+					}
 				}
+				dst[i] = color;
 			}
-			dst[i] = color;
+			src += 4;
+			dst += 8;
 		}
-		src += 4;
-		dst += w;
-	}
-}
-
-static void AMIGA_planar24(uint8_t *dst, int w, int h, const uint8_t *src) {
-	assert(w == 24);
-	for (int y = 0; y < h; ++y) {
-		for (int i = 0; i < 16; ++i) {
-			int color = 0;
-			const int mask = 1 << (15 - i);
-			for (int bit = 0; bit < 4; ++bit) {
-				if (READ_BE_UINT16(src + bit * 2) & mask) {
-					color |= 1 << bit;
-				}
-			}
-			dst[i] = color;
-		}
-		src += 8;
-		for (int i = 0; i < 8; ++i) {
-			int color = 0;
-			const int mask = 1 << (7 - i);
-			for (int bit = 0; bit < 4; ++bit) {
-				if (src[bit] & mask) {
-					color |= 1 << bit;
-				}
-			}
-			dst[16 + i] = color;
-		}
-		src += 4;
-		dst += w;
 	}
 }
 
@@ -795,14 +768,12 @@ void Video::AMIGA_decodeIcn(const uint8_t *src, int num, uint8_t *dst) {
 void Video::AMIGA_decodeSpc(const uint8_t *src, int w, int h, uint8_t *dst) {
 	switch (w) {
 	case 8:
+	case 24:
 		AMIGA_planar8(dst, w, h, src);
 		break;
 	case 16:
 	case 32:
 		AMIGA_planar16(dst, w / 16, h, 4, src);
-		break;
-	case 24:
-		AMIGA_planar24(dst, w, h, src);
 		break;
 	default:
 		warning("AMIGA_decodeSpc w=%d unimplemented", w);
@@ -1016,19 +987,18 @@ void Video::DOS_drawStringChar(uint8_t *dst, int pitch, int x, int y, const uint
 	assert(chr >= 32);
 	src += (chr - 32) * 8 * 4;
 	for (int y = 0; y < 8; ++y) {
-		for (int x = 0; x < 4; ++x) {
-			const uint8_t c1 = src[x] >> 4;
+		for (int x = 0; x < 4; ++x, ++src) {
+			const uint8_t c1 = *src >> 4;
 			if (c1 != 0) {
 				*dst = (c1 == 15) ? color : (0xE0 + c1);
 			}
 			++dst;
-			const uint8_t c2 = src[x] & 15;
+			const uint8_t c2 = *src & 15;
 			if (c2 != 0) {
 				*dst = (c2 == 15) ? color : (0xE0 + c2);
 			}
 			++dst;
 		}
-		src += 4;
 		dst += pitch - CHAR_W;
 	}
 }

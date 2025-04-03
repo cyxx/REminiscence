@@ -442,11 +442,9 @@ void Menu::handleTitleScreen() {
 	menuItems[menuItemsCount].str = LocaleData::LI_10_INFO;
 	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_INFO;
 	++menuItemsCount;
-	if (!_res->isMac()) {
-		menuItems[menuItemsCount].str = LocaleData::LI_23_DEMO;
-		menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_DEMO;
-		++menuItemsCount;
-	}
+	menuItems[menuItemsCount].str = LocaleData::LI_23_DEMO;
+	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_DEMO;
+	++menuItemsCount;
 	menuItems[menuItemsCount].str = LocaleData::LI_11_QUIT;
 	menuItems[menuItemsCount].opt = MENU_OPTION_ITEM_QUIT;
 	++menuItemsCount;
@@ -491,7 +489,7 @@ void Menu::handleTitleScreen() {
 			_nextScreen = -1;
 		}
 
-		if (g_options.enable_language_selection) {
+		if (g_options.enable_language_selection && _res->isDOS()) {
 			if (_stub->_pi.dirMask & PlayerInput::DIR_LEFT) {
 				_stub->_pi.dirMask &= ~PlayerInput::DIR_LEFT;
 				if (currentLanguage != 0) {

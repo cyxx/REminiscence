@@ -33,7 +33,8 @@ struct Cutscene {
 		kCineChute = 47,
 		kCineMemo = 48,
 		kCineVoyage = 52,
-		kCineEspions = 57
+		kCineEspions = 57,
+		kCineLogos = 64,
 	};
 
 	struct SetShape {
@@ -76,7 +77,7 @@ struct Cutscene {
 	bool _stop;
 	const uint8_t *_polPtr;
 	const uint8_t *_cmdPtr;
-	const uint8_t *_cmdPtrBak;
+	const uint8_t *_cmdStartPtr;
 	uint32_t _tstamp;
 	uint8_t _frameDelay;
 	bool _newPal;
@@ -88,7 +89,6 @@ struct Cutscene {
 	uint8_t _clearScreen;
 	Point _vertices[MAX_VERTICES];
 	bool _hasAlphaColor;
-	uint8_t _varKey;
 	int16_t _shape_ix;
 	int16_t _shape_iy;
 	int16_t _shape_ox;
@@ -102,7 +102,7 @@ struct Cutscene {
 	uint32_t _shape_cur_y16;
 	uint32_t _shape_prev_x16;
 	uint32_t _shape_prev_y16;
-	uint8_t _textSep[0x14];
+	uint8_t _textSep[20];
 	uint8_t _textBuf[500];
 	const uint8_t *_textCurPtr;
 	uint8_t *_textCurBuf;
@@ -115,6 +115,7 @@ struct Cutscene {
 	int _creditsTextLen;
 	uint8_t *_frontPage, *_backPage, *_auxPage;
 	int _paletteNum;
+	bool _isConcavePolygonShape; /* MacPlay logo shape is non-convex */
 
 	Cutscene(Resource *res, SystemStub *stub, Video *vid);
 
@@ -131,6 +132,7 @@ struct Cutscene {
 	void clearBackPage();
 	void drawCreditsText();
 	void drawProtectionShape(uint8_t shapeNum, int16_t zoom);
+	void checkShape(uint16_t shapeOffset);
 	void drawShape(const uint8_t *data, int16_t x, int16_t y);
 	void drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int16_t c, int16_t d, int16_t e, int16_t f, int16_t g);
 	void drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b, int16_t c, int16_t d, int16_t e, int16_t f, int16_t g);

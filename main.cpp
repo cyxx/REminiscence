@@ -213,6 +213,7 @@ int main(int argc, char *argv[]) {
 	const char *savePath = ".";
 	int levelNum = 0;
 	bool fullscreen = false;
+	bool maximizedWindow = false;
 	bool autoSave = false;
 	uint32_t cheats = 0;
 	WidescreenMode widescreen = kWidescreenNone;
@@ -240,6 +241,7 @@ int main(int argc, char *argv[]) {
 			{ "cheats",     required_argument, 0, 9 },
 			{ "mididriver", required_argument, 0, 10 },
 			{ "debug",      required_argument, 0, 11 },
+			{ "maximized",  no_argument,       0, 12 },
 			{ 0, 0, 0, 0 }
 		};
 		int index;
@@ -321,6 +323,9 @@ int main(int argc, char *argv[]) {
 		case 11:
 			g_debugMask |= atoi(optarg);
 			break;
+		case 12:
+			maximizedWindow = true;
+			break;
 		default:
 			printf(USAGE, argv[0]);
 			return 0;
@@ -337,7 +342,7 @@ int main(int argc, char *argv[]) {
 	const Language language = (forcedLanguage == -1) ? detectLanguage(&fs) : (Language)forcedLanguage;
 	SystemStub *stub = SystemStub_SDL_create();
 	Game *g = new Game(stub, &fs, savePath, levelNum, (ResourceType)version, language, widescreen, autoSave, midiDriver, cheats);
-	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen, &scalerParameters);
+	stub->init(g_caption, g->_vid._w, g->_vid._h, fullscreen, widescreen, maximizedWindow, &scalerParameters);
 	g->run();
 	delete g;
 	stub->destroy();

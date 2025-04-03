@@ -38,7 +38,8 @@ struct SystemStub_SDL : SystemStub {
 	const char *_caption;
 	uint32_t *_screenBuffer;
 	bool _fullscreen;
-	uint8_t _overscanColor;
+	bool _maximizeWindow;
+	uint32_t _clearColor;
 	uint32_t _rgbPalette[256];
 	uint32_t _darkPalette[256];
 	int _screenW, _screenH;
@@ -46,7 +47,6 @@ struct SystemStub_SDL : SystemStub {
 	bool _fadeOnUpdateScreen;
 	void (*_audioCbProc)(void *, int16_t *, int);
 	void *_audioCbData;
-	int _screenshot;
 	ScalerType _scalerType;
 	int _scaleFactor;
 	const Scaler *_scaler;
@@ -57,7 +57,7 @@ struct SystemStub_SDL : SystemStub {
 	bool _enableWidescreen;
 
 	virtual ~SystemStub_SDL() {}
-	virtual void init(const char *title, int w, int h, bool fullscreen, int widescreenMode, const ScalerParameters *scalerParameters);
+	virtual void init(const char *title, int w, int h, bool fullscreen, int widescreenMode, bool maximized, const ScalerParameters *scalerParameters);
 	virtual void destroy();
 	virtual bool hasWidescreen() const;
 	virtual void setScreenSize(int w, int h);
@@ -101,7 +101,7 @@ SystemStub *SystemStub_SDL_create() {
 	return new SystemStub_SDL();
 }
 
-void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int widescreenMode, const ScalerParameters *scalerParameters) {
+void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int widescreenMode, bool maximized, const ScalerParameters *scalerParameters) {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER);
 	SDL_ShowCursor(SDL_DISABLE);
 	_caption = title;
@@ -113,6 +113,8 @@ void SystemStub_SDL::init(const char *title, int w, int h, bool fullscreen, int 
 	_screenBuffer = 0;
 	_fadeOnUpdateScreen = false;
 	_fullscreen = fullscreen;
+	_maximizeWindow = maximized;
+	_clearColor = SDL_MapRGB(_fmt, 0, 0, 0);
 	_scalerType = kScalerTypeInternal;
 	_scaleFactor = 1;
 	_scaler = 0;
@@ -219,7 +221,9 @@ void SystemStub_SDL::getPaletteEntry(int i, Color *c) {
 }
 
 void SystemStub_SDL::setOverscanColor(int i) {
-	_overscanColor = i;
+	if (0) {
+		_clearColor = _rgbPalette[i];
+	}
 }
 
 void SystemStub_SDL::copyRect(int x, int y, int w, int h, const uint8_t *buf, int pitch) {
@@ -282,12 +286,11 @@ void SystemStub_SDL::zoomRect(int x, int y, int w, int h) {
 	_texRect.h = h * _texH / _screenH;
 }
 
-static void clearTexture(SDL_Texture *texture, int h, SDL_PixelFormat *fmt) {
+static void clearTexture(SDL_Texture *texture, int h, uint32_t color) {
 	void *dst = 0;
 	int pitch = 0;
 	if (SDL_LockTexture(texture, 0, &dst, &pitch) == 0) {
 		assert((pitch & 3) == 0);
-		const uint32_t color = SDL_MapRGB(fmt, 0, 0, 0);
 		for (uint32_t i = 0; i < h * pitch / sizeof(uint32_t); ++i) {
 			((uint32_t *)dst)[i] = color;
 		}
@@ -304,7 +307,7 @@ void SystemStub_SDL::copyWidescreenLeft(int w, int h, const uint8_t *buf) {
 				rgb[i] = _darkPalette[buf[i]];
 			}
 		} else {
-			const uint32_t color = SDL_MapRGB(_fmt, 0, 0, 0);
+			const uint32_t color = _clearColor;
 			for (int i = 0; i < w * h; ++i) {
 				rgb[i] = color;
 			}
@@ -329,7 +332,7 @@ void SystemStub_SDL::copyWidescreenRight(int w, int h, const uint8_t *buf) {
 				rgb[i] = _darkPalette[buf[i]];
 			}
 		} else {
-			const uint32_t color = SDL_MapRGB(_fmt, 0, 0, 0);
+			const uint32_t color = _clearColor;
 			for (int i = 0; i < w * h; ++i) {
 				rgb[i] = color;
 			}
@@ -502,7 +505,7 @@ void SystemStub_SDL::copyWidescreenCDi(int w, int h, const uint8_t *buf, const u
 }
 
 void SystemStub_SDL::clearWidescreen() {
-	clearTexture(_widescreenTexture, _screenH, _fmt);
+	clearTexture(_widescreenTexture, _screenH, _clearColor);
 }
 
 void SystemStub_SDL::enableWidescreen(bool enable) {
@@ -1034,10 +1037,14 @@ void SystemStub_SDL::prepareGraphics() {
 			w = _screenW + kWidescreenBorderCDiW * 2;
 		}
 		_widescreenTexture = SDL_CreateTexture(_renderer, kPixelFormat, SDL_TEXTUREACCESS_STREAMING, w, _screenH);
-		clearTexture(_widescreenTexture, _screenH, _fmt);
+		clearTexture(_widescreenTexture, _screenH, _clearColor);
 
 		// left and right borders
 		_wideMargin = (w - _screenW) / 2;
+	}
+	if (_maximizeWindow) {
+		_maximizeWindow = false;
+		SDL_MaximizeWindow(_window);
 	}
 }
 

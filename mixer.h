@@ -14,30 +14,13 @@
 #include "prf_player.h"
 #include "sfx_player.h"
 
-struct MixerChunk {
-	const uint8_t *data;
-	uint32_t len;
-
-	MixerChunk()
-		: data(0), len(0) {
-	}
-
-	int8_t getPCM(int offset) const {
-		if (offset < 0) {
-			offset = 0;
-		} else if (offset >= (int)len) {
-			offset = len - 1;
-		}
-		return (int8_t)data[offset];
-	}
-};
-
 struct MixerChannel {
 	uint8_t active;
 	uint8_t volume;
-	MixerChunk chunk;
-	uint32_t chunkPos;
-	uint32_t chunkInc;
+	const uint8_t *soundData;
+	uint32_t soundSize;
+	uint32_t soundPos;
+	uint32_t soundInc;
 };
 
 struct FileSystem;

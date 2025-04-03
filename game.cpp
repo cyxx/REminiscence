@@ -139,6 +139,9 @@ void Game::run() {
 	}
 
 	while (!_stub->_pi.quit) {
+		if (_stub->hasWidescreen()) {
+			_stub->clearWidescreen();
+		}
 		_mix.playMusic(1);
 		switch (_res._type) {
 		case kResourceTypeDOS:
@@ -210,6 +213,7 @@ void Game::run() {
 					_endLoop = true;
 				}
 			}
+			_stub->setOverscanColor(0x00);
 			// flush inputs
 			_stub->_pi.dirMask = 0;
 			_stub->_pi.enter = false;
@@ -402,6 +406,7 @@ void Game::mainLoop() {
 	if (_stub->_pi.backspace) {
 		_stub->_pi.backspace = false;
 		handleInventory();
+		return;
 	}
 	if (_stub->_pi.escape) {
 		_stub->_pi.escape = false;

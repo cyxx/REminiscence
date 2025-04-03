@@ -213,7 +213,7 @@ void Graphics::fillArea(uint8_t color, bool hasAlpha) {
 			do {
 				const int16_t x2 = MIN<int16_t>(_crw - 1, *pts++);
 				for (; x1 <= x2; ++x1) {
-					*(dst + x1) |= color & 8;
+					*(dst + x1) |= color & ~7;
 				}
 				dst += _layerPitch;
 				x1 = *pts++;
@@ -394,8 +394,8 @@ void Graphics::drawPolygon(uint8_t color, bool hasAlpha, const Point *pts, uint8
 	apts1 = &spts[numPts * 2];
 	xmax = _crw - 1;
 	ymax = _crh - 1;
-	int32_t l1 = 65536;
-	int32_t l2 = -65536;
+	const int32_t l1 = 65536;
+	const int32_t l2 = -65536;
 	if (ymin < 0) {
 		int16_t x0, y0;
 		do {
@@ -705,4 +705,65 @@ gfx_drawPolygonEnd:
 gfx_fillArea:
 	*rpts++ = -1;
 	fillArea(color, hasAlpha);
+}
+
+static int16_t _pointsQueue[8192];
+
+void Graphics::floodFill(uint8_t color, const Point *pts, uint8_t numPts) {
+	assert(numPts >= 3);
+	int xmin, xmax;
+	xmin = xmax = pts[0].x;
+	int ymin, ymax;
+	ymin = ymax = pts[0].y;
+	for (int i = 0; i < numPts; ++i) {
+		drawLine(color, &pts[i], &pts[(i == numPts - 1) ? 0 : (i + 1)]);
+		if (xmin > pts[i].x) {
+			xmin = pts[i].x;
+		}
+		if (xmax < pts[i].x) {
+			xmax = pts[i].x;
+		}
+		if (ymin > pts[i].y) {
+			ymin = pts[i].y;
+		}
+		if (ymax < pts[i].y) {
+			ymax = pts[i].y;
+		}
+	}
+	const uint32_t size = (xmax - xmin + 1) * 2 * (ymax - ymin + 1) * 2;
+	if (size > sizeof(_pointsQueue) / sizeof(int16_t)) {
+		return;
+	}
+	int start_x = pts[0].x + 1;
+	int start_y = pts[0].y + 1;
+	while (start_x <= xmax && start_y <= ymax) {
+		if (_layer[(start_y + _cry) * _layerPitch + (start_x + _crx)] != color) {
+			uint32_t r = 0;
+			uint32_t w = 0;
+			_pointsQueue[w++] = start_x + _crx;
+			_pointsQueue[w++] = start_y + _cry;
+			xmin += _crx;
+			xmax += _crx;
+			ymin += _cry;
+			ymax += _cry;
+			_layer[(start_y + _cry) * _layerPitch + (start_x + _crx)] = color;
+			while (r < w) {
+				const int x = _pointsQueue[r++];
+				const int y = _pointsQueue[r++];
+				static const int8_t d[] = { -1, 0, 1, 0, 0, -1, 0, 1 };
+				for (int i = 0; i < 8; i += 2) {
+					const int x1 = x + d[i];
+					const int y1 = y + d[i + 1];
+					if (x1 >= xmin && x1 <= xmax && y1 >= ymin && y1 <= ymax && _layer[y1 * _layerPitch + x1] != color) {
+						_layer[y1 * _layerPitch + x1] = color;
+						_pointsQueue[w++] = x1;
+						_pointsQueue[w++] = y1;
+					}
+				}
+			}
+			break;
+		}
+		++start_x;
+		++start_y;
+	}
 }

@@ -146,6 +146,34 @@ void Resource::clearLevelRes() {
 void Resource::load_DEM(const char *filename) {
 	free(_dem); _dem = 0;
 	_demLen = 0;
+	if (_mac) {
+		char name[256];
+		if (0) {
+			// recorded inputs for levels 3 and 5 are not replayed correctly
+			snprintf(name, sizeof(name), "Demo Level %c", filename[4]);
+		} else {
+			snprintf(name, sizeof(name), "Demo Level 1");
+		}
+		_dem = decodeResourceMacData(name, true);
+		_demLen = _resourceMacDataSize;
+		for (int i = 0; i < _demLen; ++i) {
+			uint8_t mask = 0;
+			if (_dem[i] & 0x10) {
+				mask |= 0x40; // shift
+			}
+			if (_dem[i] & 0x20) {
+				mask |= 0x10; // enter
+			}
+			if (_dem[i] & 0x40) {
+				mask |= 0x20; // space
+			}
+			if (_dem[i] & 0x80) {
+				mask |= 0x80; // backspace
+			}
+			_dem[i] = mask | (_dem[i] & 0xF);
+		}
+		return;
+	}
 	File f;
 	if (f.open(filename, "rb", _fs)) {
 		_demLen = f.size();
@@ -975,14 +1003,12 @@ void Resource::load_OBC(File *f) {
 	if (!packedData) {
 		error("Unable to allocate OBC temporary buffer 1");
 	}
-	f->seek(packedSize);
-	const int unpackedSize = f->readUint32BE();
+	f->read(packedData, packedSize);
+	const int unpackedSize = READ_BE_UINT32(packedData + packedSize - 4);
 	uint8_t *tmp = (uint8_t *)malloc(unpackedSize);
 	if (!tmp) {
 		error("Unable to allocate OBC temporary buffer 2");
 	}
-	f->seek(4);
-	f->read(packedData, packedSize);
 	if (!bytekiller_unpack(tmp, unpackedSize, packedData, packedSize)) {
 		error("Bad CRC for compressed object data");
 	}
@@ -1676,7 +1702,7 @@ void Resource::MAC_unloadLevelData() {
 }
 
 static const uint8_t _macLevelColorOffsets[] = { 24, 28, 36, 40, 44 }; // red palette: 32
-static const char *_macLevelNumbers[] = { "1", "2", "3", "4-1", "4-2", "5-1", "5-2" };
+static const char *const _macLevelNumbers[] = { "1", "2", "3", "4-1", "4-2", "5-1", "5-2" };
 
 void Resource::MAC_loadLevelData(int level) {
 	char name[64];
@@ -1737,6 +1763,7 @@ void Resource::MAC_copyClut16(Color *clut, uint8_t dest, uint8_t src) {
 void Resource::MAC_setupRoomClut(int level, int room, Color *clut) {
 	const int num = _macLevelNumbers[level][0] - '1';
 	int offset = _macLevelColorOffsets[num];
+	int conradPal = 0x30;
 	if (level == 1) {
 		switch (room) {
 		case 27:
@@ -1749,6 +1776,7 @@ void Resource::MAC_setupRoomClut(int level, int room, Color *clut) {
 		case 45:
 		case 46:
 			offset = 32;
+			conradPal = 0x31;
 			break;
 		}
 	}
@@ -1756,7 +1784,7 @@ void Resource::MAC_setupRoomClut(int level, int room, Color *clut) {
 		MAC_copyClut16(clut, i, offset + i);
 		MAC_copyClut16(clut, 8 + i, offset + i);
 	}
-	MAC_copyClut16(clut, 4, 0x30);
+	MAC_copyClut16(clut, 4, conradPal);
 	// 5 is monster palette
 	MAC_clearClut16(clut, 6);
 	MAC_copyClut16(clut, 0xA, _macLevelColorOffsets[0] + 2);

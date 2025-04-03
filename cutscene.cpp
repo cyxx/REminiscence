@@ -11,12 +11,18 @@
 #include "util.h"
 #include "video.h"
 
-static void scalePoints(Point *pt, int count, int scale) {
+static void scalePoints(Point *pt, int count, int scale, int16_t *rx = 0, int16_t *ry = 0) {
 	if (scale != 1) {
 		while (count-- > 0) {
 			pt->x *= scale;
 			pt->y *= scale;
 			++pt;
+		}
+		if (rx) {
+			*rx *= scale;
+		}
+		if (ry) {
+			*ry *= scale;
 		}
 	}
 }
@@ -26,6 +32,7 @@ Cutscene::Cutscene(Resource *res, SystemStub *stub, Video *vid)
 	_patchedOffsetsTable = 0;
 	memset(_palBuf, 0, sizeof(_palBuf));
 	_paletteNum = -1;
+	_isConcavePolygonShape = false;
 }
 
 const uint8_t *Cutscene::getCommandData() const {
@@ -303,7 +310,7 @@ void Cutscene::drawProtectionShape(uint8_t shapeNum, int16_t zoom) {
 
 void Cutscene::op_markCurPos() {
 	debug(DBG_CUT, "Cutscene::op_markCurPos()");
-	_cmdPtrBak = _cmdPtr;
+	_cmdStartPtr = _cmdPtr;
 	_frameDelay = 5;
 	if (!_creditsSequence) {
 		if (_id == kCineDebut) {
@@ -350,6 +357,10 @@ void Cutscene::op_waitForSync() {
 	}
 }
 
+void Cutscene::checkShape(uint16_t shapeOffset) {
+	_isConcavePolygonShape = _res->isMac() && _id == kCineLogos && (shapeOffset & 0x7FF) == 2;
+}
+
 void Cutscene::drawShape(const uint8_t *data, int16_t x, int16_t y) {
 	debug(DBG_CUT, "Cutscene::drawShape()");
 	_gfx.setLayer(_backPage, _vid->_w);
@@ -358,9 +369,9 @@ void Cutscene::drawShape(const uint8_t *data, int16_t x, int16_t y) {
 		Point pt;
 		pt.x = READ_BE_UINT16(data) + x; data += 2;
 		pt.y = READ_BE_UINT16(data) + y; data += 2;
-		uint16_t rx = READ_BE_UINT16(data); data += 2;
-		uint16_t ry = READ_BE_UINT16(data); data += 2;
-		scalePoints(&pt, 1, _vid->_layerScale);
+		int16_t rx = READ_BE_UINT16(data); data += 2;
+		int16_t ry = READ_BE_UINT16(data); data += 2;
+		scalePoints(&pt, 1, _vid->_layerScale, &rx, &ry);
 		_gfx.drawEllipse(_primitiveColor, _hasAlphaColor, &pt, rx, ry);
 	} else if (numVertices == 0) {
 		Point pt;
@@ -392,7 +403,11 @@ void Cutscene::drawShape(const uint8_t *data, int16_t x, int16_t y) {
 			}
 		}
 		scalePoints(_vertices, numVertices, _vid->_layerScale);
-		_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices);
+		if (_isConcavePolygonShape) {
+			_gfx.floodFill(_primitiveColor, _vertices, numVertices);
+		} else {
+			_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices);
+		}
 	}
 }
 
@@ -406,6 +421,7 @@ void Cutscene::op_drawShape() {
 		x = fetchNextCmdWord();
 		y = fetchNextCmdWord();
 	}
+	checkShape(shapeOffset);
 
 	const uint8_t *shapeOffsetTable    = _polPtr + READ_BE_UINT16(_polPtr + 0x02);
 	const uint8_t *shapeDataTable      = _polPtr + READ_BE_UINT16(_polPtr + 0x0E);
@@ -414,7 +430,6 @@ void Cutscene::op_drawShape() {
 
 	const uint8_t *shapeData = shapeDataTable + READ_BE_UINT16(shapeOffsetTable + (shapeOffset & 0x7FF) * 2);
 	uint16_t primitiveCount = READ_BE_UINT16(shapeData); shapeData += 2;
-
 	while (primitiveCount--) {
 		uint16_t verticesOffset = READ_BE_UINT16(shapeData); shapeData += 2;
 		const uint8_t *primitiveVertices = verticesDataTable + READ_BE_UINT16(verticesOffsetTable + (verticesOffset & 0x3FFF) * 2);
@@ -545,7 +560,7 @@ void Cutscene::drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int1
 		po.y = _vertices[0].y + e + _shape_iy;
 		int16_t rx = _vertices[0].x - _vertices[2].x;
 		int16_t ry = _vertices[0].y - _vertices[1].y;
-		scalePoints(&po, 1, _vid->_layerScale);
+		scalePoints(&po, 1, _vid->_layerScale, &rx, &ry);
 		_gfx.drawEllipse(_primitiveColor, _hasAlphaColor, &po, rx, ry);
 	} else if (numVertices == 0) {
 		Point pt;
@@ -615,7 +630,11 @@ void Cutscene::drawShapeScale(const uint8_t *data, int16_t zoom, int16_t b, int1
 		_shape_prev_x16 = _shape_cur_x16;
 		_shape_prev_y16 = _shape_cur_y16;
 		scalePoints(_vertices, numVertices, _vid->_layerScale);
-		_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices);
+		if (_isConcavePolygonShape) {
+			_gfx.floodFill(_primitiveColor, _vertices, numVertices);
+		} else {
+			_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices);
+		}
 	}
 }
 
@@ -631,6 +650,7 @@ void Cutscene::op_drawShapeScale() {
 		x = fetchNextCmdWord();
 		y = fetchNextCmdWord();
 	}
+	checkShape(shapeOffset);
 
 	uint16_t zoom = fetchNextCmdWord() + 512;
 	_shape_ix = fetchNextCmdByte();
@@ -729,7 +749,7 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		po.y = _vertices[0].y + e + _shape_iy;
 		int16_t rx = _vertices[0].x - _vertices[2].x;
 		int16_t ry = _vertices[0].y - _vertices[1].y;
-		scalePoints(&po, 1, _vid->_layerScale);
+		scalePoints(&po, 1, _vid->_layerScale, &rx, &ry);
 		_gfx.drawEllipse(_primitiveColor, _hasAlphaColor, &po, rx, ry);
 	} else if (numVertices == 0) {
 		Point pt;
@@ -836,7 +856,11 @@ void Cutscene::drawShapeScaleRotate(const uint8_t *data, int16_t zoom, int16_t b
 		_shape_prev_x16 = _shape_cur_x16;
 		_shape_prev_y16 = _shape_cur_y16;
 		scalePoints(_vertices, numVertices + 1, _vid->_layerScale);
-		_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices + 1);
+		if (_isConcavePolygonShape) {
+			_gfx.floodFill(_primitiveColor, _vertices, numVertices);
+		} else {
+			_gfx.drawPolygon(_primitiveColor, _hasAlphaColor, _vertices, numVertices + 1);
+		}
 	}
 }
 
@@ -852,6 +876,7 @@ void Cutscene::op_drawShapeScaleRotate() {
 		x = fetchNextCmdWord();
 		y = fetchNextCmdWord();
 	}
+	checkShape(shapeOffset);
 
 	uint16_t zoom = 512;
 	if (shapeOffset & 0x4000) {
@@ -992,7 +1017,7 @@ void Cutscene::op_drawTextAtPos() {
 			}
 			// 'voyage' - cutscene script redraws the string to refresh the screen
 			if (_id == kCineVoyage && (strId & 0xFFF) == 0x45) {
-				if ((_cmdPtr - _cmdPtrBak) == 0xA) {
+				if ((_cmdPtr - _cmdStartPtr) == 0xA) {
 					_stub->copyRect(0, 0, _vid->_w, _vid->_h, _backPage, _vid->_w);
 					_stub->updateScreen(0);
 				} else {
@@ -1037,30 +1062,13 @@ void Cutscene::op_handleKeys() {
 	_stub->_pi.enter = false;
 	_stub->_pi.space = false;
 	_stub->_pi.shift = false;
-	int16_t n = fetchNextCmdWord();
+	const int16_t n = fetchNextCmdWord();
 	if (n < 0) {
-		n = -n - 1;
-		if (_varKey == 0) {
-			_stop = true;
-			return;
-		}
-		if (_varKey != n) {
-			_cmdPtr = _cmdPtrBak;
-			return;
-		}
-		_varKey = 0;
-		--n;
-		_cmdPtr = getCommandData();
-		n = READ_BE_UINT16(_cmdPtr + 2 + n * 2);
-		if (_res->isMac()) {
-			const int count = READ_BE_UINT16(_cmdPtr);
-			assert(n < count);
-			_cmdPtr += n;
-			_cmdPtrBak = _cmdPtr;
-			return;
-		}
+		debug(DBG_CUT, "Cutscene::op_handleKeys n:%d", n);
+		_stop = true;
+		return;
 	}
-	_cmdPtr = _cmdPtrBak = getCommandData() + n + _baseOffset;
+	_cmdPtr = _cmdStartPtr = getCommandData() + n + _baseOffset;
 }
 
 uint8_t Cutscene::fetchNextCmdByte() {
@@ -1104,17 +1112,12 @@ void Cutscene::mainLoop(uint16_t num) {
 		}
 		p += _baseOffset;
 	}
-#if 0
-	for (int i = 0; i < count; ++i) {
-		fprintf(stdout, "cutscene start point %d offset 0x%x, base 0x%x\n", i, READ_BE_UINT16(p + 2 + i * 2), (count + 1) * 2);
-	}
-#endif
-	_varKey = 0;
-	_cmdPtr = _cmdPtrBak = p + offset;
+	_cmdPtr = _cmdStartPtr = p + offset;
 	_polPtr = getPolygonData();
 	debug(DBG_CUT, "_baseOffset = %d offset = %d count = %d", _baseOffset, offset, count);
 
 	_paletteNum = -1;
+	_isConcavePolygonShape = false;
 	_drawMemoSetShapes = (_id == kCineMemo && g_options.restore_memo_cutscene);
 	_memoSetOffset = 0;
 
@@ -1385,12 +1388,12 @@ void Cutscene::drawSetShape(const uint8_t *p, uint16_t offset, int x, int y, con
 		uint8_t color = paletteLut[p[offset]]; offset += 2;
 
 		if (verticesCount == 255) {
-			int rx = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
-			int ry = (int16_t)READ_BE_UINT16(p + offset); offset += 2;
+			int16_t rx = READ_BE_UINT16(p + offset); offset += 2;
+			int16_t ry = READ_BE_UINT16(p + offset); offset += 2;
 			Point pt;
 			pt.x = x + ix;
 			pt.y = y + iy;
-			scalePoints(&pt, 1, _vid->_layerScale);
+			scalePoints(&pt, 1, _vid->_layerScale, &rx, &ry);
 			_gfx.drawEllipse(color, false, &pt, rx, ry);
 		} else {
 			for (int i = 0; i < verticesCount; ++i) {
